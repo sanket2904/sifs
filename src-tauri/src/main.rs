@@ -7,9 +7,10 @@ use core::str;
 use std::path::PathBuf;
 use notify::{event::ModifyKind, Event, EventKind, Watcher};
 use serde::{Deserialize, Serialize};
-use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem};
+use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu};
 use trie::Trie;
 
+#[derive(Clone)]
 struct TrieState {
     tries : Vec<String>
 }
@@ -52,8 +53,7 @@ impl FileResult {
 
 #[tauri::command]
 fn open_file_or_folder(path: String) {
-    let a =  std::process::Command::new("explorer.exe").arg(path).output().unwrap();
-    println!("{:?}", a)
+    let _a =  std::process::Command::new("explorer.exe").arg(path).output().unwrap();
 }
 
 
@@ -103,7 +103,7 @@ fn handle_event(event: Event) {
     let paths = event.paths;
     
     match event.kind {
-        EventKind::Create(e) => {
+        EventKind::Create(_e) => {
             let drive = paths[0].to_str().unwrap().chars().next().unwrap();
             let file_name = paths[0].file_name().unwrap().to_str().unwrap();
             let drive = format!("./{}", drive);
@@ -127,7 +127,7 @@ fn handle_event(event: Event) {
             }
 
         },
-        EventKind::Remove(e) => {
+        EventKind::Remove(_e) => {
             let drive = paths[0].to_str().unwrap().chars().next().unwrap();
             let file_name = paths[0].file_name().unwrap().to_str().unwrap();
             let drive = format!("./{}", drive);
@@ -176,8 +176,8 @@ fn main() {
     let show = CustomMenuItem::new("show".to_string(), "Show");
 
     let tray = SystemTray::new().with_menu(SystemTrayMenu::new().add_item(hide).add_item(show).add_item(quit));
-
-    tauri::Builder::default().system_tray(tray).on_system_tray_event(|app, event| {
+    let check_vec = init.clone();
+    tauri::Builder::default().system_tray(tray).on_system_tray_event(move|app, event| {
 
         match event {
 
@@ -189,6 +189,10 @@ fn main() {
             SystemTrayEvent::MenuItemClick  { id, .. } => {
                 match id.as_str() {
                     "quit" => {
+                        // delete all the directories in trie state
+                        for trie in check_vec.tries.iter() {
+                            let _ = std::fs::remove_dir_all(trie);
+                        }
                         app.exit(0);
                     },
                     "hide" => {

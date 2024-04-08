@@ -51,9 +51,9 @@
 				{#each files as file }
 				  <tr on:dblclick={ async (e) => {
 				  	//remove \ from the path
-					let check = file.location.replace(/\\/g, '')
+					// let check = file.location.replace(/\\/g, '')
 					console.log(file.location)
-					let a = await invoke('open_file_or_folder', { path: `${check}\\${file.name}` })
+					let a = await invoke('open_file_or_folder', { path: `${file.location}\\${file.name}` })
 				  }}>
 					<td>{file.name}</td>
 					<td>{file.location}</td>
