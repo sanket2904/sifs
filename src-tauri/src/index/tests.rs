@@ -194,6 +194,22 @@ fn refresh_follows_creates_renames_moves_and_deletes() {
 }
 
 #[test]
+fn a_file_refreshed_during_a_scan_stays_indexed() {
+    let (dir, home, rules) = fixture();
+    let mut index = open(&dir);
+    scan(&mut index, &home, &rules, |_| {}).unwrap();
+    // A scan starts (its number is taken), the watcher then refreshes a new
+    // file, and the scan ends without having walked it.
+    let mut scanner = open(&dir);
+    let running = scanner.next_scan().unwrap();
+    let created = format!("{home}/Documents/created-during-scan.txt");
+    touch(Path::new(&created));
+    refresh(&mut index, Path::new(&created), &[home.clone()], &rules).unwrap();
+    scanner.remove_unseen(&home, running).unwrap();
+    assert!(index.get(&created).unwrap().is_some(), "a refreshed row is not unseen by a scan running when it was refreshed");
+}
+
+#[test]
 fn removing_a_folder_removes_its_files_only() {
     let (dir, home, rules) = fixture();
     let mut index = open(&dir);
@@ -238,4 +254,56 @@ fn the_watcher_keeps_the_index_current() {
     });
     fs::remove_file(at("Documents/renamed.txt")).unwrap();
     eventually("a deleted file", || reader.get(&at("Documents/renamed.txt")).unwrap().is_none());
+}
+
+/// Several folders scanned at once, the watcher's writes and settings
+/// changes, each on its own connection: SQLite has one writer at a time, and
+/// none of them may fail with "database is locked".
+#[test]
+fn concurrent_writers_never_see_a_locked_database() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = fs::canonicalize(dir.path()).unwrap().to_str().unwrap().to_string();
+    let roots: Vec<String> = (0..4).map(|r| format!("{base}/root{r}")).collect();
+    for root in &roots {
+        for d in 0..40 {
+            for f in 0..60 {
+                touch(Path::new(&format!("{root}/d{d}/file{f}.txt")));
+            }
+        }
+    }
+    let db = dir.path().join("sifs.db");
+    Index::open(&db).unwrap();
+    let rules = Arc::new(Rules::new(&Rules::default_patterns(), &base).unwrap());
+    let mut threads = Vec::new();
+    // Every folder at once, each scanned three times over; the app never
+    // scans one folder twice at the same time.
+    for root in roots.clone() {
+        let (db, rules) = (db.clone(), rules.clone());
+        threads.push(std::thread::spawn(move || {
+            let mut index = Index::open(&db).unwrap();
+            for round in 0..3 {
+                scan(&mut index, &root, &rules, |_| {}).map_err(|e| format!("scan {root} round {round}: {e:#}"))?;
+            }
+            Ok(())
+        }));
+    }
+    {
+        let (db, roots) = (db.clone(), roots.clone());
+        threads.push(std::thread::spawn(move || {
+            let mut index = Index::open(&db).unwrap();
+            for i in 0..200 {
+                let root = &roots[i % roots.len()];
+                index.add_folder(root, i as i64).map_err(|e| format!("add_folder: {e:#}"))?;
+                index.set_ignore_patterns(&Rules::default_patterns()).map_err(|e| format!("set_ignore: {e:#}"))?;
+                let path = format!("{root}/d0/file0.txt");
+                crate::index::crawl::refresh(&mut index, Path::new(&path), &roots, &Rules::new(&Rules::default_patterns(), "/").unwrap())
+                    .map_err(|e| format!("refresh: {e:#}"))?;
+            }
+            Ok(())
+        }));
+    }
+    let failures: Vec<String> = threads.into_iter().filter_map(|t| t.join().unwrap().err()).collect();
+    assert!(failures.is_empty(), "{failures:#?}");
+    let index = Index::open(&db).unwrap();
+    assert_eq!(index.count().unwrap(), 4 * (1 + 40 + 40 * 60));
 }

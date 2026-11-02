@@ -5,8 +5,19 @@
 //! lets searches read while the crawler or the watcher writes.
 
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard};
+
+/// SQLite allows one writer at a time. Every write in this process takes
+/// this lock first, so the crawler, the watcher and settings never compete
+/// for SQLite's own lock, which in WAL mode can fail with "database is
+/// locked" rather than wait. busy_timeout covers other processes.
+static WRITER: Mutex<()> = Mutex::new(());
+
+fn writer() -> MutexGuard<'static, ()> {
+    WRITER.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// One file or folder as stored.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -69,7 +80,8 @@ impl Index {
     /// Opens, creating if needed, the index at path.
     pub fn open(path: &Path) -> Result<Index> {
         let conn = Connection::open(path).with_context(|| format!("open index {}", path.display()))?;
-        conn.busy_timeout(std::time::Duration::from_secs(10))?;
+        conn.busy_timeout(std::time::Duration::from_secs(60))?;
+        let _write = writer();
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.execute_batch(SCHEMA)?;
@@ -78,7 +90,11 @@ impl Index {
 
     /// Inserts or replaces records, all in one transaction.
     pub fn upsert(&mut self, records: &[FileRecord], seen: i64) -> Result<()> {
-        let tx = self.conn.transaction()?;
+        if records.is_empty() {
+            return Ok(());
+        }
+        let _write = writer();
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         {
             let mut stmt = tx.prepare_cached(
                 "INSERT INTO files (path, root, name, ext, is_dir, size, modified, inode, seen)
@@ -98,6 +114,7 @@ impl Index {
     /// Removes path and, if it is a folder, everything under it.
     pub fn remove_tree(&mut self, path: &str) -> Result<usize> {
         let (low, high) = subtree_bounds(path);
+        let _write = writer();
         let n = self.conn.execute(
             "DELETE FROM files WHERE path = ?1 OR (path >= ?2 AND path < ?3)",
             params![path, low, high],
@@ -107,11 +124,13 @@ impl Index {
 
     /// Removes every row of root not seen by the scan numbered seen.
     pub fn remove_unseen(&mut self, root: &str, seen: i64) -> Result<usize> {
+        let _write = writer();
         Ok(self.conn.execute("DELETE FROM files WHERE root = ?1 AND seen < ?2", params![root, seen])?)
     }
 
     /// Removes everything indexed under root.
     pub fn remove_root(&mut self, root: &str) -> Result<usize> {
+        let _write = writer();
         Ok(self.conn.execute("DELETE FROM files WHERE root = ?1", params![root])?)
     }
 
@@ -143,10 +162,12 @@ impl Index {
     }
 
     pub fn add_folder(&mut self, path: &str, now: i64) -> Result<bool> {
+        let _write = writer();
         Ok(self.conn.execute("INSERT OR IGNORE INTO folders (path, added) VALUES (?1, ?2)", params![path, now])? == 1)
     }
 
     pub fn remove_folder(&mut self, path: &str) -> Result<bool> {
+        let _write = writer();
         Ok(self.conn.execute("DELETE FROM folders WHERE path = ?1", params![path])? == 1)
     }
 
@@ -165,7 +186,8 @@ impl Index {
     }
 
     pub fn set_ignore_patterns(&mut self, patterns: &[String]) -> Result<()> {
-        let tx = self.conn.transaction()?;
+        let _write = writer();
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         tx.execute("DELETE FROM ignore_patterns", [])?;
         for p in patterns {
             tx.execute("INSERT OR IGNORE INTO ignore_patterns (pattern) VALUES (?1)", params![p])?;
@@ -175,7 +197,18 @@ impl Index {
         Ok(())
     }
 
+    /// The number of the newest scan started, 0 before any.
+    pub fn current_scan(&self) -> Result<i64> {
+        Ok(self
+            .conn
+            .query_row("SELECT value FROM meta WHERE key = 'scan'", [], |r| r.get::<_, String>(0))
+            .optional()?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0))
+    }
+
     pub fn next_scan(&mut self) -> Result<i64> {
+        let _write = writer();
         let current: i64 = self
             .conn
             .query_row("SELECT value FROM meta WHERE key = 'scan'", [], |r| r.get::<_, String>(0))

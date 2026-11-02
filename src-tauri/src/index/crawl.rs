@@ -117,7 +117,9 @@ pub fn refresh(index: &mut Index, path: &Path, roots: &[String], rules: &Rules) 
         index.remove_tree(path_str)?;
         return Ok(());
     };
-    let seen = 0; // refreshed rows are kept by the next full scan only if still found
+    // Marked as seen by the newest scan, so a scan running now doesn't
+    // remove a row refreshed while it ran (its own number is no newer).
+    let seen = index.current_scan()?;
     if record.is_dir && !rules.is_opaque(path_str) {
         let known = index.get(path_str)?.is_some();
         index.upsert(&[record], seen)?;
