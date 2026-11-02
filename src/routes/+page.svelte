@@ -226,11 +226,37 @@
 </main>
 
 <style>
+	/* Follows the system's light or dark appearance. */
+	:global(:root) {
+		color-scheme: light dark;
+		--bg: #fbfbfd;
+		--panel: #ffffff;
+		--text: #1d1d1f;
+		--muted: #6e6e73;
+		--border: #d2d2d7;
+		--line: #e5e5ea;
+		--accent: #0071e3;
+		--selected: #e8f0fe;
+		--error: #c00;
+	}
+	@media (prefers-color-scheme: dark) {
+		:global(:root) {
+			--bg: #1c1c1e;
+			--panel: #2c2c2e;
+			--text: #f5f5f7;
+			--muted: #a1a1a6;
+			--border: #48484a;
+			--line: #38383a;
+			--accent: #0a84ff;
+			--selected: #0a84ff33;
+			--error: #ff6961;
+		}
+	}
 	:global(body) {
 		margin: 0;
 		font: 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-		color: #1d1d1f;
-		background: #fbfbfd;
+		color: var(--text);
+		background: var(--bg);
 	}
 	main {
 		display: flex;
@@ -246,20 +272,23 @@
 		flex: 1;
 		font-size: 18px;
 		padding: 10px 14px;
-		border: 1px solid #d2d2d7;
+		color: var(--text);
+		background: var(--panel);
+		border: 1px solid var(--border);
 		border-radius: 10px;
 		outline: none;
 	}
 	header input:focus {
-		border-color: #0071e3;
-		box-shadow: 0 0 0 3px #0071e333;
+		border-color: var(--accent);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
 	}
 	button {
 		font: inherit;
+		color: var(--text);
 		padding: 6px 12px;
-		border: 1px solid #d2d2d7;
+		border: 1px solid var(--border);
 		border-radius: 8px;
-		background: white;
+		background: var(--panel);
 		cursor: pointer;
 	}
 	button.icon {
@@ -274,18 +303,18 @@
 		font-size: 12px;
 	}
 	.progress {
-		color: #0071e3;
+		color: var(--accent);
 		display: flex;
 		flex-direction: column;
 	}
 	.error {
-		color: #c00;
+		color: var(--error);
 	}
 	.settings {
 		margin: 0 16px 10px;
 		padding: 12px 16px;
-		background: white;
-		border: 1px solid #e5e5ea;
+		background: var(--panel);
+		border: 1px solid var(--line);
 		border-radius: 10px;
 		overflow: auto;
 		max-height: 60vh;
@@ -309,6 +338,10 @@
 		width: 100%;
 		box-sizing: border-box;
 		font: 12px ui-monospace, Menlo, monospace;
+		color: var(--text);
+		background: var(--bg);
+		border: 1px solid var(--border);
+		border-radius: 6px;
 	}
 	.results {
 		list-style: none;
@@ -327,7 +360,7 @@
 		cursor: default;
 	}
 	.results li.selected {
-		background: #e8f0fe;
+		background: var(--selected);
 	}
 	.kind {
 		grid-row: span 2;
@@ -336,6 +369,7 @@
 	}
 	.name {
 		font-weight: 500;
+		color: var(--text);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -343,7 +377,7 @@
 	.where {
 		grid-column: 2;
 		font-size: 12px;
-		color: #6e6e73;
+		color: var(--muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -353,11 +387,11 @@
 		grid-row: 1 / span 2;
 		align-self: center;
 		font-size: 12px;
-		color: #6e6e73;
+		color: var(--muted);
 		white-space: nowrap;
 	}
 	.muted {
-		color: #6e6e73;
+		color: var(--muted);
 	}
 	.center {
 		text-align: center;
@@ -365,6 +399,6 @@
 	footer {
 		padding: 8px 16px;
 		font-size: 12px;
-		border-top: 1px solid #e5e5ea;
+		border-top: 1px solid var(--line);
 	}
 </style>
