@@ -19,8 +19,11 @@ pub const DEFAULT_IGNORE: &[&str] = &[
     "**/venv",
     "**/target/debug",
     "**/target/release",
-    "**/DerivedData",
+    "**/DerivedData*",
     "**/Pods",
+    // Xcode's own index, build products and package checkouts.
+    "**/*.noindex",
+    "**/SourcePackages",
 ];
 
 /// Packages macOS shows as one item: indexed themselves, not their insides.

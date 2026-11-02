@@ -133,6 +133,42 @@ fn a_chosen_folder_is_indexed_even_inside_a_hidden_one() {
 }
 
 #[test]
+fn ranking_puts_documents_above_same_named_code_and_build_products() {
+    let (dir, home, rules) = fixture();
+    for p in [
+        "Downloads/google-cloud-sdk/lib/surface/compute/resume.py",
+        "code/app/build/Objects/ResumeButton.o",
+        "code/app/Sources/ResumeButton.swift",
+        "Documents/Sanket_Agarwal_Backend_Resume.pdf",
+    ] {
+        touch(&Path::new(&home).join(p));
+    }
+    let mut index = open(&dir);
+    scan(&mut index, &home, &rules, |_| {}).unwrap();
+    let found = names(&index, "resume");
+    let at = |name: &str| found.iter().position(|n| n == name).unwrap_or_else(|| panic!("{name} not found in {found:?}"));
+    for document in ["Sanket_Agarwal_Backend_Resume.pdf", "Resume_2025.pdf", "Resume_2023.docx"] {
+        for code in ["resume.py", "ResumeButton.swift", "ResumeButton.o"] {
+            assert!(at(document) < at(code), "{document} should rank above {code}: {found:?}");
+        }
+    }
+    assert!(at("ResumeButton.swift") < at("ResumeButton.o"), "source above a build product: {found:?}");
+}
+
+#[test]
+fn xcode_build_folders_are_skipped() {
+    let (dir, home, rules) = fixture();
+    for p in ["code/ios/build/Index.noindex/DataStore/unit", "code/ios/DerivedDataDevice/x.o", "code/ios/build/SourcePackages/checkouts/lib.swift"] {
+        touch(&Path::new(&home).join(p));
+    }
+    let mut index = open(&dir);
+    scan(&mut index, &home, &rules, |_| {}).unwrap();
+    for p in ["code/ios/build/Index.noindex", "code/ios/DerivedDataDevice", "code/ios/build/SourcePackages"] {
+        assert!(index.get(&format!("{home}/{p}")).unwrap().is_none(), "{p} is indexed");
+    }
+}
+
+#[test]
 fn settings_are_kept() {
     let (dir, _home, _rules) = fixture();
     let mut index = open(&dir);
