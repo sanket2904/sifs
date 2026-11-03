@@ -36,6 +36,8 @@ Measure the index on real folders without the app (read-only; writes only the in
 cd src-tauri && cargo run --release --no-default-features --bin sifs-bench -- /tmp/bench.db ~/Documents -- resume invoice
 ```
 
+With `--contents` before the index file, it also reads inside the files and reports time per 1,000 files by reader, index growth by table, peak memory and how long writes held the index.
+
 ## Layout
 
 ```text

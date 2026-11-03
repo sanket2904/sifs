@@ -147,6 +147,12 @@ impl Index {
             .optional()?)
     }
 
+    /// The connection, for measuring and inspecting the index; writes go
+    /// through the methods here, which take the writer lock.
+    pub fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
     pub fn count(&self) -> Result<i64> {
         Ok(self.conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))?)
     }
