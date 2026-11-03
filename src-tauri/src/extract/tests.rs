@@ -936,6 +936,68 @@ fn every_sample_is_found_by_a_word_inside_it() {
 }
 
 #[test]
+fn office_files_are_found_by_their_words_with_the_page_sheet_or_slide() {
+    use super::readers::office::sample::{self, paras, shape};
+    let home = Home::new();
+    let lease = home.write(
+        "docs/lease.docx",
+        &sample::docx(&format!(
+            "{}{}",
+            paras(&["Tenant pays rent"]),
+            r#"<w:p><w:r><w:br w:type="page"/></w:r><w:r><w:t>Deposit refundable किराया</w:t></w:r></w:p>"#
+        )),
+    );
+    let budget = home.write(
+        "docs/budget.xlsx",
+        &sample::xlsx(
+            &[("Q1", r#"<row><c t="s"><v>0</v></c></row>"#), ("Q2", r#"<row><c t="inlineStr"><is><t>Groceries 東京</t></is></c><c><v>4200</v></c></row>"#)],
+            &["<t>Electricity</t>"],
+            "",
+            false,
+        ),
+    );
+    let pitch = home.write(
+        "docs/pitch.pptx",
+        &sample::pptx(&[(&shape(&["Seed round"]), Some("Thank the investors")), (&shape(&["Traction I❤️you"]), None)]),
+    );
+    let secret = home.write("docs/secret.docx", &sample::compound(&["EncryptionInfo", "EncryptedPackage"]));
+    let whole = sample::docx(&paras(&["cut short"]));
+    let cut = home.write("docs/cut.docx", &whole[..whole.len() / 2]);
+    let fake = home.write("docs/fake.pptx", &sample::zip(&[("notes.txt", b"a plain zip")]));
+    let big = home.write("docs/big.docx", b"");
+    fs::File::options().write(true).open(&big).unwrap().set_len(100 * MB + 1).unwrap();
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    let stats = run(&mut index, &registry);
+    assert!(stats.errors.is_empty(), "{:?}", stats.errors);
+    let at = |query: &str| -> Vec<(String, String)> {
+        store::match_contents(&index, query, 10).unwrap().into_iter().map(|m| (m.path, m.label)).collect()
+    };
+    assert_eq!(at("tenant"), vec![(lease.clone(), "page 1".into())]);
+    assert_eq!(at("deposit"), vec![(lease.clone(), "page 2".into())]);
+    assert_eq!(at("किराया"), vec![(lease.clone(), "page 2".into())]);
+    assert_eq!(at("electricity"), vec![(budget.clone(), "Q1".into())]);
+    assert_eq!(at("groceries"), vec![(budget.clone(), "Q2".into())]);
+    assert_eq!(at("東京"), vec![(budget.clone(), "Q2".into())]);
+    assert_eq!(at("4200"), vec![(budget.clone(), "Q2".into())]);
+    assert_eq!(at("seed"), vec![(pitch.clone(), "slide 1".into())]);
+    assert_eq!(at("investors"), vec![(pitch.clone(), "slide 1 notes".into())]);
+    assert_eq!(at("you"), vec![(pitch.clone(), "slide 2".into())]);
+    assert_eq!(fact_of(&index, &lease, "title").as_deref(), Some("Rent agreement"));
+    assert_eq!(fact_of(&index, &budget, "sheets").as_deref(), Some("Q1, Q2"));
+    assert_eq!(fact_of(&index, &pitch, "slides").as_deref(), Some("2"));
+    assert_eq!(status(&index, &secret), ("skipped".into(), Some("password-protected".into())));
+    let (cut_status, why) = status(&index, &cut);
+    assert_eq!(cut_status, "failed");
+    assert!(why.unwrap().starts_with("damaged or incomplete"));
+    assert_eq!(status(&index, &fake), ("skipped".into(), Some("not a PowerPoint presentation".into())));
+    assert_eq!(status(&index, &big), ("skipped".into(), Some("larger than 100 MB".into())));
+    // Nothing is read again, the failures included, until it changes.
+    let again = run(&mut index, &registry);
+    assert_eq!((again.reads, queued(&index)), (0, 0));
+}
+
+#[test]
 fn resume_finds_résumé_composed_and_decomposed() {
     let home = Home::with_samples();
     let decomposed = home.write("samples/cv-nfd.md", "My re\u{301}sume\u{301}, decomposed.".as_bytes());
