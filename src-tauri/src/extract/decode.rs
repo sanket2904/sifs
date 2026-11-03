@@ -81,8 +81,10 @@ fn utf16_without_bom(bytes: &[u8]) -> Option<&'static Encoding> {
         }
     }
     // The zeros must also be a real share of their side, not a stray one or
-    // two: at least one in 16 (Hindi's are just its spaces and punctuation).
-    let enough = |zeros: usize| zeros >= 2 && zeros * 16 >= head.len() / 2;
+    // two: at least one in 128. Hindi's are just its spaces and punctuation;
+    // Japanese, with no spaces, has only its line breaks and ASCII (about
+    // one in 40).
+    let enough = |zeros: usize| zeros >= 2 && zeros * 128 >= head.len() / 2;
     let encoding = if enough(odd) && even * 20 <= odd {
         UTF_16LE
     } else if enough(even) && odd * 20 <= even {
@@ -240,6 +242,20 @@ mod tests {
         let hindi = "मकान का किराया दस हज़ार रुपये है और बिजली का बिल अलग है।\n".repeat(5);
         let d = decode(&utf16(&hindi, true), None).unwrap();
         assert_eq!((d.text.as_str(), d.encoding), (hindi.as_str(), Some("UTF-16LE")));
+        // Two stray zeros in a longer note are not UTF-16 either.
+        text[901] = 0;
+        assert!(matches!(decode(&text, None), Err(ReadError::Binary)));
+    }
+
+    #[test]
+    fn utf16_japanese_without_a_mark_is_recognised() {
+        // No spaces: its only zero bytes are the line breaks' and the ASCII's.
+        let ja = "東京都の天気は晴れ、明日は雨が降るでしょう。今週の予定を確認してください。\n".repeat(40);
+        for little in [true, false] {
+            let d = decode(&utf16(&ja, little), None).unwrap();
+            assert_eq!(d.text, ja);
+            assert_eq!(d.encoding, Some(if little { "UTF-16LE" } else { "UTF-16BE" }));
+        }
     }
 
     #[test]
