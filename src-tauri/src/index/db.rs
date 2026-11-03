@@ -183,7 +183,8 @@ impl Index {
     /// Removes everything indexed under root, batch rows at a time, each in
     /// its own short transaction, so a large folder and the text read from
     /// its files don't hold up searches and other writes; then clears
-    /// root's removal mark. progress is called after each batch with the
+    /// root's removal mark. Nothing is removed while root is a folder (added
+    /// again since): each delete checks, so no add can slip in between. progress is called after each batch with the
     /// number removed so far.
     pub fn remove_root_in_batches(&mut self, root: &str, batch: usize, mut progress: impl FnMut(usize)) -> Result<usize> {
         let mut removed = 0;
@@ -191,7 +192,8 @@ impl Index {
             let n = {
                 let _write = writer();
                 self.conn.execute(
-                    "DELETE FROM files WHERE id IN (SELECT id FROM files WHERE root = ?1 LIMIT ?2)",
+                    "DELETE FROM files WHERE id IN (SELECT id FROM files WHERE root = ?1
+                         AND NOT EXISTS (SELECT 1 FROM folders WHERE path = ?1) LIMIT ?2)",
                     params![root, batch as i64],
                 )?
             };

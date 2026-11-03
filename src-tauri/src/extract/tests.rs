@@ -1655,3 +1655,110 @@ fn reads_still_running_when_a_write_fails_count_as_abandoned() {
     assert_eq!(stats.errors.len(), 1, "{:?}", stats.errors);
     assert_eq!(stats.abandoned, 1);
 }
+
+// --- a folder added again, or asked to be scanned again, while it scans ---
+
+/// A scan held after its first batch: the Folders, and the gate that lets it go on.
+fn held_scan(home: &Home, n: usize) -> (Folders, std::sync::mpsc::Sender<()>) {
+    for i in 0..n {
+        home.write(&format!("Docs/d{}/n{i}.txt", i % 10), b"okapi words");
+    }
+    let (in_flight, waiting) = std::sync::mpsc::channel::<()>();
+    let (go, gate) = std::sync::mpsc::channel::<()>();
+    let gate = Mutex::new(gate);
+    let first = AtomicBool::new(true);
+    let folders = folders(home, move |event| {
+        if let Event::Progress { .. } = event {
+            if first.swap(false, Ordering::SeqCst) {
+                in_flight.send(()).unwrap();
+                gate.lock().unwrap().recv().unwrap();
+            }
+        }
+    });
+    let mut index = home.open();
+    let docs = home.at("Docs");
+    folders.add(&mut index, &docs, now()).unwrap();
+    folders.scan(docs);
+    waiting.recv().unwrap();
+    (folders, go)
+}
+
+/// The reviewer's rv3_readd_while_cancelled_scan_ends_is_never_scanned: a
+/// folder removed during its scan and added again before that scan ended
+/// was kept but never scanned.
+#[test]
+fn a_folder_added_again_before_its_cancelled_scan_ends_is_scanned() {
+    let home = Home::new();
+    let registry = Registry::platform();
+    let mut index = home.open();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let (folders, go) = held_scan(&home, 2100);
+    let docs = home.at("Docs");
+    folders.remove(&mut index, &docs).unwrap();
+    let err = folders.add(&mut index, &docs, now()).unwrap_err().to_string();
+    assert!(err.contains("still being removed"), "{err}");
+    eventually("the removal add started to end", || index.removals().unwrap().is_empty());
+    // "add it again in a moment"
+    folders.add(&mut index, &docs, now()).unwrap();
+    folders.scan(docs.clone());
+    go.send(()).unwrap();
+    eventually("everything to settle", || folders.idle());
+    assert_eq!(index.folders().unwrap(), vec![docs.clone()]);
+    assert_eq!(index.count_root(&docs).unwrap(), 2111, "the folder, 10 subfolders and 2100 files");
+}
+
+/// Asked to scan while it scans (the ignore rules changed): another scan
+/// follows, with the new rules.
+#[test]
+fn a_scan_asked_for_during_a_scan_follows_it() {
+    let home = Home::new();
+    let mut index = home.open();
+    let (folders, go) = held_scan(&home, 2100);
+    let docs = home.at("Docs");
+    let mut patterns = Rules::default_patterns();
+    patterns.push("**/d3".into());
+    index.set_ignore_patterns(&patterns).unwrap();
+    folders.scan(docs.clone());
+    go.send(()).unwrap();
+    eventually("everything to settle", || folders.idle());
+    let under_d3 = count(&index, &format!("SELECT COUNT(*) FROM files WHERE path LIKE '{docs}/d3%'"));
+    assert_eq!(under_d3, 0, "the second scan used the new rules");
+    assert_eq!(index.count_root(&docs).unwrap(), 2111 - 211);
+}
+
+/// A removal deletes nothing of a folder that is searched again, even when
+/// it was asked for before the folder was added again.
+#[test]
+fn a_removal_never_deletes_the_rows_of_a_folder_searched_again() {
+    let home = Home::new();
+    for i in 0..30 {
+        home.write(&format!("Docs/n{i}.txt"), b"okapi words");
+    }
+    let mut index = home.open();
+    let docs = home.at("Docs");
+    index.add_folder(&docs, 1).unwrap();
+    scan(&mut index, &docs, &home.rules, |_| {}).unwrap();
+    assert_eq!(index.remove_root_in_batches(&docs, 10, |_| {}).unwrap(), 0);
+    assert_eq!(index.count_root(&docs).unwrap(), 31);
+}
+
+/// Removed, added again and removed again, all before its scan ends: no
+/// scan follows, and nothing is left.
+#[test]
+fn a_folder_removed_added_and_removed_again_during_its_scan_leaves_nothing() {
+    let home = Home::new();
+    let mut index = home.open();
+    let (folders, go) = held_scan(&home, 2100);
+    let docs = home.at("Docs");
+    folders.remove(&mut index, &docs).unwrap();
+    let _ = folders.add(&mut index, &docs, now());
+    eventually("the removal add started to end", || index.removals().unwrap().is_empty());
+    folders.add(&mut index, &docs, now()).unwrap();
+    folders.scan(docs.clone());
+    folders.remove(&mut index, &docs).unwrap();
+    go.send(()).unwrap();
+    eventually("everything to settle", || folders.idle());
+    assert!(index.folders().unwrap().is_empty());
+    assert_eq!(index.count_root(&docs).unwrap(), 0);
+    assert!(index.removals().unwrap().is_empty());
+}

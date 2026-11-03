@@ -46,10 +46,19 @@ struct Inner {
     jobs: Mutex<Jobs>,
 }
 
+/// A scan running.
+struct Scan {
+    /// Set when its folder is removed: the scan stops before its next batch.
+    cancel: Arc<AtomicBool>,
+    /// Asked for again while it ran (rules changed, or the folder was added
+    /// again after a removal): another scan follows it.
+    again: bool,
+}
+
 #[derive(Default)]
 struct Jobs {
-    /// Folders being scanned, each with the flag that stops its scan.
-    scanning: HashMap<String, Arc<AtomicBool>>,
+    /// Folders being scanned.
+    scanning: HashMap<String, Scan>,
     /// Folders being removed, and whether to go over them once more when
     /// done (asked again meanwhile).
     removing: HashMap<String, bool>,
@@ -118,11 +127,13 @@ impl Folders {
     pub fn remove(&self, index: &mut Index, path: &str) -> Result<()> {
         index.forget_folder(path)?;
         {
-            let jobs = self.jobs();
-            if let Some(cancel) = jobs.scanning.get(path) {
-                // Set under the lock its scan reads it under when it ends,
-                // so the scan either sees it or has not ended yet.
-                cancel.store(true, Ordering::SeqCst);
+            let mut jobs = self.jobs();
+            if let Some(scan) = jobs.scanning.get_mut(path) {
+                // Set under the lock its scan reads them under when it ends,
+                // so the scan either sees them or has not ended yet. Removed
+                // after being added again: no scan follows, a removal does.
+                scan.cancel.store(true, Ordering::SeqCst);
+                scan.again = false;
                 return Ok(());
             }
         }
@@ -130,17 +141,22 @@ impl Folders {
         Ok(())
     }
 
-    /// Scans one folder in the background, unless it is being scanned.
+    /// Scans one folder in the background. If it is being scanned, another
+    /// scan follows that one, so what was asked for now is seen (new rules,
+    /// or the folder added again after a removal stopped that scan).
     pub fn scan(&self, root: String) {
         let cancel = {
             let mut jobs = self.jobs();
-            if jobs.scanning.contains_key(&root) {
+            if let Some(scan) = jobs.scanning.get_mut(&root) {
+                scan.again = true;
                 return;
             }
-            let cancel = Arc::new(AtomicBool::new(false));
-            jobs.scanning.insert(root.clone(), cancel.clone());
-            cancel
+            new_scan(&mut jobs, &root)
         };
+        self.spawn_scan(root, cancel);
+    }
+
+    fn spawn_scan(&self, root: String, cancel: Arc<AtomicBool>) {
         let this = self.clone();
         std::thread::spawn(move || {
             let inner = &this.inner;
@@ -154,17 +170,35 @@ impl Folders {
                     (inner.on_event)(Event::Progress { root: root.clone(), indexed });
                 })
             })();
-            let removed = {
+            // What follows is registered under the same lock the scan is
+            // taken off under, so the folder is never seen idle in between,
+            // and a remove or scan asked for meanwhile finds it.
+            let follow = {
                 let mut jobs = this.jobs();
-                jobs.scanning.remove(&root);
-                cancel.load(Ordering::SeqCst)
+                let again = jobs.scanning.remove(&root).is_some_and(|s| s.again);
+                if again {
+                    // Its folder may have been removed and added again:
+                    // this scan saw only part of it, so a fresh one runs.
+                    Follow::Scan(new_scan(&mut jobs, &root))
+                } else if cancel.load(Ordering::SeqCst) {
+                    // What it wrote of a removed folder goes.
+                    if new_removal(&mut jobs, &root) {
+                        Follow::Remove
+                    } else {
+                        Follow::Nothing
+                    }
+                } else {
+                    Follow::Nothing
+                }
             };
             match result {
                 Ok(stats) => (inner.on_event)(Event::Scanned(stats)),
                 Err(e) => (inner.on_event)(Event::ScanFailed { root: root.clone(), error: format!("{e:#}") }),
             }
-            if removed {
-                this.start_removal(root);
+            match follow {
+                Follow::Scan(cancel) => this.spawn_scan(root, cancel),
+                Follow::Remove => this.spawn_removal(root),
+                Follow::Nothing => {}
             }
         });
     }
@@ -173,30 +207,25 @@ impl Folders {
     /// batches: with the text read from them, a large folder takes a while,
     /// and searches and other writes go on meanwhile.
     fn start_removal(&self, root: String) {
-        {
-            let mut jobs = self.jobs();
-            if let Some(again) = jobs.removing.get_mut(&root) {
-                *again = true;
-                return;
-            }
-            jobs.removing.insert(root.clone(), false);
+        if new_removal(&mut self.jobs(), &root) {
+            self.spawn_removal(root);
         }
+    }
+
+    fn spawn_removal(&self, root: String) {
         let this = self.clone();
         std::thread::spawn(move || {
             let inner = &this.inner;
             let mut wait = inner.retry;
             loop {
-                let result = Index::open(&inner.db_path).and_then(|mut index| {
-                    // Added again since (once its mark was cleared): it stays.
-                    if index.folders()?.contains(&root) {
-                        return Ok(None);
-                    }
-                    index.remove_root_in_batches(&root, REMOVE_BATCH, |_| {}).map(Some)
-                });
+                // A folder added again since (once its mark was cleared)
+                // keeps its rows: the deletes check, in the same statement.
+                let result = Index::open(&inner.db_path)
+                    .and_then(|mut index| index.remove_root_in_batches(&root, REMOVE_BATCH, |_| {}));
                 match result {
                     Ok(removed) => {
                         wait = inner.retry;
-                        if let Some(removed) = removed {
+                        if removed > 0 {
                             log::info!("removed {root}: {removed} items");
                             (inner.on_event)(Event::Removed { root: root.clone(), removed });
                         }
@@ -218,4 +247,28 @@ impl Folders {
             }
         });
     }
+}
+
+enum Follow {
+    Scan(Arc<AtomicBool>),
+    Remove,
+    Nothing,
+}
+
+/// Registers a scan of root, returning its cancel flag.
+fn new_scan(jobs: &mut Jobs, root: &str) -> Arc<AtomicBool> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    jobs.scanning.insert(root.to_string(), Scan { cancel: cancel.clone(), again: false });
+    cancel
+}
+
+/// Registers a removal of root: true if one must start, false if one is
+/// running (it goes over the folder once more when done).
+fn new_removal(jobs: &mut Jobs, root: &str) -> bool {
+    if let Some(again) = jobs.removing.get_mut(root) {
+        *again = true;
+        return false;
+    }
+    jobs.removing.insert(root.to_string(), false);
+    true
 }
