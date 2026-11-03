@@ -27,6 +27,10 @@ pub const STOPPED_TWICE: &str = "SIFS stopped twice while reading this file";
 /// A reader with this many abandoned reads still running gets no more
 /// files until some finish.
 const MAX_ABANDONED: usize = 4;
+/// RunStats keeps at most this many errors (the latest) and lock holds (the
+/// first), so a worker running for months doesn't grow without end.
+const MAX_ERRORS: usize = 100;
+const MAX_HOLDS: usize = 1_000_000;
 
 #[derive(Clone)]
 pub struct WorkerOptions {
@@ -73,8 +77,9 @@ pub struct RunStats {
     pub reads: usize,
     /// Reads abandoned past their time limit.
     pub abandoned: usize,
-    /// How long each write held the writer lock.
+    /// How long each write held the writer lock (the first million).
     pub holds: Vec<Duration>,
+    /// The latest hundred.
     pub errors: Vec<String>,
 }
 
@@ -299,6 +304,9 @@ impl<'a> Runner<'a> {
 
     fn error(&mut self, e: anyhow::Error) {
         log::warn!("reading inside files: {e:#}");
+        if self.stats.errors.len() >= MAX_ERRORS {
+            self.stats.errors.remove(0);
+        }
         self.stats.errors.push(format!("{e:#}"));
     }
 
@@ -496,7 +504,9 @@ impl<'a> Runner<'a> {
     fn write(&mut self, index: &mut Index, results: &mut Vec<Finished>) -> Result<()> {
         if !results.is_empty() {
             let held = store::write_results(index, results, now())?;
-            self.stats.holds.push(held);
+            if self.stats.holds.len() < MAX_HOLDS {
+                self.stats.holds.push(held);
+            }
             results.clear();
         }
         Ok(())
