@@ -77,6 +77,15 @@ pub mod fact {
     pub const COLUMNS: &str = "columns";
     /// The number of lines; for a table, its rows below the header.
     pub const LINES: &str = "lines";
+    /// When the file says it was created and last changed, as it writes them.
+    pub const CREATED: &str = "created";
+    pub const MODIFIED: &str = "modified";
+    /// A document's page count, as its app last counted them.
+    pub const PAGES: &str = "pages";
+    /// A workbook's sheet names, in order, joined by ", ".
+    pub const SHEETS: &str = "sheets";
+    /// A presentation's number of slides.
+    pub const SLIDES: &str = "slides";
 }
 
 pub trait Reader: Send + Sync + 'static {
@@ -144,11 +153,20 @@ pub struct Sink {
     max_chars: usize,
     deadline: Instant,
     truncated: bool,
+    left_out: bool,
 }
 
 impl Sink {
     pub fn new(max_chars: usize, deadline: Instant) -> Sink {
-        Sink { parts: Vec::new(), facts: Vec::new(), chars: 0, max_chars, deadline, truncated: false }
+        Sink {
+            parts: Vec::new(),
+            facts: Vec::new(),
+            chars: 0,
+            max_chars,
+            deadline,
+            truncated: false,
+            left_out: false,
+        }
     }
 
     /// Starts a page, sheet, slide or part. Text before the first part goes
@@ -156,6 +174,27 @@ impl Sink {
     pub fn part(&mut self, label: impl Into<String>) {
         let part = self.parts.len() as u32;
         self.parts.push(Part { part, label: label.into(), text: String::new() });
+    }
+
+    /// Renames the current part: a part found to be the first of several
+    /// pages only once the second begins.
+    pub fn relabel(&mut self, label: impl Into<String>) {
+        match self.parts.last_mut() {
+            Some(part) => part.label = label.into(),
+            None => self.part(label),
+        }
+    }
+
+    /// Stops taking text, as at the character cap, and records it cut: for
+    /// readers with caps of their own.
+    pub fn cut(&mut self) -> Flow {
+        self.truncated = true;
+        Flow::Full
+    }
+
+    /// Records that something was left out, while still taking text.
+    pub fn note_truncated(&mut self) {
+        self.left_out = true;
     }
 
     /// Adds text to the current part, cut on a character boundary at the cap.
@@ -208,7 +247,7 @@ impl Sink {
 
     /// The parts with text, and the facts.
     pub fn finish(mut self) -> (Vec<Part>, Vec<(String, String)>) {
-        if self.truncated {
+        if self.truncated || self.left_out {
             self.facts.push((fact::TRUNCATED.to_string(), "1".to_string()));
         }
         let parts = self.parts.into_iter().filter(|p| !p.text.trim().is_empty()).collect();
