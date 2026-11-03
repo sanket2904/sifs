@@ -13,7 +13,8 @@ const MIGRATIONS: &[&str] = &[CONTENTS];
 /// by page or part with a full-text index over it, the facts read alongside,
 /// and the queue of files waiting to be read. Triggers on files keep the
 /// queue right, so the crawler and the watcher need not know about it.
-const CONTENTS: &str = r#"
+const CONTENTS: &str = concat!(
+    r#"
 CREATE TABLE extracts (
     file_id  INTEGER PRIMARY KEY,
     reader   TEXT NOT NULL,
@@ -39,10 +40,14 @@ CREATE INDEX contents_file ON contents(file_id, part);
 -- Letters, numbers and combining marks make words. Without the marks (M*),
 -- Hindi and other Indic words split at every vowel sign ("किराया" into
 -- क / र / य); a decomposed accent is still folded away ("résumé" is
--- "resume").
+-- "resume"). The emoji variation selectors U+FE0E and U+FE0F and the
+-- keycap U+20E3 are marks too, but separate words: "I❤️you" has "you", and
+-- "❤️" is no word, not a selector that every emoji with one matches.
 CREATE VIRTUAL TABLE contents_fts USING fts5(
     label UNINDEXED, text, content='contents', content_rowid='id',
-    tokenize="unicode61 remove_diacritics 2 categories 'L* N* Co M*'"
+    tokenize="unicode61 remove_diacritics 2 categories 'L* N* Co M*' separators '"#,
+    "\u{fe0e}\u{fe0f}\u{20e3}",
+    r#"'"
 );
 CREATE TRIGGER contents_ai AFTER INSERT ON contents BEGIN
     INSERT INTO contents_fts(rowid, label, text) VALUES (new.id, new.label, new.text);
@@ -117,7 +122,8 @@ CREATE TRIGGER files_ad_extract AFTER DELETE ON files BEGIN
     DELETE FROM extracts WHERE file_id = old.id;
     DELETE FROM extract_queue WHERE file_id = old.id;
 END;
-"#;
+"#
+);
 
 /// The schema version this build knows.
 pub const VERSION: i64 = MIGRATIONS.len() as i64;

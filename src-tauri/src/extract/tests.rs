@@ -1564,3 +1564,27 @@ fn a_failed_removal_is_tried_again() {
     folders.add(&mut index, &docs, now()).unwrap();
     assert_eq!(index.folders().unwrap(), vec![docs]);
 }
+
+
+/// The emoji variation selectors (U+FE0E, U+FE0F) and the keycap (U+20E3)
+/// are marks, but they are not part of a word: "I❤️you" has the word "you",
+/// and "❤️" is no word at all, rather than a lone selector every emoji with
+/// one matches.
+#[test]
+fn emoji_selectors_and_keycaps_separate_words() {
+    let home = Home::new();
+    let love = home.write("a.txt", "I❤\u{fe0f}you".as_bytes());
+    home.write("b.txt", "nothing ⭐\u{fe0f} here".as_bytes());
+    let keycap = home.write("c.txt", "1\u{fe0f}\u{20e3} first, a\u{fe0e}b".as_bytes());
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    index.conn.execute_batch("CREATE VIRTUAL TABLE temp.terms USING fts5vocab(main, contents_fts, row)").unwrap();
+    let mut stmt = index.conn.prepare("SELECT term FROM temp.terms ORDER BY term").unwrap();
+    let terms: Vec<String> = stmt.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+    assert_eq!(terms, ["1", "a", "b", "first", "here", "i", "nothing", "you"]);
+    assert_eq!(found(&index, "you"), vec![love]);
+    assert!(found(&index, "❤\u{fe0f}").is_empty(), "{:?}", found(&index, "❤\u{fe0f}"));
+    assert!(found(&index, "\u{fe0f}").is_empty());
+    assert_eq!(found(&index, "1\u{fe0f}\u{20e3}"), vec![keycap]);
+}
