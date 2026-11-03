@@ -166,3 +166,83 @@ Step 1 is built alongside the engine's PR #35, since it doesn't depend on it.
 ### Left for a Mac session
 
 The step 1 tests on macOS and the utility priority; skipping iCloud placeholders (which must ship with step 1 on the Mac, or reading would download them); PDFKit; Vision OCR, EXIF and GPS; RTF and old Word through AppKit; iWork previews; AVFoundation tags; where-from; real Office sample files; and step 6's measurements.
+
+## Step 2 in detail: Word, Excel and PowerPoint
+
+Step 2 is split. This half reads `docx`, `xlsx` and `pptx` through their XML, in pure Rust, built and tested on Linux like step 1. **PDF through PDFKit is macOS-only and is left for a Mac session** (below).
+
+### The readers
+
+Three readers, so a version bump to one re-reads only its files. All are documents (priority 1). Each takes the format's macro-enabled, template and show variants, which have the same insides.
+
+| Reader | Extensions | What it reads, in this order |
+|---|---|---|
+| `docx` | docx, docm, dotx, dotm | the main document (found through `_rels/.rels`, so Strict Open XML works too), then headers and footers, footnotes, endnotes and comments (found through the document's relationships) |
+| `xlsx` | xlsx, xlsm, xltx, xltm | `sharedStrings.xml`, `styles.xml` (which number formats are dates), then each sheet in the workbook's order (`workbook.xml` and its relationships), with cells as rows |
+| `pptx` | pptx, pptm, potx, potm, ppsx, ppsm | each slide in the presentation's order (`presentation.xml`'s slide list and its relationships), each followed by its notes |
+
+**Word.** Text is what is inside `w:t` (and `m:t` for equations); a paragraph ends a line, `w:tab` is a tab, `w:br` and `w:cr` a new line. Deleted text of tracked changes (`w:delText`) and field codes (`w:instrText`) are left out. In a table, a cell's paragraphs are joined by spaces, cells by tabs and rows by lines. Of an `mc:AlternateContent`, only the `mc:Choice` is read: the `mc:Fallback` repeats it (a text box's text would be found twice).
+
+**Excel.** One part per sheet, labelled with the sheet's name; hidden sheets are read too. Each row is a line, its non-empty cells joined by tabs (empty cells are not padded). Cell values:
+- shared strings (`t="s"`), inline strings (`t="inlineStr"`, rich text runs joined, phonetic runs `rPh` left out) and formula strings (`t="str"`) as they are;
+- booleans as TRUE and FALSE, errors as written (`#DIV/0!`);
+- numbers as stored in the file (`1234.5`, not `1,234.50 €`): **a simplification**, since applying number formats is a project of its own and the digits are what a search needs;
+- dates: a number whose cell style has a date format (built-in ids 14–22, 27–36, 45–47, 50–58, or a custom format with d, m, y, h or s outside quotes and brackets) is shown as `2026-11-03`, or `2026-11-03 14:30` when it has a time, or `14:30:00` when it is only a time; the 1904 date system is honoured.
+Formulas are not indexed, only their values.
+
+**PowerPoint.** One part per slide, `slide 3`, and one per slide's notes, `slide 3 notes`. Text is what is inside `a:t`; a paragraph ends a line, `a:br` is a new line; tables as in Word. Charts, SmartArt and comments are left for later.
+
+### Where the text goes
+
+Into `contents` as it is: one row per part, its `part` the order, its `label` where it is. **No migration 2 is needed:** step 1's `contents (file_id, part, label, text)` already keeps a location per row, and step 3 shows the label next to the snippet.
+
+| Kind | Labels |
+|---|---|
+| Word | `page 1`, `page 2`, … where the file has page breaks; else the body is one unlabelled part. Then `headers and footers`, `footnotes`, `endnotes`, `comments`. |
+| Excel | the sheet's name (`Q2`) |
+| PowerPoint | `slide 3`, `slide 3 notes` |
+
+Word pages are not in the file: they are where Word laid them out when it last saved, which it marks with `w:lastRenderedPageBreak`, plus page breaks typed by hand (`w:br w:type="page"`). A break with no text since the last one counts once (Word writes both for one typed break). A file saved by something other than Word may have no marks (one unlabelled part) or stale ones (pages a little off). That is good enough for "found on page 3". `Sink` gains `relabel` (the body's first part becomes `page 1` once a break is seen) and `cut` (stop, recording `truncated`, for the readers' own caps).
+
+### Facts
+
+| Key | From |
+|---|---|
+| `title`, `author` | `docProps/core.xml`: `dc:title`, `dc:creator` |
+| `created`, `modified` | `docProps/core.xml`: `dcterms:created`, `dcterms:modified`, as written (W3C dates, `2026-11-03T09:15:00Z`) |
+| `pages` | `docProps/app.xml`'s `Pages` (Word's count when it last saved) |
+| `sheets` | the sheet names in order, joined by ", " |
+| `slides` | the number of slides in the presentation's slide list |
+
+### Safety
+
+Every Office file is an untrusted zip of untrusted XML.
+
+- **Size:** files up to **100 MB** are opened (a deck's images and videos make it large, but only its XML is unpacked); larger ones are skipped. This departs from step 1's 4 MB, chosen for text read whole; the owner may want to revisit it.
+- **The zip's list of parts:** opening a zip reads its central directory into memory, one entry for every 46 bytes of it. At most **4 MB** may be read while opening (a reader around the file counts), which bounds that memory whatever the zip claims; past it the file is recorded failed ("damaged, or its list of parts is larger than 4 MB"). After opening, a zip with more than **10,000 parts** is skipped ("too many parts").
+- **Zip bombs:** every part is unpacked through a counter, never trusting the sizes the zip declares. A part that has unpacked more than **1 MB** at more than **100 times** its compressed size is a bomb: the file is skipped ("looks like a zip bomb"), and nothing is kept. XML compresses 10 to 20 times; a sheet of repeated empty cells may reach 50. Over all parts, at most **128 MB** is unpacked; past that, reading stops and what was read is kept, with `truncated`, as at the character cap.
+- **XML:** `quick-xml` does not read DTDs: a `<!DOCTYPE>` is passed over, and an entity it declares is never expanded. Only XML's five named entities and character references are decoded; any other `&name;` is dropped. So "billion laughs" is one short, unexpanded reference (a test pins it). `quick-xml` 0.42 is past both of 2026's advisories (quadratic duplicate-attribute checks and namespace growth, fixed in 0.41); the namespace reader isn't used, names are matched by their local part.
+- **Password-protected files** are not zips: Office wraps them in an OLE compound file holding `EncryptionInfo` and `EncryptedPackage`. A file starting with the compound-file signature has its directory read (bounded: at most 1,000 directory sectors, following the FAT, so a loop ends). With `EncryptedPackage` it is skipped as "password-protected"; without, as "an older Word, Excel or PowerPoint format" (a `.doc` renamed). A zip whose parts use zip encryption is skipped as "password-protected" too. Skipped files are not retried until they change, so there is no error loop.
+- **Damaged zips** (truncated, bad entries, a compression method other than stored or deflate): recorded failed ("damaged or incomplete: …"), not retried until the file changes. A file that is neither a zip nor a compound file, or a zip without the main part (a `.zip` renamed `.docx`), is skipped ("not a Word document", "not an Excel workbook", "not a PowerPoint presentation").
+- **Very large sheets:** at most **1,000,000 cells** per workbook are looked at, empty ones included, matching the million-character cap (a kept cell costs at least two characters, so the character cap usually comes first). Shared strings are kept up to **4 million characters** in all; past that, later strings read as empty and `truncated` is recorded. Reading stops at whichever cap comes first, and keeps what was read.
+- **Time:** the worker's limit (10 s) is used as it is. Each XML loop asks the sink every 4,096 events, so a reader past its time stops itself, rather than being abandoned.
+- **Paths inside the zip** are only looked up, never written: no extraction, so none of the zip crate's extraction advisories apply.
+
+### Dependencies
+
+- `zip` **9.3.0** (pinned), with default features off and only `deflate-flate2` (flate2's pure-Rust miniz_oxide, already in the tree through Tauri): no AES, bzip2, lzma, zstd or time crates. 9.0 fixes every RustSec advisory against the crate, the latest issued 2026-11-02; they all concern extraction, which SIFS never uses. It needs Rust 1.88; Tauri 2.12 already needs 1.90, so `rust-version = "1.77"` in Cargo.toml is already stale (left as it is).
+- `quick-xml` **0.42.0** (pinned), default features (none).
+
+### Tests
+
+The `.docx`, `.xlsx` and `.pptx` samples are built in the tests with the `zip` crate from minimal XML, so no binary files are committed.
+- **Word:** text in order across paragraphs, runs, tabs and breaks; a table as tab-separated rows; text boxes once; deleted text and field codes left out; pages from rendered and typed breaks, a doubled break counted once; headers, footers, footnotes and comments as their own parts; the facts.
+- **Excel:** two sheets labelled with their names, in the workbook's order (not the files' names); shared and inline strings; rich text runs; booleans, errors, numbers as stored; dates and times through built-in and custom formats, and the 1904 system; formulas' values; the sheet names fact.
+- **PowerPoint:** slides in the presentation's order, each followed by its notes; a table; the slide count.
+- **Unicode:** Hindi, Japanese and emoji in each kind, found by search.
+- **Safety:** a zip bomb (skipped, and its cap's test fails when the ratio check is removed); the total unpacked cap (truncated); too many parts; an oversized list of parts; a billion-laughs DOCTYPE; a password-protected file (a compound file built in the test) and a renamed old one; a truncated zip; a non-Office zip named `.docx`; a file over 100 MB never opened; the cell cap and the shared-strings cap; the time limit. Each cap's test is checked to fail with the cap removed.
+- **Search:** `store::match_contents` finds a word from each kind, with its label (a page, a sheet's name, a slide, its notes).
+
+### Left for a Mac session
+
+PDF through PDFKit, page by page (labels `page 1`…, from the PDF's page index), and its tests; real Office sample files saved by Word, Excel, PowerPoint, Pages and LibreOffice, to check the page marks and the facts against what the apps write.
