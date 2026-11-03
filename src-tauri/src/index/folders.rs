@@ -53,6 +53,9 @@ struct Scan {
     /// Asked for again while it ran (rules changed, or the folder was added
     /// again after a removal): another scan follows it.
     again: bool,
+    /// The folder added around this one, which took it in: what this scan
+    /// wrote becomes that folder's.
+    taken_into: Option<String>,
 }
 
 #[derive(Default)]
@@ -93,9 +96,12 @@ impl Folders {
     /// At startup: catches up on what changed while SIFS was closed, and
     /// finishes removing folders, including rows no folder owns.
     pub fn resume(&self, index: &mut Index) -> Result<()> {
-        let orphans = index.mark_orphan_roots()?;
-        if orphans > 0 {
-            log::info!("{orphans} folders no longer searched still had files indexed; removing them");
+        let tidy = index.tidy_roots()?;
+        if !tidy.absorbed.is_empty() {
+            log::info!("folders inside other folders, now part of them: {:?}", tidy.absorbed);
+        }
+        if tidy.orphans > 0 {
+            log::info!("{} folders no longer searched still had files indexed; removing them", tidy.orphans);
         }
         for folder in index.folders()? {
             self.scan(folder);
@@ -107,8 +113,11 @@ impl Folders {
     }
 
     /// Adds a folder to search, if it is not part of one already and not
-    /// still being removed. The caller watches it, then scans it.
-    pub fn add(&self, index: &mut Index, path: &str, now: i64) -> Result<()> {
+    /// still being removed. Folders inside it are taken into it, so folders
+    /// never nest: their files become its files, and their scans stop.
+    /// Returns those folders. The caller stops watching them, watches the
+    /// new one, then scans it.
+    pub fn add(&self, index: &mut Index, path: &str, now: i64) -> Result<Vec<String>> {
         let existing = index.folders()?;
         if existing.iter().any(|f| path == *f || path.starts_with(&format!("{}/", f.trim_end_matches('/')))) {
             bail!("{path} is already searched, as part of a folder you added");
@@ -118,14 +127,26 @@ impl Folders {
             self.start_removal(path.to_string());
             bail!("{path} is still being removed; add it again in a moment");
         }
-        index.add_folder(path, now)?;
-        Ok(())
+        let inside = index.add_folder_around(path, now)?;
+        let mut jobs = self.jobs();
+        for child in &inside {
+            if let Some(scan) = jobs.scanning.get_mut(child) {
+                scan.cancel.store(true, Ordering::SeqCst);
+                scan.again = false;
+                scan.taken_into = Some(path.to_string());
+            }
+        }
+        Ok(inside)
     }
 
     /// Stops searching a folder and removes its files in the background,
     /// once its scan, if one is running, has stopped.
+    /// A path that is not a folder (taken into one added around it) is left
+    /// alone: its files are that folder's.
     pub fn remove(&self, index: &mut Index, path: &str) -> Result<()> {
-        index.forget_folder(path)?;
+        if !index.forget_folder(path)? {
+            return Ok(());
+        }
         {
             let mut jobs = self.jobs();
             if let Some(scan) = jobs.scanning.get_mut(path) {
@@ -173,13 +194,30 @@ impl Folders {
             // What follows is registered under the same lock the scan is
             // taken off under, so the folder is never seen idle in between,
             // and a remove or scan asked for meanwhile finds it.
-            let follow = {
+            let mut handled: Option<String> = None;
+            let follow = loop {
                 let mut jobs = this.jobs();
+                let taken = jobs.scanning.get(&root).and_then(|s| s.taken_into.clone());
+                if taken != handled {
+                    // Taken into a folder added around it: what it wrote,
+                    // after that folder took the rest, becomes that folder's
+                    // too. Done without the lock, then checked again.
+                    drop(jobs);
+                    if let Some(to) = &taken {
+                        if let Err(e) = Index::open(&inner.db_path).and_then(|mut i| i.reassign_root(&root, to)) {
+                            log::warn!("giving the files of {root} to {to}: {e:#}");
+                        }
+                    }
+                    handled = taken;
+                    continue;
+                }
                 let again = jobs.scanning.remove(&root).is_some_and(|s| s.again);
-                if again {
+                break if again {
                     // Its folder may have been removed and added again:
                     // this scan saw only part of it, so a fresh one runs.
                     Follow::Scan(new_scan(&mut jobs, &root))
+                } else if handled.is_some() {
+                    Follow::Nothing
                 } else if cancel.load(Ordering::SeqCst) {
                     // What it wrote of a removed folder goes.
                     if new_removal(&mut jobs, &root) {
@@ -189,7 +227,7 @@ impl Folders {
                     }
                 } else {
                     Follow::Nothing
-                }
+                };
             };
             match result {
                 Ok(stats) => (inner.on_event)(Event::Scanned(stats)),
@@ -258,7 +296,7 @@ enum Follow {
 /// Registers a scan of root, returning its cancel flag.
 fn new_scan(jobs: &mut Jobs, root: &str) -> Arc<AtomicBool> {
     let cancel = Arc::new(AtomicBool::new(false));
-    jobs.scanning.insert(root.to_string(), Scan { cancel: cancel.clone(), again: false });
+    jobs.scanning.insert(root.to_string(), Scan { cancel: cancel.clone(), again: false, taken_into: None });
     cancel
 }
 

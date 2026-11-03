@@ -94,10 +94,16 @@ fn content_failures(state: State<AppState>, limit: Option<usize>) -> Result<Vec<
 #[tauri::command]
 fn add_folder(state: State<AppState>, path: String) -> Result<(), String> {
     let path = std::fs::canonicalize(&path).map_err(err)?.to_str().ok_or("the folder's path is not valid UTF-8")?.to_string();
-    state.folders.add(&mut state.reader.lock().unwrap(), &path, now()).map_err(err)?;
+    let inside = state.folders.add(&mut state.reader.lock().unwrap(), &path, now()).map_err(err)?;
     if let Some(watch) = state.watch.lock().unwrap().as_mut() {
+        // Folders taken into this one stop being watched on their own
+        // first, so unwatching them can't drop the new watch's paths.
+        for child in &inside {
+            watch.remove_root(child).map_err(err)?;
+        }
         watch.add_root(&path).map_err(err)?;
     }
+    // The window reloads its settings after adding, so it shows only this one.
     state.folders.scan(path);
     Ok(())
 }
@@ -167,6 +173,9 @@ pub fn run() {
             std::fs::create_dir_all(&data)?;
             let db_path = data.join("sifs.db");
             let mut index = Index::open(&db_path)?;
+            // Before the watcher reads the folders: folders inside others
+            // (allowed in phase 1) are taken into them. resume does it again.
+            index.tidy_roots()?;
             let patterns = index.ignore_patterns()?.unwrap_or_else(Rules::default_patterns);
             let rules = Arc::new(Mutex::new(Rules::new(&patterns, &home)?));
             let roots = index.folders()?;

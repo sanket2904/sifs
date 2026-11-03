@@ -148,14 +148,45 @@ impl Index {
     /// Forgets a folder the user removed: its row goes at once, and it is
     /// marked for removal of everything indexed under it, which
     /// remove_root_in_batches does. A mark left when SIFS stopped part way
-    /// is in removals, so the next start can finish.
+    /// is in removals, so the next start can finish. A path that is not a
+    /// folder (one taken into a folder added around it, say) is left alone:
+    /// false.
     pub fn forget_folder(&mut self, path: &str) -> Result<bool> {
         let _write = writer();
         let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let removed = tx.execute("DELETE FROM folders WHERE path = ?1", params![path])? == 1;
-        tx.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, '1')", params![format!("{REMOVING}{path}")])?;
+        if removed {
+            tx.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, '1')", params![format!("{REMOVING}{path}")])?;
+        }
         tx.commit()?;
         Ok(removed)
+    }
+
+    /// Adds a folder, taking in the folders inside it, so folders never
+    /// nest: their rows are forgotten and their files' rows become the new
+    /// folder's, kept with what was read from them. Returns the folders taken in.
+    pub fn add_folder_around(&mut self, path: &str, now: i64) -> Result<Vec<String>> {
+        let (low, high) = subtree_bounds(path);
+        let _write = writer();
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let inside: Vec<String> = {
+            let mut stmt = tx.prepare("SELECT path FROM folders WHERE path >= ?1 AND path < ?2 ORDER BY path")?;
+            let rows = stmt.query_map(params![low, high], |r| r.get(0))?;
+            rows.collect::<std::result::Result<_, _>>()?
+        };
+        for child in &inside {
+            tx.execute("DELETE FROM folders WHERE path = ?1", params![child])?;
+            reassign(&tx, child, path)?;
+        }
+        tx.execute("INSERT OR IGNORE INTO folders (path, added) VALUES (?1, ?2)", params![path, now])?;
+        tx.commit()?;
+        Ok(inside)
+    }
+
+    /// Gives the rows indexed under root `from` to the folder `to` around it.
+    pub fn reassign_root(&mut self, from: &str, to: &str) -> Result<usize> {
+        let _write = writer();
+        reassign(&self.conn, from, to)
     }
 
     /// Folders forgotten whose files are not all removed yet.
@@ -167,25 +198,63 @@ impl Index {
         Ok(keys.into_iter().map(|k| k[REMOVING.len()..].to_string()).collect())
     }
 
-    /// Marks for removal every root files are indexed under that is not a
-    /// folder the user chose: rows a scan or the watcher wrote after their
-    /// folder was removed, or left by an older SIFS. Returns how many.
-    pub fn mark_orphan_roots(&mut self) -> Result<usize> {
+    /// At startup, so every row has a folder and folders never nest: a
+    /// folder inside another (both added in phase 1, which allowed that) is
+    /// taken into the outer one, rows under a root that is not a folder but
+    /// lies inside one become that folder's, and every other root that is
+    /// not a folder is marked for removal (rows a scan or the watcher wrote
+    /// after their folder was removed, or left by an older SIFS).
+    pub fn tidy_roots(&mut self) -> Result<Tidy> {
         let _write = writer();
-        Ok(self.conn.execute(
-            "INSERT OR REPLACE INTO meta (key, value)
-             SELECT ?1 || root, '1' FROM (SELECT DISTINCT root FROM files)
-             WHERE root NOT IN (SELECT path FROM folders)",
-            params![REMOVING],
-        )?)
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut tidy = Tidy::default();
+        let folders: Vec<String> = {
+            let mut stmt = tx.prepare("SELECT path FROM folders ORDER BY path")?;
+            let rows = stmt.query_map([], |r| r.get(0))?;
+            rows.collect::<std::result::Result<_, _>>()?
+        };
+        // In path order, a folder's outermost folder comes before it.
+        let mut outer: Vec<String> = Vec::new();
+        for folder in folders {
+            match outer.iter().find(|o| inside(&folder, o)) {
+                Some(o) => {
+                    tx.execute("DELETE FROM folders WHERE path = ?1", params![folder])?;
+                    reassign(&tx, &folder, o)?;
+                    tidy.absorbed.push(folder);
+                }
+                None => outer.push(folder),
+            }
+        }
+        let roots: Vec<String> = {
+            let mut stmt = tx.prepare("SELECT DISTINCT root FROM files")?;
+            let rows = stmt.query_map([], |r| r.get(0))?;
+            rows.collect::<std::result::Result<_, _>>()?
+        };
+        for root in roots.iter().filter(|r| !outer.contains(r)) {
+            match outer.iter().find(|o| inside(root, o)) {
+                Some(o) => {
+                    reassign(&tx, root, o)?;
+                    tidy.reassigned += 1;
+                }
+                None => {
+                    tx.execute(
+                        "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, '1')",
+                        params![format!("{REMOVING}{root}")],
+                    )?;
+                    tidy.orphans += 1;
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(tidy)
     }
 
     /// Removes everything indexed under root, batch rows at a time, each in
     /// its own short transaction, so a large folder and the text read from
     /// its files don't hold up searches and other writes; then clears
     /// root's removal mark. Nothing is removed while root is a folder (added
-    /// again since): each delete checks, so no add can slip in between. progress is called after each batch with the
-    /// number removed so far.
+    /// again since): each delete checks, so no add can slip in between.
+    /// progress is called after each batch with the number removed so far.
     pub fn remove_root_in_batches(&mut self, root: &str, batch: usize, mut progress: impl FnMut(usize)) -> Result<usize> {
         let mut removed = 0;
         loop {
@@ -300,6 +369,34 @@ impl Index {
             .execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('scan', ?1)", params![next.to_string()])?;
         Ok(next)
     }
+}
+
+/// What tidy_roots did.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Tidy {
+    /// Folders inside other folders, taken into them.
+    pub absorbed: Vec<String>,
+    /// Roots that are not folders but lie inside one, given to it.
+    pub reassigned: usize,
+    /// Roots marked for removal.
+    pub orphans: usize,
+}
+
+/// Whether path lies strictly inside folder.
+fn inside(path: &str, folder: &str) -> bool {
+    path.starts_with(&format!("{}/", folder.trim_end_matches('/')))
+}
+
+/// Gives the rows under root `from` to `to`, marked seen by the newest scan,
+/// so a scan of `to` already under way doesn't remove them as unseen (they
+/// are what a scan just found; the next scan of `to` drops any gone).
+fn reassign(conn: &Connection, from: &str, to: &str) -> Result<usize> {
+    Ok(conn.execute(
+        "UPDATE files SET root = ?2,
+             seen = max(seen, coalesce((SELECT CAST(value AS INTEGER) FROM meta WHERE key = 'scan'), 0))
+         WHERE root = ?1",
+        params![from, to],
+    )?)
 }
 
 pub(crate) fn row_to_record(r: &rusqlite::Row) -> rusqlite::Result<FileRecord> {

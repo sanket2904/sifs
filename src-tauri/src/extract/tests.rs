@@ -1555,8 +1555,9 @@ fn a_failed_removal_is_tried_again() {
     for i in 0..5 {
         home.write(&format!("Docs/m{i}.txt"), b"okapi words");
     }
+    index.add_folder(&docs, 1).unwrap();
     scan(&mut index, &docs, &home.rules, |_| {}).unwrap();
-    index.forget_folder(&docs).unwrap();
+    assert!(index.forget_folder(&docs).unwrap());
     let err = folders.add(&mut index, &docs, now()).unwrap_err().to_string();
     assert!(err.contains("still being removed"), "{err}");
     eventually("the removal add_folder started", || folders.idle() && index.removals().unwrap().is_empty());
@@ -1760,5 +1761,119 @@ fn a_folder_removed_added_and_removed_again_during_its_scan_leaves_nothing() {
     eventually("everything to settle", || folders.idle());
     assert!(index.folders().unwrap().is_empty());
     assert_eq!(index.count_root(&docs).unwrap(), 0);
+    assert!(index.removals().unwrap().is_empty());
+}
+
+// --- folders never nest ---
+
+/// The reviewer's rv3_removing_a_nested_child_folder_keeps_the_parents_files:
+/// with P/C added, then P, then P/C scanned again (as a restart or new
+/// ignore rules do), removing P/C removed P's files under it. Now adding P
+/// takes P/C in: P/C is no longer a folder, removing it does nothing, and
+/// its files are P's.
+#[test]
+fn adding_a_folder_around_another_takes_it_in() {
+    let home = Home::new();
+    for i in 0..20 {
+        home.write(&format!("P/C/n{i}.txt"), b"okapi words");
+    }
+    home.write("P/top.txt", b"okapi top");
+    let registry = Registry::platform();
+    let mut index = home.open();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let (p, c) = (home.at("P"), home.at("P/C"));
+    let folders = folders(&home, |_| {});
+    assert!(folders.add(&mut index, &c, now()).unwrap().is_empty());
+    scan(&mut index, &c, &home.rules, |_| {}).unwrap();
+    run(&mut index, &registry);
+    assert_eq!(folders.add(&mut index, &p, now()).unwrap(), vec![c.clone()]);
+    assert_eq!(index.folders().unwrap(), vec![p.clone()]);
+    assert_eq!(index.count_root(&c).unwrap(), 0, "C's rows are P's at once");
+    assert_eq!(queued(&index), 0, "and what was read from them is kept");
+    scan(&mut index, &p, &home.rules, |_| {}).unwrap();
+    // Adding C again is adding a folder inside P.
+    let err = folders.add(&mut index, &c, now()).unwrap_err().to_string();
+    assert!(err.contains("already searched"), "{err}");
+    folders.remove(&mut index, &c).unwrap();
+    eventually("settle", || folders.idle());
+    let under_c = count(&index, &format!("SELECT COUNT(*) FROM files WHERE path LIKE '{c}/%' AND root = '{p}'"));
+    assert_eq!(under_c, 20, "P is still a folder, its C files must stay");
+    assert!(index.removals().unwrap().is_empty());
+    run(&mut index, &registry);
+    assert_eq!(found(&index, "okapi").len(), 21);
+}
+
+/// A folder taken in while it is being scanned: its scan stops, and what it
+/// wrote becomes the new folder's.
+#[test]
+fn a_folder_taken_in_during_its_scan_gives_its_files_to_the_new_one() {
+    let home = Home::new();
+    let mut index = home.open();
+    let (folders, go) = held_scan(&home, 2100);
+    let (docs, root) = (home.at("Docs"), home.root.clone());
+    home.write("top.txt", b"okapi top");
+    assert_eq!(folders.add(&mut index, &root, now()).unwrap(), vec![docs.clone()]);
+    folders.scan(root.clone());
+    go.send(()).unwrap();
+    eventually("everything to settle", || folders.idle());
+    assert_eq!(index.folders().unwrap(), vec![root.clone()]);
+    assert_eq!(index.count_root(&docs).unwrap(), 0);
+    assert_eq!(index.count_root(&root).unwrap(), 2111 + 2, "Docs's rows, the home folder and top.txt");
+    assert!(index.removals().unwrap().is_empty());
+}
+
+/// Folders inside other folders left by phase 1 are taken in at startup,
+/// keeping their files and what was read from them.
+#[test]
+fn nested_folders_are_taken_in_at_startup() {
+    let home = Home::new();
+    for i in 0..20 {
+        home.write(&format!("P/C/n{i}.txt"), b"okapi words");
+    }
+    home.write("P/C/D/deep.txt", b"okapi deep");
+    home.write("P/top.txt", b"okapi top");
+    home.write("Q/q.txt", b"okapi q");
+    let registry = Registry::platform();
+    let mut index = home.open();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let (p, c, d, q) = (home.at("P"), home.at("P/C"), home.at("P/C/D"), home.at("Q"));
+    for folder in [&c, &p, &d, &q] {
+        index.add_folder(folder, 1).unwrap();
+    }
+    // Scanned in any order, as at a phase 1 start: the last one wins the rows.
+    for folder in [&p, &c, &d, &q] {
+        scan(&mut index, folder, &home.rules, |_| {}).unwrap();
+    }
+    run(&mut index, &registry);
+    assert_eq!(found(&index, "okapi").len(), 23);
+    let folders = folders(&home, |_| {});
+    folders.resume(&mut index).unwrap();
+    assert_eq!(index.folders().unwrap(), vec![p.clone(), q.clone()]);
+    eventually("the scans to end", || folders.idle());
+    assert_eq!((index.count_root(&c).unwrap(), index.count_root(&d).unwrap()), (0, 0));
+    assert_eq!(index.count_root(&p).unwrap(), 1 + 1 + 20 + 1 + 1 + 1, "P, C, C's files, D, deep.txt, top.txt");
+    assert!(index.removals().unwrap().is_empty());
+    assert_eq!(queued(&index), 0, "nothing read again");
+    assert_eq!(found(&index, "okapi").len(), 23);
+}
+
+/// A batch the scan of a folder taken in was writing when it was taken in
+/// lands after the new folder took its rows: it becomes the new folder's
+/// too when that scan ends, rather than being left to a removal.
+#[test]
+fn a_batch_written_after_a_folder_was_taken_in_is_given_to_the_new_one() {
+    let home = Home::new();
+    let mut index = home.open();
+    let (folders, go) = held_scan(&home, 2100);
+    let (docs, root) = (home.at("Docs"), home.root.clone());
+    assert_eq!(folders.add(&mut index, &root, now()).unwrap(), vec![docs.clone()]);
+    // As the scan's last upsert, waiting on the writer lock, would.
+    let late = home.write("Docs/late.txt", b"okapi late");
+    let record = record_of(Path::new(&late), &docs).unwrap();
+    index.upsert(&[record], index.current_scan().unwrap()).unwrap();
+    go.send(()).unwrap();
+    eventually("the stopped scan to end", || folders.idle());
+    assert_eq!(index.count_root(&docs).unwrap(), 0);
+    assert_eq!(index.get(&late).unwrap().map(|r| r.root), Some(root.clone()));
     assert!(index.removals().unwrap().is_empty());
 }
