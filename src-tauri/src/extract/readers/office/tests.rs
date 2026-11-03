@@ -426,6 +426,7 @@ fn the_caps_and_limits_are_the_planned_ones() {
             shared_chars: 4_000_000,
             shared_strings: 1_000_000,
             listed: 10_000,
+            event: 4 * MB as usize,
         }
     );
     for reader in [&Word::default() as &dyn Reader, &Excel::default(), &PowerPoint::default()] {
@@ -540,17 +541,17 @@ fn past_the_cap_on_shared_strings_the_rest_of_the_list_is_not_read() {
 }
 
 #[test]
-fn a_cells_value_is_kept_up_to_excels_own_limit() {
-    let long = "é".repeat(super::excel::MAX_CELL_BYTES); // two bytes each
-    let sheet = format!(r#"<row><c t="inlineStr"><is><t>{long}</t></is></c></row>"#);
-    let bytes = sample::xlsx(&[("S", &sheet)], &[], "", false);
-    let mut sink = Sink::new(10_000_000, Instant::now() + Duration::from_secs(10));
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("long.xlsx");
-    std::fs::write(&path, &bytes).unwrap();
-    Excel::default().read(&path, &mut sink).unwrap();
-    let (got, _) = sink.finish();
-    assert_eq!(got[0].text, format!("{}\n", "é".repeat(super::excel::MAX_CELL_BYTES / 2)));
+fn a_cells_value_is_kept_up_to_excels_own_limit_in_characters() {
+    let max = super::excel::MAX_CELL_CHARS;
+    for letter in ["a", "é"] {
+        for (n, kept, cut) in [(max, max, false), (max + 1, max, true)] {
+            let sheet = format!(r#"<row><c t="inlineStr"><is><t>{}</t></is></c></row>"#, letter.repeat(n));
+            let bytes = sample::xlsx(&[("S", &sheet)], &[], "", false);
+            let (got, facts) = read(&Excel::default(), "long.xlsx", &bytes).unwrap();
+            assert_eq!(got[0].text, format!("{}\n", letter.repeat(kept)), "{n} of {letter}");
+            assert_eq!(fact(&facts, "truncated").is_some(), cut, "{n} of {letter}");
+        }
+    }
 }
 
 #[test]
@@ -713,5 +714,115 @@ fn sheets_and_slides_are_found_among_many_relationships_at_once() {
     for (reader, name, bytes) in [(&Excel { caps } as &dyn Reader, "many.xlsx", &xlsx), (&PowerPoint { caps }, "many.pptx", &pptx)] {
         let got = read(reader, name, bytes);
         assert!(got.is_ok(), "{name}: {:?}", got.map(|_| ()));
+    }
+}
+
+// --- From the second review ---
+
+#[test]
+fn one_xml_event_past_its_cap_stops_reading_and_keeps_what_was_read() {
+    let caps = Caps { event: 1000, ..Caps::default() };
+    let mut seed = 21;
+    let text_of = |l: &str| paras(&[l]);
+    let comment = |l: &str| format!("<!--{l}-->");
+    let tag = |l: &str| format!(r#"<w:p w:x="{l}"/>"#);
+    type Shape<'a> = (&'a str, &'a dyn Fn(&str) -> String);
+    let shapes: [Shape; 3] = [("text", &text_of), ("comment", &comment), ("tag", &tag)];
+    for (what, middle) in shapes {
+        for (n, cut) in [(900, false), (1100, true)] {
+            let body = format!("{}{}{}", paras(&["kept"]), middle(&letters(n, &mut seed)), paras(&["later"]));
+            let (got, facts) = read(&Word { caps }, "e.docx", &sample::docx(&body)).unwrap();
+            let text: String = got.iter().map(|p| p.text.as_str()).collect();
+            assert!(text.starts_with("kept\n"), "{what} {n}");
+            assert_eq!(text.ends_with("later\n"), !cut, "{what} {n}: {text:?}");
+            assert_eq!(fact(&facts, "truncated").is_some(), cut, "{what} {n}");
+        }
+    }
+    // At the default cap, an 80 MB text node is never held: reading stops
+    // at 4 MB of it.
+    let mut doc = String::from("<w:p><w:r><w:t>");
+    for _ in 0..80 {
+        doc.push_str(&letters(20_000, &mut seed));
+        doc.push_str(&"x".repeat(MB as usize - 20_001));
+        doc.push('\r');
+    }
+    doc.push_str("</w:t></w:r></w:p>");
+    let bytes = sample::docx(&format!("{}{doc}", paras(&["kept"])));
+    let (got, held) = sample::held::peak(|| read(&Word::default(), "big.docx", &bytes));
+    let (parts, facts) = got.unwrap();
+    assert_eq!(parts[0].text, "kept\n");
+    assert_eq!(fact(&facts, "truncated"), Some("1"));
+    assert!(held < 32 * MB as usize, "held {} MB", held / MB as usize);
+}
+
+#[test]
+fn a_long_attribute_reads_as_absent() {
+    // A header's relationship with a target past 4 KB is not followed.
+    let header = format!(r#"<w:hdr {W}>{}</w:hdr>"#, paras(&["head"]));
+    for (target, found) in [("header1.xml".to_string(), true), (format!("{}header1.xml", "./".repeat(2100)), false)] {
+        let docx = sample::docx_with(&paras(&["body"]), &[("word/header1.xml", header.clone())], &[("rId7", "header", &target)]);
+        let got = parts(read(&Word::default(), "a.docx", &docx));
+        assert_eq!(got.iter().any(|(_, t)| t == "head\n"), found, "{} bytes", target.len());
+    }
+}
+
+#[test]
+fn past_the_cap_on_relationships_the_rest_are_left_out_and_recorded() {
+    let header = format!(r#"<w:hdr {W}>{}</w:hdr>"#, paras(&["head"]));
+    for (before, found) in [(49_999, true), (50_000, false)] {
+        let mut rels: Vec<(String, &str, &str)> = (0..before).map(|i| (format!("i{i}"), "image", "media/x.png")).collect();
+        rels.push(("rH".to_string(), "header", "header1.xml"));
+        let rels: Vec<(&str, &str, &str)> = rels.iter().map(|(a, b, c)| (a.as_str(), *b, *c)).collect();
+        let docx = sample::docx_with(&paras(&["body"]), &[("word/header1.xml", header.clone())], &rels);
+        let (got, facts) = read(&Word::default(), "r.docx", &docx).unwrap();
+        assert_eq!(got.iter().any(|p| p.text == "head\n"), found, "{before} before it");
+        assert_eq!(fact(&facts, "truncated").is_some(), !found);
+    }
+}
+
+#[test]
+fn blank_pages_cost_nothing_and_parts_are_capped() {
+    // A thousand typed breaks: two parts, labelled where the text is.
+    let body = format!("{}<w:p><w:r>{}</w:r></w:p>{}", paras(&["start"]), r#"<w:br w:type="page"/>"#.repeat(1000), paras(&["end"]));
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("blank.docx");
+    std::fs::write(&path, sample::docx(&body)).unwrap();
+    let mut sink = Sink::new(1_000_000, Instant::now() + Duration::from_secs(10));
+    Word::default().read(&path, &mut sink).unwrap();
+    assert_eq!(sink.parts.len(), 2, "blank pages kept no part");
+    let (got, _) = sink.finish();
+    let labels: Vec<&str> = got.iter().map(|p| p.label.as_str()).collect();
+    assert_eq!(labels, ["page 1", "page 1001"]);
+    // One part past the cap, every page with text: the last is left out.
+    let max = crate::extract::MAX_PARTS;
+    for (pages, cut) in [(max, false), (max + 1, true)] {
+        let body: String = (0..pages).map(|i| format!(r#"<w:p><w:r><w:t>p{i}</w:t><w:br w:type="page"/></w:r></w:p>"#)).collect();
+        let (got, facts) = read(&Word::default(), "many.docx", &sample::docx(&body)).unwrap();
+        assert_eq!(got.len(), max, "{pages} pages");
+        assert_eq!(fact(&facts, "truncated").is_some(), cut, "{pages} pages");
+    }
+}
+
+#[test]
+fn styles_past_excels_own_limit_are_left_out() {
+    // 65,536 styles are kept; a cell naming one past them shows its number.
+    let mut seed = 31;
+    let xfs = |n: usize, seed: &mut u64| -> String {
+        (0..n).map(|_| format!(r#"<xf numFmtId="0" x="{}"/>"#, letters(6, seed))).collect()
+    };
+    for (index, date) in [(65_535, true), (65_536, false)] {
+        let styles = format!(r#"<cellXfs>{}<xf numFmtId="14"/></cellXfs>"#, xfs(index, &mut seed));
+        let sheet = format!(r#"<row><c s="{index}"><v>46329</v></c></row>"#);
+        let (got, _) = read(&Excel::default(), "st.xlsx", &sample::xlsx(&[("S", &sheet)], &[], &styles, false)).unwrap();
+        assert_eq!(got[0].text, if date { "2026-11-03\n" } else { "46329\n" }, "style {index}");
+    }
+    // Custom formats past the same limit are left out too.
+    for (count, date) in [(65_535, true), (65_536, false)] {
+        let mut formats: String = (0..count).map(|i| format!(r#"<numFmt numFmtId="{}" formatCode="0.{}"/>"#, 1000 + i, letters(3, &mut seed))).collect();
+        formats.push_str(r#"<numFmt numFmtId="164" formatCode="yyyy-mm-dd"/>"#);
+        let styles = format!(r#"<numFmts>{formats}</numFmts><cellXfs><xf numFmtId="164"/></cellXfs>"#);
+        let sheet = r#"<row><c s="0"><v>46329</v></c></row>"#;
+        let (got, _) = read(&Excel::default(), "nf.xlsx", &sample::xlsx(&[("S", sheet)], &[], &styles, false)).unwrap();
+        assert_eq!(got[0].text, if date { "2026-11-03\n" } else { "46329\n" }, "{count} formats before it");
     }
 }

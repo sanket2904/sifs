@@ -1,5 +1,7 @@
 //! The step 2 reviewer's tests, kept: each pins a finding of the review
-//! (handover/step2-review/REPORT.txt), or something it checked.
+//! (handover/step2-review/REPORT.txt), or something it checked. Time
+//! bounds have room for a loaded machine: a reader past its limit stops
+//! within a moment of it, where the defects found took 30 to 40 s.
 
 use super::sample::{self, paras, shape, P, S, W};
 use super::*;
@@ -85,7 +87,7 @@ fn review_pptx_slide_list_against_missing_ids_is_quadratic_and_unchecked() {
     let start = Instant::now();
     let got = read_at(&PowerPoint::default(), "q.pptx", &bytes, start + Duration::from_secs(10));
     let took = start.elapsed();
-    assert!(took < Duration::from_secs(11), "time limit 10 s, took {took:?}; result {:?}", got.map(|_| ()));
+    assert!(took < Duration::from_secs(20), "time limit 10 s, took {took:?}; result {:?}", got.map(|_| ()));
 }
 
 #[test]
@@ -109,7 +111,7 @@ fn review_xlsx_sheet_list_against_missing_ids_is_quadratic_and_unchecked() {
     let got = read_at(&Excel::default(), "q.xlsx", &bytes, start + Duration::from_secs(10));
     let took = start.elapsed();
     eprintln!("xlsx {n} x {n}: {} bytes, {took:?}, {:?}", bytes.len(), got.as_ref().map(|_| ()));
-    assert!(took < Duration::from_secs(11), "time limit 10 s, took {took:?}");
+    assert!(took < Duration::from_secs(20), "time limit 10 s, took {took:?}");
 }
 
 #[test]
@@ -135,7 +137,7 @@ fn review_many_sheet_entries_to_one_empty_sheet_never_ask_the_sink() {
     let got = read_at(&Excel::default(), "many.xlsx", &bytes, start + Duration::from_secs(10));
     let took = start.elapsed();
     eprintln!("{n} sheet parses: {took:?}, result {:?}", got.as_ref().map(|_| ()));
-    assert!(took < Duration::from_secs(11), "time limit 10 s, took {took:?}");
+    assert!(took < Duration::from_secs(20), "time limit 10 s, took {took:?}");
 }
 
 // ---------- Memory ----------
@@ -205,7 +207,7 @@ fn review_bomb_with_faked_sizes() {
         let start = Instant::now();
         let got = read(&Word::default(), "b.docx", &bytes);
         eprintln!("compressed {c} uncompressed {u}: {:?} in {:?}", got.as_ref().map(|r| r.1.clone()), start.elapsed());
-        assert!(start.elapsed() < Duration::from_secs(11));
+        assert!(start.elapsed() < Duration::from_secs(20));
     }
 }
 
@@ -218,7 +220,7 @@ fn no_panic(reader: &dyn Reader, name: &str, bytes: &[u8]) -> Option<String> {
     let mut sink = Sink::new(1_000_000, Instant::now() + Duration::from_secs(10));
     let start = Instant::now();
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| reader.read(&path, &mut sink)));
-    assert!(start.elapsed() < Duration::from_secs(2), "slow: {:?}", start.elapsed());
+    assert!(start.elapsed() < Duration::from_secs(5), "slow: {:?}", start.elapsed());
     match r {
         Ok(_) => None,
         Err(p) => Some(

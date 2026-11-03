@@ -156,6 +156,9 @@ impl Handler for Workbook {
 struct Shared {
     strings: Vec<String>,
     current: String,
+    /// Characters of current, and whether it has outgrown the cap.
+    current_chars: usize,
+    current_over: bool,
     in_text: u32,
     in_phonetic: u32,
     chars: usize,
@@ -167,7 +170,11 @@ struct Shared {
 impl Handler for Shared {
     fn open(&mut self, name: &[u8], _: &BytesStart, _: &mut Sink) -> Result<Flow, ReadError> {
         match name {
-            b"si" => self.current.clear(),
+            b"si" => {
+                self.current.clear();
+                self.current_chars = 0;
+                self.current_over = false;
+            }
             b"t" => self.in_text += 1,
             b"rPh" => self.in_phonetic += 1,
             _ => {}
@@ -182,13 +189,12 @@ impl Handler for Shared {
                     return Ok(Flow::Full);
                 }
                 let s = std::mem::take(&mut self.current);
-                let n = s.chars().count();
-                if self.chars + n > self.max_chars {
+                if self.current_over {
                     self.cut = true;
                     self.chars = self.max_chars;
                     self.strings.push(String::new());
                 } else {
-                    self.chars += n;
+                    self.chars += self.current_chars;
                     self.strings.push(s);
                 }
             }
@@ -199,9 +205,17 @@ impl Handler for Shared {
         Ok(Flow::More)
     }
     fn text(&mut self, text: &str, _: &mut Sink) -> Result<Flow, ReadError> {
-        // A string past the cap is dropped whole, so stop growing it.
-        if self.in_text > 0 && self.in_phonetic == 0 && self.chars + self.current.len() <= self.max_chars {
-            self.current.push_str(text);
+        // A string past the cap is dropped whole, so stop growing it. Its
+        // characters are counted however its runs split it.
+        if self.in_text > 0 && self.in_phonetic == 0 && !self.current_over {
+            let n = text.chars().count();
+            if self.chars + self.current_chars + n > self.max_chars {
+                self.current_over = true;
+                self.current.clear();
+            } else {
+                self.current_chars += n;
+                self.current.push_str(text);
+            }
         }
         Ok(Flow::More)
     }
@@ -216,23 +230,23 @@ pub(crate) enum Shown {
     Time,
 }
 
-/// styles.xml: the number format of each cell style (cellXfs).
+/// Custom number formats and cell styles kept: Excel allows about 250 of
+/// the one and 64,000 of the other.
+const MAX_STYLES: usize = 65_536;
+
+/// styles.xml: the number format of each cell style (cellXfs). Each custom
+/// format is classified once, as it is read: a style naming it only looks
+/// it up.
 #[derive(Default)]
 struct Styles {
-    formats: HashMap<u32, String>,
+    formats: HashMap<u32, Shown>,
     xfs: Vec<u32>,
     in_cell_xfs: bool,
 }
 
 impl Styles {
     fn kinds(&self) -> Vec<Shown> {
-        self.xfs
-            .iter()
-            .map(|id| match self.formats.get(id) {
-                Some(code) => shown_by_code(code),
-                None => shown_by_id(*id),
-            })
-            .collect()
+        self.xfs.iter().map(|id| self.formats.get(id).copied().unwrap_or_else(|| shown_by_id(*id))).collect()
     }
 }
 
@@ -242,12 +256,14 @@ impl Handler for Styles {
             b"numFmt" => {
                 if let (Some(id), Some(code)) = (attr(e, b"numFmtId"), attr(e, b"formatCode")) {
                     if let Ok(id) = id.parse() {
-                        self.formats.insert(id, code);
+                        if self.formats.len() < MAX_STYLES || self.formats.contains_key(&id) {
+                            self.formats.insert(id, shown_by_code(&code));
+                        }
                     }
                 }
             }
             b"cellXfs" => self.in_cell_xfs = true,
-            b"xf" if self.in_cell_xfs => {
+            b"xf" if self.in_cell_xfs && self.xfs.len() < MAX_STYLES => {
                 self.xfs.push(attr(e, b"numFmtId").and_then(|v| v.parse().ok()).unwrap_or(0));
             }
             _ => {}
@@ -374,11 +390,13 @@ struct Cell {
     kind: String,
     style: usize,
     value: String,
+    /// Characters of value.
+    chars: usize,
 }
 
-/// A cell's value is kept up to this many bytes: Excel's own limit of
-/// 32,767 characters, at four bytes each.
-pub(crate) const MAX_CELL_BYTES: usize = 32_767 * 4;
+/// A cell's value is kept up to Excel's own limit, in characters; the rest
+/// is dropped and recorded.
+pub(crate) const MAX_CELL_CHARS: usize = 32_767;
 
 /// One sheet's cells as rows, each cell written as it ends: tabs between
 /// cells, a line end after each row. Nothing of a row is held.
@@ -435,6 +453,7 @@ impl Handler for Sheet {
                     kind: attr(e, b"t").unwrap_or_default(),
                     style: attr(e, b"s").and_then(|s| s.parse().ok()).unwrap_or(0),
                     value: String::new(),
+                    chars: 0,
                 });
             }
             b"v" => self.in_value = true,
@@ -474,16 +493,20 @@ impl Handler for Sheet {
         }
         Ok(Flow::More)
     }
-    fn text(&mut self, text: &str, _: &mut Sink) -> Result<Flow, ReadError> {
+    fn text(&mut self, text: &str, sink: &mut Sink) -> Result<Flow, ReadError> {
         if let Some(cell) = &mut self.cell {
             let inline = cell.kind == "inlineStr" && self.in_inline > 0 && self.skip == 0;
             if self.in_value || inline {
-                let room = MAX_CELL_BYTES.saturating_sub(cell.value.len());
-                let mut cut = text.len().min(room);
-                while !text.is_char_boundary(cut) {
-                    cut -= 1;
-                }
-                cell.value.push_str(&text[..cut]);
+                let room = MAX_CELL_CHARS - cell.chars;
+                let kept = match text.char_indices().nth(room) {
+                    Some((cut, _)) => {
+                        sink.note_truncated();
+                        &text[..cut]
+                    }
+                    None => text,
+                };
+                cell.chars += kept.chars().count();
+                cell.value.push_str(kept);
             }
         }
         Ok(Flow::More)

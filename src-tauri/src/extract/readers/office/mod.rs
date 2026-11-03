@@ -17,6 +17,8 @@ pub(crate) mod sample;
 #[cfg(test)]
 mod review;
 #[cfg(test)]
+mod review2;
+#[cfg(test)]
 mod tests;
 
 pub use excel::Excel;
@@ -56,6 +58,9 @@ pub struct Caps {
     pub shared_strings: usize,
     /// Sheets or slides read: past it, the rest are left out.
     pub listed: usize,
+    /// Bytes of one XML event (a text, tag, comment or CDATA section),
+    /// which the XML reader holds whole: past it, reading stops.
+    pub event: usize,
 }
 
 impl Default for Caps {
@@ -70,6 +75,7 @@ impl Default for Caps {
             shared_chars: 4_000_000,
             shared_strings: 1_000_000,
             listed: 10_000,
+            event: 4 * MB as usize,
         }
     }
 }
@@ -127,6 +133,8 @@ impl Kind {
 enum Stop {
     Bomb,
     Inflated,
+    /// One XML event grew past caps.event.
+    Event,
 }
 
 /// The file, counting what the zip crate reads of it while budget lasts.
@@ -245,7 +253,7 @@ impl Package {
         let Some(real) = self.names.get(&name.to_lowercase()).cloned() else {
             return Ok(None);
         };
-        if self.stop.get() == Some(Stop::Inflated) {
+        if matches!(self.stop.get(), Some(Stop::Inflated | Stop::Event)) {
             return Ok(Some(sink.cut()));
         }
         let Some(index) = self.zip.index_for_name(&real) else {
@@ -265,12 +273,18 @@ impl Package {
             stop: &self.stop,
             caps: &self.caps,
         };
-        match walk(BufReader::new(counted), handler, sink, &self.events) {
+        let xml = Bounded { inner: BufReader::new(counted), consumed: 0, start: 0, max: self.caps.event as u64, over: false };
+        match walk(xml, handler, sink, &self.events) {
             Ok(flow) => Ok(Some(flow)),
             Err(Walked::Read(e)) => Err(e),
+            // Like the cap on unpacking: what was read is kept.
+            Err(Walked::Long) => {
+                self.stop.set(Some(Stop::Event));
+                Ok(Some(sink.cut()))
+            }
             Err(Walked::Xml(e)) => match self.stop.get() {
                 Some(Stop::Bomb) => Err(ReadError::Unsupported(BOMB.into())),
-                Some(Stop::Inflated) => Ok(Some(sink.cut())),
+                Some(Stop::Inflated | Stop::Event) => Ok(Some(sink.cut())),
                 None => Err(damaged(name, e)),
             },
         }
@@ -284,8 +298,11 @@ impl Package {
             None => ("", part),
         };
         let name = if dir.is_empty() { format!("_rels/{file}.rels") } else { format!("{dir}/_rels/{file}.rels") };
-        let mut rels = Rels { dir: dir.to_string(), found: Vec::new() };
+        let mut rels = Rels { dir: dir.to_string(), found: Vec::new(), over: false };
         self.parse(&name, &mut rels, sink)?;
+        if rels.over {
+            sink.note_truncated();
+        }
         Ok(rels.found)
     }
 
@@ -384,6 +401,54 @@ pub(crate) trait Handler {
 enum Walked {
     Read(ReadError),
     Xml(quick_xml::Error),
+    /// One event grew past its cap.
+    Long,
+}
+
+/// A part's XML as the XML reader takes it, refusing to let one event grow
+/// past max bytes: the reader holds an event whole (a text node, a tag with
+/// its attributes, a comment, a CDATA section), however long. It takes the
+/// bytes of an event as it scans it, so what it has taken since the last
+/// event ended is the event so far.
+struct Bounded<R> {
+    inner: R,
+    consumed: u64,
+    /// Where the current event began.
+    start: u64,
+    max: u64,
+    over: bool,
+}
+
+impl<R: BufRead> Read for Bounded<R> {
+    fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+        let n = {
+            let have = self.fill_buf()?;
+            let n = have.len().min(out.len());
+            out[..n].copy_from_slice(&have[..n]);
+            n
+        };
+        self.consume(n);
+        Ok(n)
+    }
+}
+
+impl<R: BufRead> BufRead for Bounded<R> {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        let used = self.consumed - self.start;
+        if used > self.max {
+            self.over = true;
+            return Err(io::Error::other("an XML event is too long"));
+        }
+        // No more than one byte past the cap at a time: an event longer
+        // than that has to ask again, and is refused.
+        let room = (self.max - used + 1).min(usize::MAX as u64) as usize;
+        let have = self.inner.fill_buf()?;
+        Ok(&have[..have.len().min(room)])
+    }
+    fn consume(&mut self, n: usize) {
+        self.consumed += n as u64;
+        self.inner.consume(n);
+    }
 }
 
 /// The sink is asked about the time limit every this many events.
@@ -393,7 +458,12 @@ const CHECK_EVERY: u32 = 4096;
 /// elements come as an open and a close. Of entity references only XML's
 /// own five and character references are decoded; others (declared in a
 /// DTD, which is never read) are dropped.
-fn walk(xml: impl BufRead, handler: &mut dyn Handler, sink: &mut Sink, events: &Cell<u32>) -> Result<Flow, Walked> {
+fn walk<R: BufRead>(
+    xml: Bounded<R>,
+    handler: &mut dyn Handler,
+    sink: &mut Sink,
+    events: &Cell<u32>,
+) -> Result<Flow, Walked> {
     let mut reader = quick_xml::Reader::from_reader(xml);
     reader.config_mut().expand_empty_elements = true;
     let mut buf = Vec::new();
@@ -403,7 +473,14 @@ fn walk(xml: impl BufRead, handler: &mut dyn Handler, sink: &mut Sink, events: &
             sink.check().map_err(Walked::Read)?;
         }
         buf.clear();
-        let flow = match reader.read_event_into(&mut buf).map_err(Walked::Xml)? {
+        let event = match reader.read_event_into(&mut buf) {
+            Ok(event) => event,
+            Err(_) if reader.get_ref().over => return Err(Walked::Long),
+            Err(e) => return Err(Walked::Xml(e)),
+        };
+        let bounded = reader.get_mut();
+        bounded.start = bounded.consumed;
+        let flow = match event {
             Event::Start(e) => handler.open(e.local_name().as_ref().as_bytes(), &e, sink),
             Event::End(e) => handler.close(e.local_name().as_ref().as_bytes(), sink),
             Event::Text(t) => handler.text(&t.xml10_content(), sink),
@@ -431,10 +508,17 @@ fn walk(xml: impl BufRead, handler: &mut dyn Handler, sink: &mut Sink, events: &
 }
 
 /// The value of the attribute with this local name, entities decoded.
+/// An attribute value read is at most this long: every one the readers use
+/// (ids, types, paths, names, format codes) is far shorter. A longer one
+/// reads as absent.
+const MAX_ATTR: usize = 4096;
+
+/// An attribute's value, by its local name (any prefix).
 pub(crate) fn attr(e: &BytesStart, local: &[u8]) -> Option<String> {
     e.attributes()
         .flatten()
         .find(|a| a.key.local_name().as_ref().as_bytes() == local)
+        .filter(|a| a.value.len() <= MAX_ATTR)
         .map(|a| a.normalized_value(quick_xml::XmlVersion::Implicit1_0).map(|v| v.into_owned()).unwrap_or_default())
 }
 
@@ -447,15 +531,23 @@ pub(crate) fn rel_id(e: &BytesStart) -> Option<String> {
         .and_then(|a| a.normalized_value(quick_xml::XmlVersion::Implicit1_0).ok().map(|v| v.into_owned()))
 }
 
-/// Reads a .rels part.
+/// Relationships kept from one .rels part: past it, the rest are left out.
+const MAX_RELS: usize = 50_000;
+
+/// Reads a .rels part, its first MAX_RELS relationships.
 struct Rels {
     dir: String,
     found: Vec<Rel>,
+    over: bool,
 }
 
 impl Handler for Rels {
     fn open(&mut self, name: &[u8], e: &BytesStart, _: &mut Sink) -> Result<Flow, ReadError> {
         if name == b"Relationship" && attr(e, b"TargetMode").as_deref() != Some("External") {
+            if self.found.len() >= MAX_RELS {
+                self.over = true;
+                return Ok(Flow::Full);
+            }
             let (Some(id), Some(kind), Some(target)) = (attr(e, b"Id"), attr(e, b"Type"), attr(e, b"Target")) else {
                 return Ok(Flow::More);
             };
@@ -551,9 +643,9 @@ pub(crate) struct Prose {
     /// Text since the current page began, so a rendered break right after
     /// another break (Word writes one after a typed break) counts once.
     text_on_page: bool,
-    /// A break inside a table row already under way: the next page begins
-    /// with the next row.
-    pending_break: bool,
+    /// Breaks inside a table row already under way: the next row begins
+    /// the page after them (two typed breaks leave a blank page).
+    pending_breaks: u32,
     /// Whether anything was found at all.
     pub(crate) any: bool,
 }
@@ -577,7 +669,7 @@ impl Prose {
             paged,
             page: 1,
             text_on_page: false,
-            pending_break: false,
+            pending_breaks: 0,
             any: false,
         }
     }
@@ -635,13 +727,18 @@ impl Prose {
             if self.row_cells == 0 && !self.cell_started && self.cell.trim().is_empty() {
                 return self.new_page(sink);
             }
-            self.pending_break = true;
+            self.pending_breaks = self.pending_breaks.saturating_add(1);
             return Ok(Flow::More);
         }
         self.new_page(sink)
     }
 
     fn new_page(&mut self, sink: &mut Sink) -> Result<Flow, ReadError> {
+        self.new_pages(sink, 1)
+    }
+
+    /// Starts the page n pages on (more than one leaves blank pages).
+    fn new_pages(&mut self, sink: &mut Sink, n: u32) -> Result<Flow, ReadError> {
         // The line goes on: its first half ends this page.
         if !self.line.trim().is_empty() {
             let line = std::mem::take(&mut self.line);
@@ -653,10 +750,10 @@ impl Prose {
         if self.page == 1 {
             sink.relabel("page 1");
         }
-        self.page += 1;
+        self.page = self.page.saturating_add(n);
         sink.part(format!("page {}", self.page));
         self.text_on_page = false;
-        self.pending_break = false;
+        self.pending_breaks = 0;
         Ok(Flow::More)
     }
 
@@ -772,8 +869,9 @@ impl Handler for Prose {
                         return Ok(Flow::Full);
                     }
                 }
-                if self.pending_break {
-                    return self.new_page(sink);
+                if self.pending_breaks > 0 {
+                    let n = self.pending_breaks;
+                    return self.new_pages(sink, n);
                 }
             }
             b"tbl" => self.tables = self.tables.saturating_sub(1),

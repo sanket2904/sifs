@@ -1,0 +1,76 @@
+SIFS step 2 fix review: 56005b3..5f75238 (both commit messages read).
+Paths below refer to 5f75238. Repository untouched; tests/builds only in fixed/.
+
+FINDING 1: Typed blank pages now accumulate unbounded empty parts
+SEVERITY: BLOCKING
+WHERE: src-tauri/src/extract/readers/office/mod.rs:629,657; src-tauri/src/extract/mod.rs:176
+EVIDENCE: r2_blank_pages_memory: 958,097-byte docx, default caps, 3,500,000 typed breaks:
+  retained=289 MiB parts=3500001 elapsed=6.96s result=Ok(())
+This is a new regression: counting every typed break allocates a Part and label even without text. The character cap never fires. Retained memory was calculated directly from live capacities, not a peak/realloc estimate.
+SUGGESTED CHANGE: Advance the page number without materializing blank parts; create a labelled part when text arrives. Bound part metadata too.
+
+FINDING 2: Relationship normalization still amplifies a small file past the memory bound
+SEVERITY: BLOCKING
+WHERE: src-tauri/src/extract/readers/office/mod.rs:477-489
+EVIDENCE: r2_relationship_path_memory: a 346,734-byte docx with a 20 MiB Target of short path segments printed peak=436 MiB, result=Ok(0). Rechecked with net realloc accounting: 328 MiB, 1.99s. Default caps and honest ZIP sizes; the compression ratio passes. resolve() collects millions of 16-byte string slices. This survives the fixes and affects all three readers.
+SUGGESTED CHANGE: Bound relationship target length before copying/normalizing it; normalize with bounded storage instead of an unrestricted Vec of segments.
+
+FINDING 3: One XML text event still holds multiple huge copies
+SEVERITY: BLOCKING
+WHERE: src-tauri/src/extract/readers/office/mod.rs:409,674-676,785-789
+EVIDENCE: r2_single_xml_text_memory: a 1,236,297-byte docx containing one 80 MiB text node with CR line endings:
+  peak=283 MiB elapsed=0.38s result=Ok(1000000)
+Confirmed with net realloc accounting. The XML buffer, newline-normalized text and Prose copy coexist before LONG_LINE flushes. Default ratio/inflation caps pass. Thus the existing “one node bounded by 128 MB” exception is not a safe memory bound; analogous whole-event pushes remain in Shared and Props.
+SUGGESTED CHANGE: Bound XML token storage, or stream decoding/normalization into bounded consumer buffers. Apply limits before whole-event copies, including properties/shared strings.
+
+FINDING 4: Repeated custom-style parsing remains an unchecked multiplicative loop
+SEVERITY: BLOCKING
+WHERE: src-tauri/src/extract/readers/office/excel.rs:67,228-235,281-319
+EVIDENCE: r2_styles_repeated_format_obeys_deadline: 648,469-byte xlsx, one 1,000,000-character format referenced by 1,500 cell styles:
+  elapsed=24.44s result=Err(Timeout) (limit 10s)
+Styles::kinds rescans/allocates for the same format for every xf without asking the sink. More references scale this to hours while staying within the unpacking cap; four abandoned readers can still stall reading. This is another surviving instance of the original time defect.
+SUGGESTED CHANGE: Classify each format once, reuse its Shown value, and check the deadline during format/style processing.
+
+FINDING 5: Multiple pending table breaks still lose blank pages
+SEVERITY: MINOR
+WHERE: src-tauri/src/extract/readers/office/mod.rs:638,775-776
+EVIDENCE: r2_two_pending_typed_breaks_keep_blank_page: text, two typed breaks inside one cell, then another row prints "one" on page 1 and "two" on page 2; expected page 3. pending_break is only a boolean.
+SUGGESTED CHANGE: Count pending typed breaks, preserving the separate rendered-break deduplication rule.
+
+FINDING 6: Shared-string cap counts bytes in one place and characters in another
+SEVERITY: MINOR
+WHERE: src-tauri/src/extract/readers/office/excel.rs:201-205
+EVIDENCE: r2_shared_unicode_rich_runs_at_character_cap, shared_chars=3:
+  one run: text="ééé\n" truncated=false
+  two runs: text="éé\n" truncated=false
+Identical visible text is silently shortened solely because of run boundaries. This pre-existing cap defect remains.
+SUGGESTED CHANGE: Track characters consistently and mark overflow explicitly; apply the documented whole-string overflow policy independently of XML event boundaries.
+
+FINDING 7: Cell-value truncation is silent and the claimed character cap is a byte cap
+SEVERITY: MINOR
+WHERE: src-tauri/src/extract/readers/office/excel.rs:381,477-487
+EVIDENCE: r2_cell_cap_records_loss:
+  input=32768 kept=32768 truncated=false
+  input=131069 kept=131068 truncated=false
+The plan says 32,767 characters; implementation permits four times that for ASCII and records no truncation when it finally drops text. The new existing test pins the byte behavior, not the stated character limit.
+SUGGESTED CHANGE: Enforce the agreed character limit consistently and call note_truncated whenever value text is discarded; test ASCII and multibyte boundaries.
+
+CHECKED WITHOUT FINDING
+- Original suite: 159/159 passed before and after mutations (15.94s / 14.34s). Reviewer tests: 4 pass, 7 expose the findings above.
+- Original Excel row amplification is fixed: cells are emitted individually and shared values borrowed. Existing memory regression passes. Long streamed table-cell text/tabs also match exactly.
+- Sheet/slide relationship maps, per-part deadline checks and cumulative XML events work. r2_events_span_small_parts times out at event 4096 across 1,366 tiny parts.
+- Exact/one-past tests pass for cell count, shared-string count and ASCII character count, sheet/slide count, Sink characters, ZIP entry count/open budget, inflation and ratio/grace boundaries, and fact length. Inflation overflow retains earlier text and records truncated. See exceptions above.
+- Existing tests pass for row separators, row-start/mid-row page breaks, typed/rendered deduplication, text boxes, hyphens/symbols, Excel serial 0, hidden/very-hidden sheets, duplicate sheets/slides, moveFrom, Fallback, inline rPh, external relationships and looping CFB directories.
+- Three independent mutations caught; all restored:
+  * Disable long-cell flushing -> a_long_paragraph_or_table_cell_is_written_as_it_comes fails: "a long cell held 24646 KB".
+  * Remove per-sheet sink.check -> the_time_limit_is_asked_between_sheets_slides_and_parts fails its Timeout assertion.
+  * Deduplicate typed breaks again -> review_word_pages fails: page 2 instead of page 3.
+- Timing-sensitive tests to watch on loaded machines: tests.rs:687-717 requires the 100k-list workload to succeed within a real 10s; review.rs:221 imposes 2s per fuzz read, and :88/:112/:138 allow only 1s timeout grace. No flakes observed in the two normal suite runs. Prefer deterministic deadline/check tests; keep stress timings separate. Reviewer stress tests were run serially.
+
+FILES
+- fixed/src-tauri/src/extract/readers/office/review2.rs: all 11 new tests; registered only in the copy's office/mod.rs.
+- baseline.log, baseline-restored.log; review2-final.log (10 tests), cap-edges.log (the additional boundary test).
+- review2-net-allocation.log, xml-net-allocation.log: memory confirmation with realloc accounting temporarily changed to subtract the old allocation before adding the new one; sample.rs restored afterward.
+- mutation-long-cell.log, mutation-sheet-check.log, mutation-typed-break.log.
+- All reviewed source files match 5f75238 again except the test-module registration. CARGO_TARGET_DIR is target/ under this report's directory, outside the repository.
+VERDICT: NOT RIGHT (FINDINGS 1-3: small-file memory amplification; FINDING 4: unchecked style-processing time)

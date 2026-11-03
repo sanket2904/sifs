@@ -46,6 +46,10 @@ pub const MB: u64 = 1024 * 1024;
 /// Characters kept of one fact's value.
 pub const MAX_FACT_CHARS: usize = 1000;
 
+/// Parts (pages, sheets, slides) kept per file: 10,000 slides, each with
+/// its notes, fit.
+pub const MAX_PARTS: usize = 25_000;
+
 /// How much a reader may take on.
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
@@ -154,6 +158,9 @@ pub struct Sink {
     deadline: Instant,
     truncated: bool,
     left_out: bool,
+    /// MAX_PARTS parts are kept and another was started: its text, if
+    /// any comes, is dropped.
+    parts_full: bool,
 }
 
 impl Sink {
@@ -166,12 +173,27 @@ impl Sink {
             deadline,
             truncated: false,
             left_out: false,
+            parts_full: false,
         }
     }
 
     /// Starts a page, sheet, slide or part. Text before the first part goes
-    /// in an unlabelled one.
+    /// in an unlabelled one. A part with no text yet is taken over rather
+    /// than kept (it would be dropped anyway), so parts without text (blank
+    /// pages, say) cost nothing. Past MAX_PARTS parts, no more text is
+    /// taken, as at the character cap.
     pub fn part(&mut self, label: impl Into<String>) {
+        if let Some(last) = self.parts.last_mut() {
+            if last.text.trim().is_empty() {
+                last.label = label.into();
+                last.text.clear();
+                return;
+            }
+        }
+        if self.parts.len() >= MAX_PARTS {
+            self.parts_full = true;
+            return;
+        }
         let part = self.parts.len() as u32;
         self.parts.push(Part { part, label: label.into(), text: String::new() });
     }
@@ -201,6 +223,13 @@ impl Sink {
     pub fn text(&mut self, s: &str) -> Result<Flow, ReadError> {
         self.check()?;
         if self.truncated {
+            return Ok(Flow::Full);
+        }
+        if self.parts_full {
+            if s.trim().is_empty() {
+                return Ok(Flow::More);
+            }
+            self.truncated = true;
             return Ok(Flow::Full);
         }
         if self.parts.is_empty() {
