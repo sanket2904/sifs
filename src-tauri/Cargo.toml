@@ -25,6 +25,10 @@ notify = "6"
 globset = "0.4"
 anyhow = "1"
 log = "0.4"
+encoding_rs = "0.8"
+chardetng = "0.1"
+html-escape = "0.2"
+libc = "0.2"
 
 [features]
 default = ["app"]

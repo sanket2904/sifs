@@ -12,6 +12,10 @@
 	let showSettings = $state(false);
 	let progress = $state({});
 	let ignoreText = $state('');
+	/** @type {{ read: number, empty: number, waiting: number, failed: number, skipped: number } | null} */
+	let contents = $state(null);
+	/** @type {{ path: string, status: string, error: string }[] | null} */
+	let failures = $state(null);
 	let error = $state('');
 	let input;
 	let timer;
@@ -68,8 +72,15 @@
 	}
 
 	async function loadSettings() {
-		settings = await invoke('settings');
+		/** @type {any} */
+		const loaded = await invoke('settings');
+		settings = loaded;
+		contents = loaded.contents;
 		ignoreText = settings.ignore.join('\n');
+	}
+
+	async function toggleFailures() {
+		failures = failures ? null : await invoke('content_failures', { limit: 200 });
 	}
 
 	async function addFolder(path) {
@@ -144,6 +155,7 @@
 				search();
 			}),
 			listen('scan-error', (e) => (error = e.payload)),
+			listen('extract-progress', (e) => (contents = e.payload)),
 			listen('index-changed', () => query && search())
 		];
 		return () => unlisten.forEach((p) => p.then((f) => f()));
@@ -196,6 +208,26 @@
 			<textarea bind:value={ignoreText} rows="7" spellcheck="false"></textarea>
 			<div class="row"><button onclick={saveIgnore}>Save and re-index</button></div>
 			<p class="muted">{settings.total.toLocaleString()} items indexed in total.</p>
+			{#if contents}
+				<p class="muted">
+					Reading inside files: {(contents.read + contents.empty).toLocaleString()} read ·
+					{contents.waiting.toLocaleString()} waiting · {contents.failed.toLocaleString()} couldn’t be read ·
+					{contents.skipped.toLocaleString()} skipped
+					{#if contents.failed + contents.skipped > 0}
+						<button class="link" onclick={toggleFailures}>{failures ? 'hide' : 'show'}</button>
+					{/if}
+				</p>
+				{#if failures}
+					<ul class="failures">
+						{#each failures as f}
+							<li>
+								<span class="path">{f.path.replace(home(), '~')}</span>
+								<span class="muted">{f.status === 'failed' ? 'couldn’t be read' : 'skipped'}: {f.error}</span>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			{/if}
 		</section>
 	{/if}
 
@@ -296,6 +328,31 @@
 	}
 	button.ghost {
 		border-style: dashed;
+	}
+	button.link {
+		padding: 0;
+		border: none;
+		background: none;
+		color: var(--accent);
+	}
+	.failures {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		font-size: 12px;
+		max-height: 30vh;
+		overflow: auto;
+	}
+	.failures li {
+		display: flex;
+		gap: 10px;
+		padding: 2px 0;
+	}
+	.failures .path {
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.progress,
 	.error {

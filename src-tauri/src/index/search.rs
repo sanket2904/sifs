@@ -2,7 +2,7 @@
 //! index, a typo-tolerant fallback, and ranking by match quality and
 //! recency.
 
-use super::db::{row_to_record, FileRecord, Index};
+use super::db::{row_to_record, FileRecord, Index, NOT_REMOVING};
 use anyhow::Result;
 use std::collections::HashSet;
 
@@ -60,6 +60,7 @@ fn candidates(index: &Index, terms: &[String]) -> Result<Vec<FileRecord>> {
         params.push(phrase);
         format!("SELECT {COLUMNS} FROM files_fts JOIN files f ON f.id = files_fts.rowid WHERE files_fts MATCH ?1")
     };
+    sql.push_str(&format!(" AND {NOT_REMOVING}"));
     for term in &short {
         params.push(format!("%{}%", escape_like(term)));
         sql.push_str(&format!(" AND f.name LIKE ?{} ESCAPE '\\'", params.len()));
@@ -78,7 +79,7 @@ fn fuzzy_candidates(index: &Index, query: &str) -> Result<Vec<(FileRecord, usize
         return Ok(Vec::new());
     }
     let phrase = grams.iter().map(|g| format!("\"{}\"", g.replace('"', "\"\""))).collect::<Vec<_>>().join(" OR ");
-    let sql = format!("SELECT {COLUMNS} FROM files_fts JOIN files f ON f.id = files_fts.rowid WHERE files_fts MATCH ?1 LIMIT {CANDIDATES}");
+    let sql = format!("SELECT {COLUMNS} FROM files_fts JOIN files f ON f.id = files_fts.rowid WHERE files_fts MATCH ?1 AND {NOT_REMOVING} LIMIT {CANDIDATES}");
     let mut stmt = index.conn.prepare_cached(&sql)?;
     let rows = stmt.query_map([phrase], row_to_record)?;
     let mut out = Vec::new();
@@ -138,6 +139,13 @@ fn rank(file: &FileRecord, terms: &[String], now: i64) -> f64 {
     score
 }
 
+/// Source code and configuration: ranked below documents, and read last.
+pub const CODE: &[&str] = &[
+    "py", "js", "mjs", "cjs", "ts", "tsx", "jsx", "swift", "go", "rs", "java", "kt", "c", "h", "cc", "cpp", "hpp", "m",
+    "mm", "rb", "php", "cs", "dart", "yaml", "yml", "json", "xml", "plist", "toml", "ini", "cfg", "sh", "sql", "proto",
+    "gradle", "css", "scss",
+];
+
 /// How likely a person searching is to want this kind of file.
 pub(crate) fn kind_prior(file: &FileRecord) -> f64 {
     if file.is_dir {
@@ -150,9 +158,7 @@ pub(crate) fn kind_prior(file: &FileRecord) -> f64 {
         | "m4a" | "wav" | "flac" | "zip" | "dmg" | "app" => 15.0,
         "o" | "d" | "dia" | "swiftdeps" | "swiftmodule" | "pyc" | "class" | "obj" | "a" | "dylib" | "so" | "map"
         | "lock" | "pcm" | "hmap" => -50.0,
-        "py" | "js" | "mjs" | "cjs" | "ts" | "tsx" | "jsx" | "swift" | "go" | "rs" | "java" | "kt" | "c" | "h" | "cc"
-        | "cpp" | "hpp" | "m" | "mm" | "rb" | "php" | "cs" | "dart" | "yaml" | "yml" | "json" | "xml" | "plist"
-        | "toml" | "ini" | "cfg" | "sh" | "sql" | "proto" | "gradle" | "css" | "scss" => -30.0,
+        ext if CODE.contains(&ext) => -30.0,
         _ => 0.0,
     }
 }
