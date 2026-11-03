@@ -31,6 +31,15 @@ const MAX_ABANDONED: usize = 4;
 /// first), so a worker running for months doesn't grow without end.
 const MAX_ERRORS: usize = 100;
 const MAX_HOLDS: usize = 1_000_000;
+/// The longest wait after errors that keep happening.
+const MAX_BACKOFF: Duration = Duration::from_secs(600);
+
+/// How long to wait after failures errors in a row: idle_poll, doubling
+/// each time, up to MAX_BACKOFF. A database error that persists (a full
+/// disk) doesn't have the same files read again every few seconds.
+pub(crate) fn backoff(idle_poll: Duration, failures: u32) -> Duration {
+    idle_poll.saturating_mul(1u32 << failures.saturating_sub(1).min(20)).min(MAX_BACKOFF.max(idle_poll))
+}
 
 #[derive(Clone)]
 pub struct WorkerOptions {
@@ -101,6 +110,18 @@ impl Shared {
     fn wake(&self) {
         *self.woken.lock().unwrap_or_else(|p| p.into_inner()) = true;
         self.wake.notify_all();
+    }
+
+    /// Waits the whole of wait, whatever wakes it, unless told to stop.
+    fn sleep(&self, wait: Duration) {
+        let until = Instant::now() + wait;
+        while !self.stop.load(Ordering::SeqCst) {
+            let left = until.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                break;
+            }
+            self.wait(left);
+        }
     }
 }
 
@@ -202,6 +223,8 @@ fn run(index: &mut Index, registry: &Registry, options: &WorkerOptions, shared: 
     let mut prepared = false;
     let mut last_progress: Option<Instant> = None;
     let mut unreported = true;
+    // Errors in a row, for the wait after each.
+    let mut failures = 0;
     while !stopped() {
         let opened = std::mem::take(&mut *shared.opened.lock().unwrap_or_else(|p| p.into_inner()));
         for path in opened {
@@ -221,12 +244,17 @@ fn run(index: &mut Index, registry: &Registry, options: &WorkerOptions, shared: 
                 }
                 Err(e) => {
                     runner.error(e);
-                    shared.wait(options.idle_poll);
+                    failures += 1;
+                    shared.sleep(backoff(options.idle_poll, failures));
                     continue;
                 }
             }
         }
-        match runner.step(index, &stopped) {
+        let stepped = runner.step(index, &stopped);
+        if stepped.is_ok() {
+            failures = 0;
+        }
+        match stepped {
             Ok(0) => {
                 if unreported {
                     runner.report(index);
@@ -244,7 +272,8 @@ fn run(index: &mut Index, registry: &Registry, options: &WorkerOptions, shared: 
             }
             Err(e) => {
                 runner.error(e);
-                shared.wait(options.idle_poll);
+                failures += 1;
+                shared.sleep(backoff(options.idle_poll, failures));
             }
         }
     }
@@ -384,6 +413,31 @@ impl<'a> Runner<'a> {
             }
         }
         let mut flights: HashMap<u64, Flight> = HashMap::new();
+        let flown = self.fly(index, pending, &mut flights, results, stopped, written);
+        if flown.is_err() {
+            // The reads still running are left to end on their own: they
+            // count as abandoned, as reads past their time do, until then.
+            for flight in flights.values() {
+                if flight.state.compare_exchange(RUNNING, ABANDONED, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                    self.abandoned.fetch_add(1, Ordering::SeqCst);
+                    self.stats.abandoned += 1;
+                }
+            }
+        }
+        flown
+    }
+
+    /// Reads the pending jobs, at most concurrency at a time, and writes
+    /// what came of them with results. The reads under way are in flights.
+    fn fly(
+        &mut self,
+        index: &mut Index,
+        mut pending: VecDeque<Pending>,
+        flights: &mut HashMap<u64, Flight>,
+        mut results: Vec<Finished>,
+        stopped: &dyn Fn() -> bool,
+        written: &mut HashSet<i64>,
+    ) -> Result<()> {
         loop {
             while flights.len() < self.options.concurrency.max(1) && !stopped() {
                 let exclusive_busy = flights.values().any(|f| f.reader.limits().exclusive);

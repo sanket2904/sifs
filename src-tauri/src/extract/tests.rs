@@ -1588,3 +1588,70 @@ fn emoji_selectors_and_keycaps_separate_words() {
     assert!(found(&index, "\u{fe0f}").is_empty());
     assert_eq!(found(&index, "1\u{fe0f}\u{20e3}"), vec![keycap]);
 }
+
+// --- errors that keep happening ---
+
+#[test]
+fn the_wait_after_errors_doubles_up_to_ten_minutes() {
+    use super::worker::backoff;
+    let s = Duration::from_secs;
+    assert_eq!([1, 2, 3, 4].map(|n| backoff(s(5), n)), [s(5), s(10), s(20), s(40)]);
+    assert_eq!(backoff(s(5), 8), s(600));
+    assert_eq!(backoff(s(5), 1000), s(600));
+}
+
+/// A write that fails after every claim (a full disk) used to have the same
+/// files read again every idle_poll, without end.
+#[test]
+fn errors_in_a_row_are_waited_out_longer_each_time() {
+    let home = Home::new();
+    for name in ["a", "b", "c"] {
+        home.write(&format!("{name}.txt"), b"tapir");
+    }
+    let fake = Fake::new("fake", &["txt"]);
+    let registry = Arc::new(fake.registry());
+    let index = home.scanned(&registry);
+    index
+        .conn
+        .execute_batch("CREATE TRIGGER fail BEFORE INSERT ON extracts BEGIN SELECT RAISE(ABORT, 'disk full'); END")
+        .unwrap();
+    let worker = Worker::start(home.db.clone(), registry, options()).unwrap();
+    // 20 ms, then 40, 80, 160, 320: five tries in 700 ms, not thirty.
+    std::thread::sleep(Duration::from_millis(700));
+    let stats = worker.stop();
+    assert!((2..=7).contains(&stats.errors.len()), "{} tries", stats.errors.len());
+    assert!(fake.total() <= 3 * 7);
+}
+
+/// Reads still running when writing a batch fails count as abandoned, so
+/// the cap on stuck reads still holds.
+#[test]
+fn reads_still_running_when_a_write_fails_count_as_abandoned() {
+    let home = Home::new();
+    home.write("fast.txt", b"tapir");
+    let slow = home.write("slow.txt", b"tapir");
+    set_age(&slow, 400);
+    let mut fake = Fake::new("fake", &["txt"]).body(|path, sink, _| {
+        if path.ends_with("slow.txt") {
+            std::thread::sleep(Duration::from_millis(600));
+        }
+        sink.text("tapir")?;
+        Ok(())
+    });
+    fake.limits.time = Duration::from_secs(30);
+    let registry = Arc::new(fake.registry());
+    let index = home.scanned(&registry);
+    index
+        .conn
+        .execute_batch("CREATE TRIGGER fail BEFORE INSERT ON extracts BEGIN SELECT RAISE(ABORT, 'disk full'); END")
+        .unwrap();
+    // Each read is written as soon as it ends, so fast.txt's write fails
+    // while slow.txt is still being read.
+    let opts = WorkerOptions { concurrency: 2, batch_bytes: 1, idle_poll: Duration::from_secs(60), ..options() };
+    let worker = Worker::start(home.db.clone(), registry, opts).unwrap();
+    eventually("the first write to fail", || fake.total() >= 2);
+    std::thread::sleep(Duration::from_millis(100));
+    let stats = worker.stop();
+    assert_eq!(stats.errors.len(), 1, "{:?}", stats.errors);
+    assert_eq!(stats.abandoned, 1);
+}
