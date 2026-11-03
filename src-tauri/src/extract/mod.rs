@@ -9,6 +9,14 @@
 pub mod decode;
 pub mod platform;
 pub mod readers;
+pub mod store;
+pub mod worker;
+
+#[cfg(test)]
+mod tests;
+
+pub use store::{Failure, Progress};
+pub use worker::{RunStats, Waker, Worker, WorkerOptions};
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -251,5 +259,25 @@ impl Registry {
             .map(|(ext, r)| format!("{ext}={}:{}:{}:{}", r.id(), r.version(), r.class().priority(), r.packages() as u8))
             .collect::<Vec<_>>()
             .join(" ")
+    }
+}
+
+/// "4 MB", "512 KB": for reasons shown to the user.
+pub(crate) fn describe_size(bytes: u64) -> String {
+    if bytes >= MB && bytes % MB == 0 {
+        format!("{} MB", bytes / MB)
+    } else if bytes >= 1024 {
+        format!("{} KB", bytes / 1024)
+    } else {
+        format!("{bytes} bytes")
+    }
+}
+
+/// "10 s", "200 ms".
+pub(crate) fn describe_time(time: Duration) -> String {
+    if time.as_millis() % 1000 == 0 {
+        format!("{} s", time.as_secs())
+    } else {
+        format!("{} ms", time.as_millis())
     }
 }

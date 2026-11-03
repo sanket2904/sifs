@@ -261,7 +261,7 @@ fn removing_a_folder_removes_its_files_only() {
 
 /// Waits until check passes or fails after a deadline: the watcher reports
 /// asynchronously, so the test waits for the outcome, not for a set time.
-fn eventually(what: &str, mut check: impl FnMut() -> bool) {
+pub(crate) fn eventually(what: &str, mut check: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(20);
     while Instant::now() < deadline {
         if check() {
@@ -292,9 +292,10 @@ fn the_watcher_keeps_the_index_current() {
     eventually("a deleted file", || reader.get(&at("Documents/renamed.txt")).unwrap().is_none());
 }
 
-/// Several folders scanned at once, the watcher's writes and settings
-/// changes, each on its own connection: SQLite has one writer at a time, and
-/// none of them may fail with "database is locked".
+/// Several folders scanned at once, the watcher's writes, settings changes
+/// and the worker reading inside files, each on its own connection: SQLite
+/// has one writer at a time, and none of them may fail with "database is
+/// locked".
 #[test]
 fn concurrent_writers_never_see_a_locked_database() {
     let dir = tempfile::tempdir().unwrap();
@@ -308,7 +309,10 @@ fn concurrent_writers_never_see_a_locked_database() {
         }
     }
     let db = dir.path().join("sifs.db");
-    Index::open(&db).unwrap();
+    let registry = Arc::new(crate::extract::Registry::platform());
+    crate::extract::store::register_kinds(&mut Index::open(&db).unwrap(), &registry).unwrap();
+    let options = crate::extract::WorkerOptions { idle_poll: Duration::from_millis(20), ..Default::default() };
+    let worker = crate::extract::Worker::start(db.clone(), registry, options).unwrap();
     let rules = Arc::new(Rules::new(&Rules::default_patterns(), &base).unwrap());
     let mut threads = Vec::new();
     // Every folder at once, each scanned three times over; the app never
@@ -342,4 +346,9 @@ fn concurrent_writers_never_see_a_locked_database() {
     assert!(failures.is_empty(), "{failures:#?}");
     let index = Index::open(&db).unwrap();
     assert_eq!(index.count().unwrap(), 4 * (1 + 40 + 40 * 60));
+    worker.wake();
+    eventually("every file read", || crate::extract::store::progress(&index).unwrap().waiting == 0);
+    let stats = worker.stop();
+    assert!(stats.errors.is_empty(), "{:#?}", stats.errors);
+    assert_eq!(crate::extract::store::progress(&index).unwrap().read, 4 * 40 * 60);
 }

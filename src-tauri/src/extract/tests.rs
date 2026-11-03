@@ -1,0 +1,954 @@
+//! Reading inside files, end to end: the migration, the queue's triggers,
+//! the worker, and the sample files in tests/fixtures/contents.
+
+use super::store::{self, ContentMatch};
+use super::worker::{run_until_empty, STOPPED_TWICE};
+use super::*;
+use crate::index::crawl::{record_of, refresh, scan};
+use crate::index::db::Index;
+use crate::index::ignore::Rules;
+use crate::index::tests::eventually;
+use crate::index::watch::Watch;
+use rusqlite::params;
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Mutex;
+use std::time::SystemTime;
+
+// --- helpers ---
+
+fn now() -> i64 {
+    SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64
+}
+
+struct Home {
+    _dir: tempfile::TempDir,
+    root: String,
+    db: PathBuf,
+    rules: Rules,
+}
+
+impl Home {
+    fn new() -> Home {
+        let dir = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(dir.path()).unwrap().to_str().unwrap().to_string();
+        let root = format!("{base}/home");
+        fs::create_dir_all(&root).unwrap();
+        let rules = Rules::new(&Rules::default_patterns(), &root).unwrap();
+        Home { db: dir.path().join("sifs.db"), _dir: dir, root, rules }
+    }
+
+    /// A home with the sample files in samples/.
+    fn with_samples() -> Home {
+        let home = Home::new();
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/contents");
+        for entry in fs::read_dir(fixtures).unwrap() {
+            let entry = entry.unwrap();
+            home.write(&format!("samples/{}", entry.file_name().to_str().unwrap()), &fs::read(entry.path()).unwrap());
+        }
+        home
+    }
+
+    fn at(&self, rel: &str) -> String {
+        format!("{}/{rel}", self.root)
+    }
+
+    fn write(&self, rel: &str, body: &[u8]) -> String {
+        let path = self.at(rel);
+        fs::create_dir_all(Path::new(&path).parent().unwrap()).unwrap();
+        fs::write(&path, body).unwrap();
+        path
+    }
+
+    fn open(&self) -> Index {
+        Index::open(&self.db).unwrap()
+    }
+
+    /// Opens the index with registry's kinds and scans the home folder.
+    fn scanned(&self, registry: &Registry) -> Index {
+        let mut index = self.open();
+        store::register_kinds(&mut index, registry).unwrap();
+        scan(&mut index, &self.root, &self.rules, |_| {}).unwrap();
+        index
+    }
+
+    fn refresh(&self, index: &mut Index, rel: &str) {
+        refresh(index, Path::new(&self.at(rel)), std::slice::from_ref(&self.root), &self.rules).unwrap();
+    }
+}
+
+fn set_age(path: &str, days: u64) {
+    let file = fs::File::options().write(true).open(path).unwrap();
+    file.set_modified(SystemTime::now() - Duration::from_secs(days * 86_400)).unwrap();
+}
+
+fn options() -> WorkerOptions {
+    WorkerOptions { idle_poll: Duration::from_millis(20), grace: Duration::from_millis(50), ..WorkerOptions::default() }
+}
+
+fn run(index: &mut Index, registry: &Registry) -> RunStats {
+    run_until_empty(index, registry, &options()).unwrap()
+}
+
+fn found(index: &Index, query: &str) -> Vec<String> {
+    store::match_contents(index, query, 100).unwrap().into_iter().map(|ContentMatch { path, .. }| path).collect()
+}
+
+fn count(index: &Index, sql: &str) -> i64 {
+    index.conn.query_row(sql, [], |r| r.get(0)).unwrap()
+}
+
+fn queued(index: &Index) -> i64 {
+    count(index, "SELECT COUNT(*) FROM extract_queue")
+}
+
+fn id_of(index: &Index, path: &str) -> i64 {
+    index.conn.query_row("SELECT id FROM files WHERE path = ?1", [path], |r| r.get(0)).unwrap()
+}
+
+/// (status, error) of what was read from path.
+fn status(index: &Index, path: &str) -> (String, Option<String>) {
+    index
+        .conn
+        .query_row(
+            "SELECT e.status, e.error FROM extracts e JOIN files f ON f.id = e.file_id WHERE f.path = ?1",
+            [path],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap()
+}
+
+fn fact_of(index: &Index, path: &str, key: &str) -> Option<String> {
+    index
+        .conn
+        .query_row(
+            "SELECT value FROM facts WHERE file_id = (SELECT id FROM files WHERE path = ?1) AND key = ?2",
+            [path, key],
+            |r| r.get(0),
+        )
+        .ok()
+}
+
+fn leak(exts: &[&'static str]) -> &'static [&'static str] {
+    Box::leak(exts.to_vec().into_boxed_slice())
+}
+
+type Body = Arc<dyn Fn(&Path, &mut Sink, usize) -> Result<(), ReadError> + Send + Sync>;
+
+/// A reader for tests: counts its reads by path, then does what body says
+/// (given how many times this path has been read, this one included).
+#[derive(Clone)]
+struct Fake {
+    id: &'static str,
+    version: u32,
+    exts: &'static [&'static str],
+    class: Class,
+    limits: Limits,
+    reads: Arc<Mutex<HashMap<String, usize>>>,
+    order: Arc<Mutex<Vec<String>>>,
+    body: Body,
+}
+
+impl Fake {
+    fn new(id: &'static str, exts: &[&'static str]) -> Fake {
+        Fake {
+            id,
+            version: 1,
+            exts: leak(exts),
+            class: Class::Document,
+            limits: Limits::default(),
+            reads: Arc::default(),
+            order: Arc::default(),
+            body: Arc::new(|path, sink, _| {
+                sink.text(&fs::read_to_string(path)?)?;
+                Ok(())
+            }),
+        }
+    }
+
+    fn body(mut self, body: impl Fn(&Path, &mut Sink, usize) -> Result<(), ReadError> + Send + Sync + 'static) -> Fake {
+        self.body = Arc::new(body);
+        self
+    }
+
+    fn total(&self) -> usize {
+        self.reads.lock().unwrap().values().sum()
+    }
+
+    fn of(&self, path: &str) -> usize {
+        self.reads.lock().unwrap().get(path).copied().unwrap_or(0)
+    }
+
+    fn registry(&self) -> Registry {
+        Registry::with(vec![Arc::new(self.clone())])
+    }
+}
+
+impl Reader for Fake {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+    fn version(&self) -> u32 {
+        self.version
+    }
+    fn exts(&self) -> &'static [&'static str] {
+        self.exts
+    }
+    fn class(&self) -> Class {
+        self.class
+    }
+    fn limits(&self) -> Limits {
+        self.limits
+    }
+    fn read(&self, path: &Path, sink: &mut Sink) -> Result<(), ReadError> {
+        let key = path.to_str().unwrap().to_string();
+        let n = {
+            let mut reads = self.reads.lock().unwrap();
+            let n = reads.entry(key.clone()).or_default();
+            *n += 1;
+            *n
+        };
+        self.order.lock().unwrap().push(key);
+        (self.body)(path, sink, n)
+    }
+}
+
+// --- the sink ---
+
+#[test]
+fn the_sink_cuts_text_on_a_character_boundary_and_records_it() {
+    let far = Instant::now() + Duration::from_secs(10);
+    let mut sink = Sink::new(5, far);
+    assert_eq!(sink.text("ab").unwrap(), Flow::More);
+    assert_eq!(sink.text("cdéfg").unwrap(), Flow::Full);
+    assert_eq!(sink.text("more").unwrap(), Flow::Full);
+    assert_eq!(sink.chars(), 5);
+    let (parts, facts) = sink.finish();
+    assert_eq!(parts, vec![Part { part: 0, label: String::new(), text: "abcdé".into() }]);
+    assert!(facts.contains(&("truncated".into(), "1".into())));
+    // Multi-byte characters are counted as characters.
+    let mut sink = Sink::new(3, far);
+    sink.part("page 1");
+    assert_eq!(sink.text("किराया").unwrap(), Flow::Full);
+    let (parts, _) = sink.finish();
+    assert_eq!((parts[0].label.as_str(), parts[0].text.as_str()), ("page 1", "किर"));
+    // Text that fits exactly is not truncated.
+    let mut sink = Sink::new(4, far);
+    assert_eq!(sink.text("abcd").unwrap(), Flow::More);
+    assert!(sink.finish().1.is_empty());
+}
+
+#[test]
+fn the_sink_stops_a_reader_past_its_time_limit() {
+    let sink = Sink::new(100, Instant::now() - Duration::from_millis(1));
+    assert!(matches!(sink.check(), Err(ReadError::Timeout)));
+    let mut sink = sink;
+    assert!(matches!(sink.text("late"), Err(ReadError::Timeout)));
+}
+
+// --- the migration ---
+
+#[test]
+fn a_new_index_reaches_version_1_with_every_table() {
+    let home = Home::new();
+    let index = home.open();
+    assert_eq!(count(&index, "PRAGMA user_version"), 1);
+    assert_eq!(crate::index::migrate::VERSION, 1);
+    for table in ["extracts", "contents", "contents_fts", "facts", "extract_queue", "extract_kinds"] {
+        let n = count(&index, &format!("SELECT COUNT(*) FROM sqlite_master WHERE name = '{table}'"));
+        assert_eq!(n, 1, "{table}");
+    }
+    for trigger in ["files_ai_extract", "files_au_extract", "files_ad_extract", "contents_ai", "contents_ad"] {
+        let n =
+            count(&index, &format!("SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name = '{trigger}'"));
+        assert_eq!(n, 1, "{trigger}");
+    }
+    drop(index);
+    // Opening again changes nothing.
+    assert_eq!(count(&home.open(), "PRAGMA user_version"), 1);
+}
+
+#[test]
+fn a_phase_1_index_is_migrated_and_its_files_are_queued() {
+    let home = Home::new();
+    let notes = home.write("Documents/notes.txt", b"The ferry leaves at noon.");
+    let page = home.write("Documents/page.html", b"<p>Ferry timetable</p>");
+    let photo = home.write("Documents/photo.jpg", b"jpeg");
+    {
+        // The index as phase 1 left it: version 0, with files.
+        let conn = rusqlite::Connection::open(&home.db).unwrap();
+        conn.execute_batch(crate::index::db::SCHEMA).unwrap();
+        for path in [&home.root, &format!("{}/Documents", home.root), &notes, &page, &photo] {
+            let r = record_of(Path::new(path), &home.root).unwrap();
+            conn.execute(
+                "INSERT INTO files (path, root, name, ext, is_dir, size, modified, inode, seen) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1)",
+                params![r.path, r.root, r.name, r.ext, r.is_dir, r.size, r.modified, r.inode],
+            )
+            .unwrap();
+        }
+        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    }
+    let mut index = home.open();
+    assert_eq!(count(&index, "PRAGMA user_version"), 1);
+    assert_eq!(index.count().unwrap(), 5, "the files are kept");
+    assert_eq!(queued(&index), 0, "nothing is queued by the migration itself");
+    let registry = Registry::platform();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let stats = run(&mut index, &registry);
+    assert_eq!(stats.reconciled, 2, "the text and HTML files; not the photo or the folders");
+    let mut ferry = found(&index, "ferry");
+    ferry.sort();
+    assert_eq!(ferry, vec![notes.clone(), page.clone()]);
+    assert_eq!(found(&index, "timetable"), vec![page]);
+    // Name search still works over the migrated files.
+    assert_eq!(crate::index::search::search(&index, "notes", 10, now()).unwrap()[0].file.path, notes);
+}
+
+#[test]
+fn an_index_from_a_newer_sifs_still_opens() {
+    let home = Home::new();
+    home.open().conn.pragma_update(None, "user_version", 99).unwrap();
+    let index = home.open();
+    assert_eq!(count(&index, "PRAGMA user_version"), 99);
+}
+
+// --- the queue ---
+
+#[test]
+fn an_unchanged_rescan_queues_nothing() {
+    let home = Home::new();
+    for i in 0..5 {
+        home.write(&format!("Documents/n{i}.txt"), format!("note {i}").as_bytes());
+    }
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    assert_eq!(queued(&index), 5);
+    run(&mut index, &registry);
+    assert_eq!(queued(&index), 0);
+    // The upsert rewrites every column of every row; nothing changed, so
+    // nothing is queued.
+    scan(&mut index, &home.root, &home.rules, |_| {}).unwrap();
+    home.refresh(&mut index, "Documents/n0.txt");
+    assert_eq!(queued(&index), 0);
+}
+
+#[test]
+fn deleting_a_file_or_folder_removes_what_was_read_from_it_everywhere() {
+    let home = Home::new();
+    for rel in ["a/one.txt", "a/b/two.txt", "c/three.txt", "d/four.txt", "keep/five.txt"] {
+        home.write(rel, format!("{rel} shared okapi words").as_bytes());
+    }
+    home.write("other/six.txt", b"okapi in another folder");
+    home.write("a/page.html", b"<title>okapi page</title>");
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    let other = format!("{}/../other", home.root);
+    fs::create_dir_all(&other).unwrap();
+    fs::write(format!("{other}/seven.txt"), b"okapi outside home").unwrap();
+    let other = fs::canonicalize(other).unwrap().to_str().unwrap().to_string();
+    scan(&mut index, &other, &home.rules, |_| {}).unwrap();
+    run(&mut index, &registry);
+    assert_eq!(found(&index, "okapi").len(), 8);
+    assert!(count(&index, "SELECT COUNT(*) FROM facts") > 0, "the page's title");
+
+    let orphans = |index: &Index| {
+        ["contents", "facts", "extracts", "extract_queue"]
+            .iter()
+            .map(|t| count(index, &format!("SELECT COUNT(*) FROM {t} WHERE file_id NOT IN (SELECT id FROM files)")))
+            .sum::<i64>()
+    };
+    // A file, through the watcher's refresh.
+    fs::remove_file(home.at("a/one.txt")).unwrap();
+    home.refresh(&mut index, "a/one.txt");
+    assert!(!found(&index, "okapi").contains(&home.at("a/one.txt")));
+    // A folder, with the page and its title inside it.
+    fs::remove_dir_all(home.at("a")).unwrap();
+    home.refresh(&mut index, "a");
+    assert!(found(&index, "page").is_empty());
+    assert_eq!(count(&index, "SELECT COUNT(*) FROM facts"), 0);
+    // Gone when a rescan finds it missing.
+    fs::remove_dir_all(home.at("c")).unwrap();
+    scan(&mut index, &home.root, &home.rules, |_| {}).unwrap();
+    // Newly ignored.
+    let rules = Rules::new(&["**/d".to_string()], &home.root).unwrap();
+    scan(&mut index, &home.root, &rules, |_| {}).unwrap();
+    // A folder the user removed.
+    index.remove_root(&other).unwrap();
+    assert_eq!(orphans(&index), 0);
+    let mut left = found(&index, "okapi");
+    left.sort();
+    assert_eq!(left, vec![home.at("keep/five.txt"), home.at("other/six.txt")]);
+    assert_eq!(count(&index, "SELECT COUNT(*) FROM contents"), 2);
+    // The full-text index agrees with its table.
+    index.conn.execute("INSERT INTO contents_fts(contents_fts, rank) VALUES ('integrity-check', 1)", []).unwrap();
+}
+
+/// Files of every priority, each modified long enough ago to not count as
+/// recent, but one.
+fn ordered_home() -> (Home, Registry) {
+    let home = Home::new();
+    for (rel, days) in [("code.rs", 400), ("notes.txt", 300), ("older.md", 500), ("photo.png", 300), ("recent.rs", 0)] {
+        let path = home.write(rel, b"x");
+        if days > 0 {
+            set_age(&path, days);
+        }
+    }
+    let mut image = Fake::new("image", &["png"]);
+    image.class = Class::Image;
+    let mut registry = Registry::platform();
+    registry.register(Arc::new(image));
+    (home, registry)
+}
+
+fn claim_order(index: &mut Index) -> Vec<String> {
+    let jobs = store::claim(index, 16, &[]).unwrap();
+    jobs.into_iter().map(|j| j.path.rsplit('/').next().unwrap().to_string()).collect()
+}
+
+#[test]
+fn the_queue_takes_recent_files_then_documents_then_images_then_code() {
+    let (home, registry) = ordered_home();
+    let mut index = home.scanned(&registry);
+    // Within a priority, the most recently modified first.
+    assert_eq!(claim_order(&mut index), vec!["recent.rs", "notes.txt", "older.md", "photo.png", "code.rs"]);
+}
+
+#[test]
+fn opening_a_file_moves_it_to_the_front() {
+    let (home, registry) = ordered_home();
+    let mut index = home.scanned(&registry);
+    assert!(store::bump_opened(&mut index, &home.at("code.rs")).unwrap());
+    assert_eq!(claim_order(&mut index)[..2], ["code.rs", "recent.rs"]);
+    assert!(!store::bump_opened(&mut index, &home.at("not-indexed.txt")).unwrap());
+}
+
+// --- reading again only when something changed ---
+
+#[test]
+fn a_second_run_reads_nothing() {
+    let home = Home::new();
+    for i in 0..5 {
+        home.write(&format!("n{i}.txt"), b"tapir");
+    }
+    let fake = Fake::new("fake", &["txt"]);
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!(fake.total(), 5);
+    run(&mut index, &registry);
+    scan(&mut index, &home.root, &home.rules, |_| {}).unwrap();
+    run(&mut index, &registry);
+    assert_eq!(fake.total(), 5);
+}
+
+#[test]
+fn a_changed_time_or_size_rereads_exactly_that_file() {
+    let home = Home::new();
+    for name in ["a", "b", "c"] {
+        home.write(&format!("{name}.txt"), b"tapir");
+    }
+    let fake = Fake::new("fake", &["txt"]);
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!(fake.total(), 3);
+
+    set_age(&home.at("a.txt"), 2);
+    home.refresh(&mut index, "a.txt");
+    run(&mut index, &registry);
+    assert_eq!((fake.total(), fake.of(&home.at("a.txt"))), (4, 2));
+
+    // A new size with the same time.
+    let modified = fs::metadata(home.at("b.txt")).unwrap().modified().unwrap();
+    home.write("b.txt", b"tapirs");
+    fs::File::options().write(true).open(home.at("b.txt")).unwrap().set_modified(modified).unwrap();
+    home.refresh(&mut index, "b.txt");
+    run(&mut index, &registry);
+    assert_eq!((fake.total(), fake.of(&home.at("b.txt"))), (5, 2));
+    assert_eq!(found(&index, "tapirs"), vec![home.at("b.txt")]);
+}
+
+#[test]
+fn a_new_reader_version_rereads_that_readers_files_and_no_others() {
+    let home = Home::new();
+    for rel in ["a.txt", "b.txt", "c.md"] {
+        home.write(rel, b"tapir");
+    }
+    let (alpha, beta) = (Fake::new("alpha", &["txt"]), Fake::new("beta", &["md"]));
+    let registry = Registry::with(vec![Arc::new(alpha.clone()), Arc::new(beta.clone())]);
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!((alpha.total(), beta.total()), (2, 1));
+
+    let mut alpha2 = Fake::new("alpha", &["txt"]);
+    alpha2.version = 2;
+    let beta1 = Fake::new("beta", &["md"]);
+    let registry = Registry::with(vec![Arc::new(alpha2.clone()), Arc::new(beta1.clone())]);
+    store::register_kinds(&mut index, &registry).unwrap();
+    let stats = run(&mut index, &registry);
+    assert_eq!(stats.reconciled, 2);
+    assert_eq!((alpha2.total(), beta1.total()), (2, 0));
+    // And once is enough.
+    run(&mut index, &registry);
+    assert_eq!(alpha2.total(), 2);
+}
+
+// --- failures and limits ---
+
+#[test]
+fn a_failing_reader_is_recorded_and_not_retried_until_the_file_changes() {
+    let home = Home::new();
+    let path = home.write("bad.txt", b"tapir");
+    let fake = Fake::new("fake", &["txt"]).body(|_, _, _| Err(ReadError::Other("cannot parse this".into())));
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!(status(&index, &path), ("failed".into(), Some("cannot parse this".into())));
+    let failures = store::failures(&index, 10).unwrap();
+    assert_eq!(
+        failures,
+        vec![Failure { path: path.clone(), status: "failed".into(), error: "cannot parse this".into() }]
+    );
+    assert_eq!(store::progress(&index).unwrap(), Progress { failed: 1, ..Progress::default() });
+
+    run(&mut index, &registry);
+    assert_eq!(fake.total(), 1);
+    // Checking every file against the readers again doesn't retry it either.
+    index.conn.execute("DELETE FROM meta WHERE key = 'extract_signature'", []).unwrap();
+    let stats = run(&mut index, &registry);
+    assert_eq!((stats.reconciled, fake.total()), (0, 1));
+
+    home.write("bad.txt", b"tapirs");
+    home.refresh(&mut index, "bad.txt");
+    run(&mut index, &registry);
+    assert_eq!(fake.total(), 2);
+}
+
+#[test]
+fn a_file_one_byte_over_the_cap_is_never_opened() {
+    let home = Home::new();
+    let over = home.write("over.txt", &[b'a'; 101]);
+    let at = home.write("at.txt", &[b'a'; 100]);
+    let mut fake = Fake::new("fake", &["txt"]);
+    fake.limits.max_bytes = 100;
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!((fake.of(&over), fake.of(&at)), (0, 1));
+    assert_eq!(status(&index, &over), ("skipped".into(), Some("larger than 100 bytes".into())));
+    assert_eq!(status(&index, &at).0, "done");
+}
+
+#[test]
+fn the_real_readers_skip_what_is_over_their_caps_and_keep_a_million_characters() {
+    let home = Home::new();
+    let text = home.write("big.txt", &b"ab ".repeat(4 * MB as usize / 3 + 1)[..4 * MB as usize]);
+    let text_over = home.write("over.txt", &vec![b'a'; 4 * MB as usize + 1]);
+    let json_over = home.write("over.json", &vec![b' '; MB as usize + 1]);
+    let plain_over = home.write("Makefile", &vec![b'a'; MB as usize + 1]);
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!(status(&index, &text).0, "done");
+    assert_eq!(count(&index, "SELECT chars FROM extracts WHERE chars > 0"), 1_000_000);
+    assert_eq!(fact_of(&index, &text, "truncated").as_deref(), Some("1"));
+    assert_eq!(status(&index, &text_over), ("skipped".into(), Some("larger than 4 MB".into())));
+    assert_eq!(status(&index, &json_over), ("skipped".into(), Some("larger than 1 MB".into())));
+    assert_eq!(status(&index, &plain_over), ("skipped".into(), Some("larger than 1 MB".into())));
+}
+
+#[test]
+fn a_slow_reader_is_recorded_failed_and_the_worker_carries_on() {
+    let home = Home::new();
+    let stuck = home.write("stuck.slow", b"x");
+    let polite = home.write("polite.slow", b"x");
+    for i in 0..4 {
+        home.write(&format!("n{i}.txt"), b"tapir");
+    }
+    let mut slow = Fake::new("slow", &["slow"]).body(|path, sink, _| {
+        if path.ends_with("stuck.slow") {
+            // Ignores the time limit: abandoned.
+            std::thread::sleep(Duration::from_secs(3));
+            return Ok(());
+        }
+        // Stops itself at the limit.
+        loop {
+            sink.text("x")?;
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    });
+    slow.limits.time = Duration::from_millis(200);
+    let text = Fake::new("fake", &["txt"]);
+    let registry = Registry::with(vec![Arc::new(slow.clone()), Arc::new(text.clone())]);
+    let mut index = home.scanned(&registry);
+    let stats = run(&mut index, &registry);
+    let late = ("failed".to_string(), Some("took longer than 200 ms".to_string()));
+    assert_eq!(status(&index, &stuck), late);
+    assert_eq!(status(&index, &polite), late);
+    assert_eq!(stats.abandoned, 1, "only the one that ignored the limit");
+    assert_eq!(text.total(), 4);
+    assert_eq!(store::progress(&index).unwrap(), Progress { read: 4, failed: 2, ..Progress::default() });
+    // Not retried until it changes.
+    run(&mut index, &registry);
+    assert_eq!(slow.total(), 2);
+}
+
+// --- stopping and starting again ---
+
+#[test]
+fn a_restarted_worker_reads_every_file_exactly_once() {
+    let home = Home::new();
+    for i in 0..50 {
+        home.write(&format!("n{i:02}.txt"), format!("tapir {i}").as_bytes());
+    }
+    let fake = Fake::new("fake", &["txt"]).body(|path, sink, _| {
+        std::thread::sleep(Duration::from_millis(30));
+        sink.text(&fs::read_to_string(path)?)?;
+        Ok(())
+    });
+    let registry = Arc::new(fake.registry());
+    let index = home.scanned(&registry);
+    let read = |index: &Index| count(index, "SELECT COUNT(*) FROM extracts");
+
+    let worker = Worker::start(home.db.clone(), registry.clone(), options()).unwrap();
+    eventually("20 files read", || read(&index) >= 20);
+    let stats = worker.stop();
+    assert!(stats.errors.is_empty(), "{:?}", stats.errors);
+    let done = read(&index);
+    assert!(done < 50, "stopped part way: {done}");
+    assert_eq!(done + queued(&index), 50);
+    assert_eq!(count(&index, "SELECT COUNT(*) FROM extract_queue WHERE attempts > 0"), 0, "nothing left claimed");
+
+    let worker = Worker::start(home.db.clone(), registry, options()).unwrap();
+    eventually("every file read", || queued(&index) == 0);
+    assert!(worker.stop().errors.is_empty());
+    assert_eq!(read(&index), 50);
+    let reads = fake.reads.lock().unwrap();
+    assert_eq!(reads.len(), 50);
+    assert!(reads.values().all(|n| *n == 1), "{reads:?}");
+}
+
+#[test]
+fn a_file_with_an_unfinished_attempt_is_read_alone_and_first() {
+    let home = Home::new();
+    for name in ["a", "b", "c", "d", "e"] {
+        home.write(&format!("{name}.txt"), b"tapir");
+    }
+    // What the queue holds while each file is read: (file_id, attempts).
+    type Claimed = Vec<(i64, i64)>;
+    let seen: Arc<Mutex<Vec<Claimed>>> = Arc::default();
+    let (db, probe) = (home.db.clone(), seen.clone());
+    let fake = Fake::new("fake", &["txt"]).body(move |path, sink, _| {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        let mut stmt =
+            conn.prepare("SELECT file_id, attempts FROM extract_queue WHERE attempts > 0 ORDER BY file_id").unwrap();
+        let claimed = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(Result::unwrap).collect();
+        probe.lock().unwrap().push(claimed);
+        sink.text(&fs::read_to_string(path)?)?;
+        Ok(())
+    });
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    // SIFS stopped once while reading c.txt.
+    let c = id_of(&index, &home.at("c.txt"));
+    index.conn.execute("UPDATE extract_queue SET attempts = 1 WHERE file_id = ?1", [c]).unwrap();
+    run(&mut index, &registry);
+    assert_eq!(fake.order.lock().unwrap()[0], home.at("c.txt"));
+    assert_eq!(seen.lock().unwrap()[0], vec![(c, 2)], "claimed alone, its claim committed before the read");
+    assert_eq!(fake.total(), 5);
+    assert_eq!(status(&index, &home.at("c.txt")).0, "done");
+}
+
+#[test]
+fn a_file_that_stopped_sifs_twice_is_recorded_failed_without_being_read() {
+    let home = Home::new();
+    for name in ["a", "b"] {
+        home.write(&format!("{name}.txt"), b"tapir");
+    }
+    let fake = Fake::new("fake", &["txt"]);
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    let a = id_of(&index, &home.at("a.txt"));
+    index.conn.execute("UPDATE extract_queue SET attempts = 2 WHERE file_id = ?1", [a]).unwrap();
+    run(&mut index, &registry);
+    assert_eq!(fake.of(&home.at("a.txt")), 0);
+    assert_eq!(fake.of(&home.at("b.txt")), 1);
+    assert_eq!(status(&index, &home.at("a.txt")), ("failed".into(), Some(STOPPED_TWICE.into())));
+}
+
+// --- the watcher ---
+
+#[test]
+fn the_watcher_keeps_what_was_read_current() {
+    let home = Home::new();
+    home.write("Documents/lease.txt", b"the tenant is Okafor");
+    let registry = Arc::new(Registry::platform());
+    let index = home.scanned(&registry);
+    // It would look again only after a minute: the watcher's wake is what
+    // gets each change read.
+    let options = WorkerOptions { idle_poll: Duration::from_secs(60), ..options() };
+    let worker = Worker::start(home.db.clone(), registry, options).unwrap();
+    let waker = worker.waker();
+    let _watch = Watch::start(
+        home.db.clone(),
+        vec![home.root.clone()],
+        Arc::new(Mutex::new(Rules::new(&Rules::default_patterns(), &home.root).unwrap())),
+        move |_| waker.wake(),
+    )
+    .unwrap();
+    let lease = home.at("Documents/lease.txt");
+    eventually("the first words found", || found(&index, "okafor") == vec![lease.clone()]);
+
+    home.write("Documents/lease.txt", b"the new tenant is Haruki Sato");
+    eventually("the new words found and the old gone", || {
+        found(&index, "haruki") == vec![lease.clone()] && found(&index, "okafor").is_empty()
+    });
+
+    fs::remove_file(&lease).unwrap();
+    eventually("its words gone", || {
+        found(&index, "haruki").is_empty() && count(&index, "SELECT COUNT(*) FROM contents") == 0
+    });
+    assert!(worker.stop().errors.is_empty());
+}
+
+// --- races ---
+
+#[test]
+fn a_file_deleted_during_its_read_gets_nothing_written() {
+    let home = Home::new();
+    home.write("keep.txt", b"tapir");
+    let gone = home.write("gone.txt", b"gone okapi");
+    let db = home.db.clone();
+    let fake = Fake::new("fake", &["txt"]).body(move |path, sink, _| {
+        let text = fs::read_to_string(path)?;
+        if path.ends_with("gone.txt") {
+            // Deleted, and the watcher has removed it.
+            fs::remove_file(path).unwrap();
+            Index::open(&db).unwrap().remove_tree(path.to_str().unwrap()).unwrap();
+        }
+        sink.text(&text)?;
+        Ok(())
+    });
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!(fake.of(&gone), 1);
+    assert!(found(&index, "okapi").is_empty());
+    assert_eq!(count(&index, "SELECT COUNT(*) FROM extracts"), 1, "keep.txt only");
+    assert_eq!(queued(&index), 0);
+}
+
+#[test]
+fn a_file_removed_from_the_index_during_its_read_gets_nothing_written_even_if_its_id_is_reused() {
+    let home = Home::new();
+    home.write("keep.txt", b"tapir");
+    let (db, root) = (home.db.clone(), home.root.clone());
+    let replacement = home.at("replacement.txt");
+    let new_file = replacement.clone();
+    let fake = Fake::new("fake", &["txt"]).body(move |path, sink, _| {
+        let text = fs::read_to_string(path)?;
+        if path.ends_with("doomed.txt") {
+            // Removed from the index (newly ignored, say) though still on
+            // disk, and its id given to a new file.
+            let mut index = Index::open(&db).unwrap();
+            index.remove_tree(path.to_str().unwrap()).unwrap();
+            // As like the old file as can be: the same size and time.
+            fs::write(&new_file, b"fresh mangos").unwrap();
+            let modified = fs::metadata(path).unwrap().modified().unwrap();
+            fs::File::options().write(true).open(&new_file).unwrap().set_modified(modified).unwrap();
+            index.upsert(&[record_of(Path::new(&new_file), &root).unwrap()], 1).unwrap();
+        }
+        sink.text(&text)?;
+        Ok(())
+    });
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    // Added last, so its id is the highest, and is given to the next file
+    // added once it is removed.
+    let doomed = home.write("doomed.txt", b"doomed okapi");
+    home.refresh(&mut index, "doomed.txt");
+    let doomed_id = id_of(&index, &doomed);
+    run(&mut index, &registry);
+    assert_eq!(id_of(&index, &replacement), doomed_id, "the id was reused");
+    assert!(found(&index, "okapi").is_empty(), "the old file's words are not given to the new one");
+    assert_eq!(found(&index, "mangos"), vec![replacement], "it has its own");
+    assert_eq!(count(&index, "SELECT COUNT(*) FROM extracts"), 2, "keep.txt and the replacement");
+}
+
+#[test]
+fn a_file_changed_during_its_read_stays_queued_and_is_read_again() {
+    let home = Home::new();
+    let path = home.write("draft.txt", b"first");
+    let (db, root, rules_root) = (home.db.clone(), home.root.clone(), home.root.clone());
+    let fake = Fake::new("fake", &["txt"]).body(move |path, sink, n| {
+        let text = fs::read_to_string(path)?;
+        if n == 1 {
+            // Saved again while being read; the watcher catches up.
+            fs::write(path, b"first draft, then the second").unwrap();
+            let mut index = Index::open(&db).unwrap();
+            let rules = Rules::new(&Rules::default_patterns(), &rules_root).unwrap();
+            refresh(&mut index, path, std::slice::from_ref(&root), &rules).unwrap();
+        } else if n == 2 {
+            // Saved again, and the watcher hasn't caught up yet.
+            fs::write(path, b"first draft, then the second, then the third").unwrap();
+        }
+        sink.text(&text)?;
+        Ok(())
+    });
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!(fake.of(&path), 3);
+    assert_eq!(found(&index, "third"), vec![path.clone()]);
+    assert_eq!(count(&index, "SELECT size FROM extracts"), fs::metadata(&path).unwrap().len() as i64);
+    assert_eq!(queued(&index), 0);
+}
+
+// --- pausing ---
+
+#[test]
+fn a_paused_worker_reads_nothing_until_the_pause_ends() {
+    let home = Home::new();
+    for i in 0..5 {
+        home.write(&format!("n{i}.txt"), b"tapir");
+    }
+    let fake = Fake::new("fake", &["txt"]);
+    let registry = Arc::new(fake.registry());
+    let index = home.scanned(&registry);
+    let paused = Arc::new(AtomicBool::new(true));
+    let asked = Arc::new(AtomicUsize::new(0));
+    let (p, a) = (paused.clone(), asked.clone());
+    let worker = Worker::start(
+        home.db.clone(),
+        registry,
+        WorkerOptions {
+            pause: Arc::new(move || {
+                a.fetch_add(1, Ordering::SeqCst);
+                p.load(Ordering::SeqCst)
+            }),
+            ..options()
+        },
+    )
+    .unwrap();
+    eventually("the worker to look several times", || asked.load(Ordering::SeqCst) >= 5);
+    assert_eq!(fake.total(), 0);
+    assert_eq!(queued(&index), 5);
+    paused.store(false, Ordering::SeqCst);
+    worker.wake();
+    eventually("every file read", || queued(&index) == 0);
+    assert_eq!(fake.total(), 5);
+    drop(worker);
+}
+
+#[test]
+fn progress_is_reported_when_the_work_runs_out() {
+    let home = Home::new();
+    for i in 0..3 {
+        home.write(&format!("n{i}.txt"), b"tapir");
+    }
+    home.write("empty.txt", b"");
+    let registry = Arc::new(Registry::platform());
+    home.scanned(&registry);
+    let last: Arc<Mutex<Option<Progress>>> = Arc::default();
+    let l = last.clone();
+    let worker = Worker::start(
+        home.db.clone(),
+        registry,
+        WorkerOptions { on_progress: Arc::new(move |p| *l.lock().unwrap() = Some(p.clone())), ..options() },
+    )
+    .unwrap();
+    let want = Progress { read: 3, empty: 1, ..Progress::default() };
+    eventually("the final counts", || last.lock().unwrap().as_ref() == Some(&want));
+    drop(worker);
+}
+
+// --- the samples ---
+
+fn samples() -> (Home, Index) {
+    let home = Home::with_samples();
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    let stats = run(&mut index, &registry);
+    assert!(stats.errors.is_empty(), "{:?}", stats.errors);
+    (home, index)
+}
+
+#[test]
+fn every_sample_is_found_by_a_word_inside_it() {
+    let (home, index) = samples();
+    let sample = |name: &str| home.at(&format!("samples/{name}"));
+    for (word, name) in [
+        ("lighthouse", "notes.txt"),
+        ("backend", "résumé.md"),
+        ("quokkas", "main.rs"),
+        ("bengaluru", "data.csv"),
+        ("mysuru", "data.tsv"),
+        ("pelican", "config.json"),
+        ("café", "config.json"),
+        ("walrus", "broken.json"),
+        ("okonkwo", "page.html"),
+        ("montréal", "page.html"),
+        ("zambezi", "cp1252.html"),
+        ("fenwick", "latin1.txt"),
+        ("brûlée", "latin1.txt"),
+        ("alpaca", "utf16le-bom.txt"),
+        ("narwhal", "utf16be-bom.txt"),
+        ("pangolin", "utf16le-nobom.txt"),
+        ("किराया", "hindi.txt"),
+        ("zeppelin", "README"),
+    ] {
+        assert!(found(&index, word).contains(&sample(name)), "{word} should find {name}: {:?}", found(&index, word));
+    }
+    // What a browser doesn't show isn't indexed.
+    for hidden in ["hiddenstyleword", "hiddenscriptword", "hiddencommentword", "binaryword", "elfword"] {
+        assert!(found(&index, hidden).is_empty(), "{hidden}");
+    }
+    // An entity, and a Windows-1252 quote, decoded.
+    assert_eq!(found(&index, "landlord’s"), vec![sample("page.html")]);
+    assert_eq!(found(&index, "it’s"), vec![sample("cp1252.html")]);
+    for name in ["binary.txt", "program"] {
+        assert_eq!(status(&index, &sample(name)), ("skipped".into(), Some("not text".into())), "{name}");
+    }
+    assert_eq!(store::progress(&index).unwrap(), Progress { read: 15, skipped: 2, ..Progress::default() });
+    // The facts.
+    let fact = |name: &str, key: &str| fact_of(&index, &sample(name), key);
+    assert_eq!(fact("résumé.md", "title").as_deref(), Some("Résumé of Asha Rao"));
+    assert_eq!(fact("résumé.md", "author").as_deref(), Some("Asha Rao"));
+    assert_eq!(fact("page.html", "title").as_deref(), Some("Flat in Montréal"));
+    assert_eq!(fact("page.html", "author").as_deref(), Some("Asha Rao"));
+    assert_eq!(fact("cp1252.html", "title").as_deref(), Some("Café"));
+    assert_eq!(fact("data.csv", "columns").as_deref(), Some("month, rent, city"));
+    assert_eq!(fact("data.csv", "lines").as_deref(), Some("2"));
+    assert_eq!(fact("cp1252.html", "encoding").as_deref(), Some("windows-1252"));
+    assert_eq!(fact("latin1.txt", "encoding").as_deref(), Some("windows-1252"));
+    assert_eq!(fact("utf16le-bom.txt", "encoding").as_deref(), Some("UTF-16LE"));
+    assert_eq!(fact("utf16be-bom.txt", "encoding").as_deref(), Some("UTF-16BE"));
+    assert_eq!(fact("utf16le-nobom.txt", "encoding").as_deref(), Some("UTF-16LE"));
+    assert_eq!(fact("notes.txt", "encoding"), None);
+}
+
+#[test]
+fn resume_finds_résumé_composed_and_decomposed() {
+    let home = Home::with_samples();
+    let decomposed = home.write("samples/cv-nfd.md", "My re\u{301}sume\u{301}, decomposed.".as_bytes());
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    let composed = home.at("samples/résumé.md");
+    for query in ["resume", "résumé", "RESUME", "re\u{301}sume\u{301}"] {
+        let mut hits = found(&index, query);
+        hits.sort();
+        let mut want = vec![decomposed.clone(), composed.clone()];
+        want.sort();
+        assert_eq!(hits, want, "{query}");
+    }
+}
+
+#[test]
+fn the_hindi_sample_is_found_by_its_own_word() {
+    let (home, index) = samples();
+    assert_eq!(found(&index, "किराया"), vec![home.at("samples/hindi.txt")]);
+    assert_eq!(found(&index, "रुपये"), vec![home.at("samples/hindi.txt")]);
+}
