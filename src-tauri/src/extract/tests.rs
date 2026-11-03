@@ -1814,8 +1814,14 @@ fn a_folder_taken_in_during_its_scan_gives_its_files_to_the_new_one() {
     let (docs, root) = (home.at("Docs"), home.root.clone());
     home.write("top.txt", b"okapi top");
     assert_eq!(folders.add(&mut index, &root, now()).unwrap(), vec![docs.clone()]);
-    folders.scan(root.clone());
+    assert_eq!(index.count_root(&docs).unwrap(), 0, "what Docs's scan wrote is the home folder's at once");
+    // Docs's scan ends before the home folder is scanned: it stops, and
+    // writes nothing more under Docs.
     go.send(()).unwrap();
+    eventually("Docs's scan to end", || folders.idle());
+    assert_eq!(index.count_root(&docs).unwrap(), 0, "Docs's scan stopped");
+    assert_eq!(index.count_root(&root).unwrap(), 2000);
+    folders.scan(root.clone());
     eventually("everything to settle", || folders.idle());
     assert_eq!(index.folders().unwrap(), vec![root.clone()]);
     assert_eq!(index.count_root(&docs).unwrap(), 0);
