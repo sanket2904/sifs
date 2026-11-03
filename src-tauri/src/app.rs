@@ -1,6 +1,7 @@
 //! The desktop app: Tauri commands over the index, background scans, the
-//! watcher, and the tray.
+//! watcher, reading inside files, and the tray.
 
+use crate::extract::{self, Registry, Worker, WorkerOptions};
 use crate::index::crawl::{self, ScanStats};
 use crate::index::db::Index;
 use crate::index::ignore::Rules;
@@ -25,6 +26,8 @@ struct AppState {
     rules: Arc<Mutex<Rules>>,
     watch: Mutex<Option<Watch>>,
     scanning: Arc<Mutex<HashSet<String>>>,
+    /// Reads inside files in the background; paused while a scan runs.
+    extract: Worker,
 }
 
 #[derive(Serialize, Clone)]
@@ -46,6 +49,7 @@ struct Settings {
     ignore: Vec<String>,
     suggested: Vec<String>,
     total: i64,
+    contents: extract::Progress,
 }
 
 fn now() -> i64 {
@@ -78,7 +82,15 @@ fn settings(state: State<AppState>) -> Result<Settings, String> {
         .map(|d| format!("{}/{d}", state.home))
         .filter(|p| std::path::Path::new(p).is_dir())
         .collect();
-    Ok(Settings { folders, ignore, suggested, total: index.count().map_err(err)? })
+    let contents = extract::store::progress(&index).map_err(err)?;
+    Ok(Settings { folders, ignore, suggested, total: index.count().map_err(err)?, contents })
+}
+
+/// The files that couldn't be read inside, or were skipped, and why.
+#[tauri::command]
+fn content_failures(state: State<AppState>, limit: Option<usize>) -> Result<Vec<extract::Failure>, String> {
+    let index = state.reader.lock().unwrap();
+    extract::store::failures(&index, limit.unwrap_or(100).min(1000)).map_err(err)
 }
 
 #[tauri::command]
@@ -120,7 +132,11 @@ fn set_ignore(app: AppHandle, state: State<AppState>, patterns: Vec<String>) -> 
 }
 
 #[tauri::command]
-fn open_path(app: AppHandle, path: String) -> Result<(), String> {
+fn open_path(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
+    // If it is waiting to be read inside, it is read next.
+    if extract::store::bump_opened(&mut state.reader.lock().unwrap(), &path).unwrap_or(false) {
+        state.extract.wake();
+    }
     app.opener().open_path(path, None::<&str>).map_err(err)
 }
 
@@ -138,6 +154,7 @@ fn start_scan(app: &AppHandle, state: &AppState, root: String) {
     let db_path = state.db_path.clone();
     let home = state.home.clone();
     let scanning = state.scanning.clone();
+    let reading = state.extract.waker();
     std::thread::spawn(move || {
         let result = (|| -> anyhow::Result<ScanStats> {
             let mut index = Index::open(&db_path)?;
@@ -150,6 +167,8 @@ fn start_scan(app: &AppHandle, state: &AppState, root: String) {
             })
         })();
         scanning.lock().unwrap().remove(&root);
+        // Reading inside files waits for scans to finish.
+        reading.wake();
         match result {
             Ok(stats) => {
                 log::info!("scanned {}: {} indexed in {} ms", stats.root, stats.indexed, stats.millis);
@@ -171,14 +190,33 @@ pub fn run() {
             let data = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data)?;
             let db_path = data.join("sifs.db");
-            let index = Index::open(&db_path)?;
+            let mut index = Index::open(&db_path)?;
             let patterns = index.ignore_patterns()?.unwrap_or_else(Rules::default_patterns);
             let rules = Arc::new(Mutex::new(Rules::new(&patterns, &home)?));
             let folders = index.folders()?;
+            // The readers' extensions are in the index before anything is
+            // scanned, so the queue's triggers see them.
+            let registry = Arc::new(Registry::platform());
+            extract::store::register_kinds(&mut index, &registry)?;
+            let scanning: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+            let (busy, progress) = (scanning.clone(), app.handle().clone());
+            let worker = Worker::start(
+                db_path.clone(),
+                registry,
+                WorkerOptions {
+                    pause: Arc::new(move || !busy.lock().unwrap().is_empty()),
+                    on_progress: Arc::new(move |p: &extract::Progress| {
+                        let _ = progress.emit("extract-progress", p);
+                    }),
+                    ..WorkerOptions::default()
+                },
+            )?;
             let handle = app.handle().clone();
+            let reading = worker.waker();
             let watch = Watch::start(db_path.clone(), folders.clone(), rules.clone(), move |applied| {
                 if applied > 0 {
                     let _ = handle.emit("index-changed", applied);
+                    reading.wake();
                 }
             })?;
             let state = AppState {
@@ -187,7 +225,8 @@ pub fn run() {
                 reader: Mutex::new(index),
                 rules,
                 watch: Mutex::new(Some(watch)),
-                scanning: Arc::new(Mutex::new(HashSet::new())),
+                scanning,
+                extract: worker,
             };
             // Catch up on what changed while the app was closed.
             for folder in folders {
@@ -228,7 +267,8 @@ pub fn run() {
             remove_folder,
             set_ignore,
             open_path,
-            reveal_path
+            reveal_path,
+            content_failures
         ])
         .run(tauri::generate_context!())
         .expect("error while running SIFS");
