@@ -14,7 +14,7 @@ The name index stays as it is. Three additions to the same SQLite file:
 |---|---|
 | `extracts` | One row per file read: `file_id`, `reader`, its `version`, the file's `modified` and `size` when read, `status` (done, empty, failed, skipped), the error, the time taken and the characters kept. A file is read again only if its `modified` or `size` changed, or the reader's version went up. |
 | `contents` | One row per page, sheet, slide or email part: `file_id`, `part` (its number), `label` ("page 3", "Q2", "subject") and `text`. |
-| `contents_fts` | FTS5 over `contents` (external content, kept in step by triggers). The tokenizer is `unicode61 remove_diacritics 2`, so "resume" finds "résumé". Keeping the text in `contents` lets the tokenizer change later with a rebuild and no re-reading. |
+| `contents_fts` | FTS5 over `contents` (external content, kept in step by triggers). The tokenizer is `unicode61 remove_diacritics 2`, so "resume" finds "résumé", with combining marks as word characters (`categories 'L* N* Co M*'`, so Hindi words stay whole) except the emoji variation selectors and the keycap (U+FE0E, U+FE0F, U+20E3), which are separators: "I❤️you" has the word "you", and "❤️" matches nothing. Keeping the text in `contents` lets the tokenizer change later with a rebuild and no re-reading. |
 | `facts` | The small values read alongside the text, as (`file_id`, `key`, `value`): EXIF date, camera, GPS latitude and longitude, where the file was downloaded from, author, title, page count, duration, artist, and so on. Phase 4 hands these to the engine. |
 | `extract_queue` | The files waiting to be read, with their priority, and how many reads were started and never finished (crash safety). |
 | `extract_kinds` | Which extensions have a reader on this machine, with its version and priority. Rust rewrites it at startup, so Linux and the Mac can register different readers. |
@@ -73,6 +73,7 @@ Triggers on `files` keep the queue right, so the crawler, watcher and search don
 - **A file is added:** it's queued if its extension has a reader. Priority 0 if it changed in the last week, else its reader's priority (documents 1, images 2, the rest 3).
 - **A file's `modified` or `size` changes:** it's queued again at priority 0. The old text stays searchable until the new read replaces it. An unchanged rescan queues nothing (a test pins this, since the upsert rewrites every column).
 - **A file is deleted** (including folder removal and ignore-pattern rescans): its contents, facts, extract and queue row go too.
+- **Only files, folders and links are indexed.** FIFOs, sockets and devices are not, since opening one can block.
 
 At startup, if the readers or their versions changed (a signature kept in `meta`), a reconcile pass queues the files whose extract is missing or out of date, in chunks of 50,000 rows. A failed or skipped file whose `modified`, `size` and reader version still match is **not** queued again.
 
@@ -83,11 +84,12 @@ One thread, `sifs-extract`, at low priority (macOS QoS "utility"; `setpriority` 
 - **Pace:** one or two reads at a time; readers marked exclusive (OCR later) run one at a time. It pauses while a scan runs, and wakes on watcher changes and finished scans.
 - **Each read:**
   - The file is checked just before reading. If it's gone, the queue row is dropped. If its extract already matches, nothing is read.
-  - A file over the size cap is skipped and never opened.
+  - A file over the size cap is skipped and never opened. Anything that is not a regular file (or a package folder, for a reader of packages) is never opened, and what was read from it is cleared.
   - The read runs on its own thread, with a time limit. Past the limit it's recorded failed ("took longer than 10 s"), and the thread is abandoned.
   - The file is checked again after the read. If it changed meanwhile, the result is thrown away and the file stays queued.
 - **Writing:** results are written in batches of up to 16 files or 2 MB of text, in one transaction under the shared writer lock, so each hold is tens of milliseconds. Before writing, the file's path is checked again, since ids can be reused after a delete.
 - **Crash safety:** a claim increments the queue row's `attempts` before reading. After a crash, files with unfinished attempts are read one at a time, each claim committed first. A file that stops SIFS twice is recorded failed ("SIFS stopped twice while reading this file"), so one bad file can't crash the app in a loop.
+- **Errors:** an error after a claim puts the files back unread. Errors in a row are waited out longer each time: idle_poll (5 s), doubling up to 10 min, back to 5 s after a step that works. When a write fails part way, the reads still running count as abandoned until they end.
 - **Progress:** counts by status plus the queue length, sent to the window at most once a second.
 
 ### Readers in step 1
@@ -102,7 +104,7 @@ A `Reader` trait (`id`, `version`, extensions, class, limits, `read(path, sink)`
 | json | json, geojson, ipynb | keys and string values; raw text if it doesn't parse |
 | html | html, htm, xhtml | tags, scripts, styles and comments stripped; entities decoded; title and author as facts |
 
-**Encodings, for every reader:** a byte-order mark decides UTF-8 or UTF-16; UTF-16 without a mark is recognised from its zero bytes; other zero bytes mean binary (skipped); valid UTF-8 is used as is; anything else is guessed (`chardetng`) and decoded (`encoding_rs`), and the encoding is kept as a fact. HTML's `<meta charset>` is honoured first.
+**Encodings, for every reader:** a byte-order mark decides UTF-8 or UTF-16; UTF-16 without a mark is recognised from its zero bytes (on one side only, at least one code unit in 128, so Japanese with no spaces counts; Chinese and Korean without a mark have zeros on both sides and are still taken as binary); other zero bytes mean binary (skipped); valid UTF-8 is used as is; anything else is guessed (`chardetng`) and decoded (`encoding_rs`), and the encoding is kept as a fact. HTML's `<meta charset>` is honoured first.
 
 **Limits:** skip files over 4 MB (JSON and files without an extension: 1 MB); keep at most 1 million characters per file (the rest is cut, and a `truncated` fact recorded); a 10-second limit per file.
 
@@ -113,6 +115,7 @@ A `Reader` trait (`id`, `version`, extensions, class, limits, `read(path, sink)`
 - `setup` registers the readers and starts the worker before the watcher.
 - Settings show "Reading inside files: 12,340 read · 2,104 waiting · 12 couldn't be read · 30 skipped", with a list of failures and their reasons.
 - New command `content_failures`; new event `extract-progress`.
+- **Removing a folder** (`index::folders`): searches leave it out at once, and its rows go in the background, 100 at a time. A scan of it still running is stopped before its next batch, and the removal starts once the scan has stopped. A removal that fails is tried again (5 s, doubling up to 10 min), and adding the folder while it is marked starts one. At startup every root files are indexed under that is not a chosen folder is removed too.
 
 ### Tests
 
@@ -135,9 +138,9 @@ On a folder of sample files (`tests/fixtures/contents/`): text, markdown with "r
 ### Risks
 
 - **The triggers slow the first scan.** If by more than about 10%, queue from Rust in the upsert batches instead.
-- **Removing a large folder now deletes its text too.** Move folder removal to a background thread.
+- **Removing a large folder now deletes its text too.** Done: folder removal runs in the background, in batches.
 - **Deleted text leaves free pages,** and FTS5 segments fragment. Merge segments when the worker goes idle.
-- **A stuck reader can't be killed in-process,** only abandoned (at most 4 at once). A crash inside a Mac framework takes the app down; crash safety stops it repeating.
+- **A stuck reader can't be killed in-process,** only abandoned (at most 4 at once, across every reader). A crash inside a Mac framework takes the app down; crash safety stops it repeating.
 - **Renames re-read the file** (a rename gets a new id). Cheap for text; carrying extracts over by inode comes before OCR.
 - **The tokenizer doesn't split Chinese or Japanese** into words.
 - **Extracted text is stored unencrypted** in `sifs.db`, protected by FileVault.
