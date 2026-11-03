@@ -19,9 +19,15 @@ pub struct ScanStats {
     pub millis: u64,
 }
 
-/// The record of one path, or None for one that can't be read.
+/// The record of one path, or None for one that can't be read or isn't a
+/// file, folder or link (a FIFO, socket or device: nothing a person
+/// searches for, and opening one can block).
 pub fn record_of(path: &Path, root: &str) -> Option<FileRecord> {
     let meta = std::fs::symlink_metadata(path).ok()?;
+    let kind = meta.file_type();
+    if !(kind.is_file() || kind.is_dir() || kind.is_symlink()) {
+        return None;
+    }
     let path_str = path.to_str()?.to_string();
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or(&path_str).to_string();
     let is_dir = meta.is_dir();

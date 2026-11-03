@@ -1294,3 +1294,112 @@ fn a_file_opened_in_sifs_is_moved_to_the_front_by_the_worker() {
     assert_eq!(priority("a.txt"), 1);
     drop(worker);
 }
+
+// --- files that are not regular files ---
+
+#[cfg(unix)]
+fn mkfifo(path: &str) {
+    let c = std::ffi::CString::new(path).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o644) }, 0, "mkfifo {path}");
+}
+
+/// While it lives, keeps opening the writing end of each FIFO without
+/// blocking, so a read stuck opening one ends at once rather than at its
+/// time limit: a test that fails, fails fast, and leaves no thread behind.
+#[cfg(unix)]
+struct Unblocker {
+    stop: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(unix)]
+impl Unblocker {
+    fn new(paths: Vec<String>) -> Unblocker {
+        use std::os::unix::fs::OpenOptionsExt;
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        let thread = std::thread::spawn(move || {
+            while !flag.load(Ordering::SeqCst) {
+                for path in &paths {
+                    let _ = fs::OpenOptions::new().write(true).custom_flags(libc::O_NONBLOCK).open(path);
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+        Unblocker { stop, thread: Some(thread) }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for Unblocker {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+/// A FIFO with a reader's extension, or none (the plain reader takes
+/// those), blocks in open(); four of them used to stop every read.
+#[cfg(unix)]
+#[test]
+fn fifos_are_not_indexed_and_never_stop_reading() {
+    let home = Home::new();
+    let fifos: Vec<String> = ["p1.txt", "p2.txt", "p3.txt", "p4.txt", "pipe"].iter().map(|n| home.at(n)).collect();
+    for path in &fifos {
+        mkfifo(path);
+    }
+    let real = home.write("real.txt", b"tapir real words");
+    set_age(&real, 400); // read after the fifos, if they were queued
+    let _unblock = Unblocker::new(fifos.clone());
+    let mut fake = Fake::new("fake", &["txt", ""]);
+    fake.limits.time = Duration::from_millis(200);
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    for path in &fifos {
+        assert!(index.get(path).unwrap().is_none(), "{path} is indexed");
+    }
+    let stats = run(&mut index, &registry);
+    assert_eq!((stats.reads, stats.abandoned), (1, 0));
+    assert_eq!(found(&index, "tapir"), vec![real.clone()]);
+    // Nor does the watcher index one.
+    home.refresh(&mut index, "pipe");
+    assert!(index.get(&home.at("pipe")).unwrap().is_none());
+}
+
+/// A file read, then replaced by a FIFO before the index knew: the worker
+/// sees it just before opening it, and turns it away.
+#[cfg(unix)]
+#[test]
+fn a_file_replaced_by_a_fifo_is_cleared_not_opened() {
+    let home = Home::new();
+    let names = ["p1.txt", "p2.txt", "p3.txt", "p4.txt", "pipe"];
+    for name in names {
+        home.write(name, b"zebu words");
+    }
+    let real = home.write("real.txt", b"tapir real words");
+    set_age(&real, 400);
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!(found(&index, "zebu").len(), 5);
+    let fifos: Vec<String> = names.iter().map(|n| home.at(n)).collect();
+    for path in &fifos {
+        fs::remove_file(path).unwrap();
+        mkfifo(path);
+        // Queued again, as a change the watcher had not seen yet would be.
+        index.conn.execute("UPDATE files SET size = size + 1 WHERE path = ?1", [path]).unwrap();
+    }
+    home.write("real.txt", b"tapir real words again");
+    set_age(&real, 400);
+    home.refresh(&mut index, "real.txt");
+    assert_eq!(queued(&index), 6);
+    let _unblock = Unblocker::new(fifos);
+    let started = std::time::Instant::now();
+    let stats = run(&mut index, &registry);
+    assert_eq!((stats.reads, stats.abandoned), (1, 0), "only real.txt is opened");
+    assert!(found(&index, "zebu").is_empty(), "what was read from them is cleared");
+    assert_eq!(found(&index, "again"), vec![real]);
+    assert!(started.elapsed() < Duration::from_secs(5));
+}

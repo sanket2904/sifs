@@ -466,9 +466,13 @@ impl<'a> Runner<'a> {
             Ok(meta) => meta,
             Err(_) => return Ok(Ok(Finished::Drop(job))),
         };
-        // A link's target is read where it is indexed, if it is. A file
-        // replaced by a link or a folder loses what was read from it.
-        if meta.file_type().is_symlink() || (meta.is_dir() && !reader.packages()) {
+        // Only a regular file (or a package folder, for a reader of
+        // packages) is opened: a FIFO, socket or device would block in
+        // open() or never end. A link's target is read where it is indexed,
+        // if it is. A file replaced by any of these loses what was read
+        // from it.
+        let kind = meta.file_type();
+        if !(kind.is_file() || (kind.is_dir() && reader.packages())) {
             return Ok(Ok(Finished::Clear(job)));
         }
         let stat = Stat::of(&meta);
