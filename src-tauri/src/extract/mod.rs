@@ -43,6 +43,8 @@ impl Class {
 }
 
 pub const MB: u64 = 1024 * 1024;
+/// Characters kept of one fact's value.
+pub const MAX_FACT_CHARS: usize = 1000;
 
 /// How much a reader may take on.
 #[derive(Debug, Clone, Copy)]
@@ -178,9 +180,14 @@ impl Sink {
         Ok(flow)
     }
 
+    /// Records a fact, its value cut at MAX_FACT_CHARS characters.
     pub fn fact(&mut self, key: &str, value: impl Into<String>) {
         let value = value.into();
         let value = value.trim();
+        let value = match value.char_indices().nth(MAX_FACT_CHARS) {
+            Some((cut, _)) => &value[..cut],
+            None => value,
+        };
         if !value.is_empty() {
             self.facts.push((key.to_string(), value.to_string()));
         }

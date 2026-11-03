@@ -1,7 +1,8 @@
 //! Bytes to text, for every reader: a byte-order mark decides UTF-8 or
 //! UTF-16; UTF-16 without one is recognised from its zero bytes; other zero
-//! bytes mean the file isn't text; valid UTF-8 is used as is; anything else
-//! is guessed (chardetng) and decoded (encoding_rs).
+//! bytes mean the file isn't text; UTF-8 is used as is, with a few invalid
+//! bytes replaced; anything else is guessed (chardetng) and decoded
+//! (encoding_rs). Line breaks become "\n", other control characters spaces.
 
 use super::ReadError;
 use encoding_rs::{Encoding, UTF_16BE, UTF_16LE, UTF_8};
@@ -53,6 +54,12 @@ pub fn decode(bytes: &[u8], hint: Option<&'static Encoding>) -> Result<Decoded, 
     if let Ok(text) = std::str::from_utf8(bytes) {
         return Ok(Decoded { text: clean(text), encoding: None });
     }
+    // UTF-8 but for a few bad bytes (a file two tools appended to, say):
+    // kept as UTF-8, the bad bytes replaced, rather than all of it guessed.
+    let (non_ascii, invalid) = utf8_damage(bytes);
+    if non_ascii > 0 && invalid * 20 <= non_ascii {
+        return Ok(Decoded { text: clean(&String::from_utf8_lossy(bytes)), encoding: None });
+    }
     let mut detector = chardetng::EncodingDetector::new();
     detector.feed(bytes, true);
     Ok(finish(detector.guess(None, true), bytes))
@@ -73,9 +80,12 @@ fn utf16_without_bom(bytes: &[u8]) -> Option<&'static Encoding> {
             }
         }
     }
-    let encoding = if odd > 0 && even * 20 <= odd {
+    // The zeros must also be a real share of their side, not a stray one or
+    // two: at least one in 16 (Hindi's are just its spaces and punctuation).
+    let enough = |zeros: usize| zeros >= 2 && zeros * 16 >= head.len() / 2;
+    let encoding = if enough(odd) && even * 20 <= odd {
         UTF_16LE
-    } else if even > 0 && odd * 20 <= even {
+    } else if enough(even) && odd * 20 <= even {
         UTF_16BE
     } else {
         return None;
@@ -92,13 +102,49 @@ fn finish(encoding: &'static Encoding, bytes: &[u8]) -> Decoded {
     Decoded { text: clean(&text), encoding: (encoding != UTF_8).then(|| encoding.name()) }
 }
 
-/// Drops control characters other than newline and tab (so "\r\n" becomes
-/// "\n"), and any stray byte-order mark.
+/// How many valid characters outside ASCII bytes hold, and how many of
+/// their bytes are not UTF-8.
+fn utf8_damage(bytes: &[u8]) -> (usize, usize) {
+    let (mut non_ascii, mut invalid) = (0, 0);
+    let mut rest = bytes;
+    loop {
+        match std::str::from_utf8(rest) {
+            Ok(valid) => return (non_ascii + valid.chars().filter(|c| !c.is_ascii()).count(), invalid),
+            Err(e) => {
+                let valid = std::str::from_utf8(&rest[..e.valid_up_to()]).unwrap_or_default();
+                non_ascii += valid.chars().filter(|c| !c.is_ascii()).count();
+                let bad = e.error_len().unwrap_or(rest.len() - e.valid_up_to());
+                invalid += bad;
+                rest = &rest[e.valid_up_to() + bad..];
+            }
+        }
+    }
+}
+
+/// Line breaks as "\n" ("\r\n", and a lone "\r" from old Mac files), other
+/// control characters (form feeds, escapes) as spaces, so words either side
+/// stay apart, and no stray byte-order marks.
 fn clean(text: &str) -> String {
     if !text.chars().any(|c| (c.is_control() && c != '\n' && c != '\t') || c == '\u{feff}') {
         return text.to_string();
     }
-    text.chars().filter(|c| !((c.is_control() && *c != '\n' && *c != '\t') || *c == '\u{feff}')).collect()
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                out.push('\n');
+            }
+            '\n' | '\t' => out.push(c),
+            '\u{feff}' => {}
+            c if c.is_control() => out.push(' '),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -174,7 +220,41 @@ mod tests {
     }
 
     #[test]
-    fn control_characters_other_than_newline_and_tab_are_removed() {
-        assert_eq!(decode(b"a\r\nb\tc\x07d\x1b[0m", None).unwrap().text, "a\nb\tcd[0m");
+    fn line_breaks_and_other_control_characters_keep_words_apart() {
+        // "\r\n" and a lone "\r" (old Mac files) are line breaks; a form feed
+        // or other control character is a space.
+        assert_eq!(decode(b"a\r\nb\rc\td\x0ce\x07f\x1b[0m", None).unwrap().text, "a\nb\nc\td e f [0m");
+        assert_eq!(decode(b"page one end\x0cpage two", None).unwrap().text, "page one end page two");
+        // A byte-order mark inside the text is dropped.
+        assert_eq!(decode("a\u{feff}b".as_bytes(), None).unwrap().text, "ab");
+    }
+
+    #[test]
+    fn a_stray_zero_byte_means_binary_not_utf16() {
+        assert!(matches!(decode(b"abc\0def", None), Err(ReadError::Binary)));
+        let mut text = b"An ordinary note, with one stray zero byte in it. ".repeat(40);
+        text[201] = 0;
+        assert!(matches!(decode(&text, None), Err(ReadError::Binary)));
+        // Real UTF-16 without a mark is still recognised, Hindi included
+        // (its zero bytes are the spaces and punctuation).
+        let hindi = "मकान का किराया दस हज़ार रुपये है और बिजली का बिल अलग है।\n".repeat(5);
+        let d = decode(&utf16(&hindi, true), None).unwrap();
+        assert_eq!((d.text.as_str(), d.encoding), (hindi.as_str(), Some("UTF-16LE")));
+    }
+
+    #[test]
+    fn utf8_with_a_stray_invalid_byte_stays_utf8() {
+        let mut body = "résumé naïve café ".repeat(200).into_bytes();
+        body.push(0xE9);
+        let d = decode(&body, None).unwrap();
+        assert_eq!(d.encoding, None);
+        assert!(d.text.starts_with("résumé naïve café"), "{:?}", &d.text[..40]);
+        assert!(d.text.ends_with('\u{fffd}'));
+        // Without any UTF-8 in it, a lone high byte is still Latin-1.
+        let mut ascii = b"the menu of the small cafe on the corner ".repeat(50);
+        ascii.extend(b"caf\xe9");
+        let d = decode(&ascii, None).unwrap();
+        assert_eq!(d.encoding, Some("windows-1252"));
+        assert!(d.text.ends_with("café"));
     }
 }

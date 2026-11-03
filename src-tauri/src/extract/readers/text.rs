@@ -204,6 +204,21 @@ mod tests {
     }
 
     #[test]
+    fn a_table_with_old_mac_line_endings_has_its_rows() {
+        let (text, facts) = facts_of(&Text, "mac.csv", b"name,city\rAsha,Pune\rRavi,Goa\r");
+        assert_eq!(fact(&facts, "columns"), Some("name, city"));
+        assert_eq!(fact(&facts, "lines"), Some("2"));
+        assert_eq!(text, "name,city\nAsha,Pune\nRavi,Goa\n");
+    }
+
+    #[test]
+    fn a_huge_header_makes_a_capped_fact() {
+        let (_, facts) = facts_of(&Text, "wide.csv", &b"a,".repeat(2 * 1024 * 1024 - 10));
+        let columns = fact(&facts, "columns").unwrap();
+        assert_eq!(columns.chars().count(), crate::extract::MAX_FACT_CHARS);
+    }
+
+    #[test]
     fn files_without_an_extension_are_read_unless_binary() {
         let (text, _) = facts_of(&Plain, "README", b"Build with make.\n");
         assert_eq!(text, "Build with make.\n");

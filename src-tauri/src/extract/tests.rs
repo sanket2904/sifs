@@ -1157,3 +1157,24 @@ fn a_file_renamed_during_its_read_onto_its_own_id_is_still_read() {
     assert_eq!(found(&index, "okapi"), vec![renamed.clone()], "read under its new name");
     assert_eq!(fake.of(&renamed), 1);
 }
+
+#[test]
+fn a_fact_is_cut_at_a_thousand_characters_on_a_character_boundary() {
+    let mut sink = Sink::new(100, Instant::now() + Duration::from_secs(10));
+    sink.fact("title", "é".repeat(5000));
+    sink.fact("author", "Asha Rao");
+    let (_, facts) = sink.finish();
+    assert_eq!(facts[0].1, "é".repeat(MAX_FACT_CHARS));
+    assert_eq!(MAX_FACT_CHARS, 1000);
+    assert_eq!(facts[1].1, "Asha Rao");
+}
+
+#[test]
+fn an_html_title_without_its_end_tag_makes_a_capped_fact() {
+    let home = Home::new();
+    let page = home.write("page.html", format!("<title>Start {}", "word ".repeat(100_000)).as_bytes());
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!(fact_of(&index, &page, "title").unwrap().chars().count(), MAX_FACT_CHARS);
+}
