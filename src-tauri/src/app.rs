@@ -100,6 +100,9 @@ fn add_folder(app: AppHandle, state: State<AppState>, path: String) -> Result<()
     if existing.iter().any(|f| path == *f || path.starts_with(&format!("{}/", f.trim_end_matches('/')))) {
         return Err(format!("{path} is already searched, as part of a folder you added"));
     }
+    if state.reader.lock().unwrap().removals().map_err(err)?.contains(&path) {
+        return Err(format!("{path} is still being removed; add it again in a moment"));
+    }
     state.reader.lock().unwrap().add_folder(&path, now()).map_err(err)?;
     if let Some(watch) = state.watch.lock().unwrap().as_mut() {
         watch.add_root(&path).map_err(err)?;
@@ -109,14 +112,30 @@ fn add_folder(app: AppHandle, state: State<AppState>, path: String) -> Result<()
 }
 
 #[tauri::command]
-fn remove_folder(state: State<AppState>, path: String) -> Result<(), String> {
+fn remove_folder(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
     if let Some(watch) = state.watch.lock().unwrap().as_mut() {
         watch.remove_root(&path).map_err(err)?;
     }
-    let mut index = state.reader.lock().unwrap();
-    index.remove_folder(&path).map_err(err)?;
-    index.remove_root(&path).map_err(err)?;
+    state.reader.lock().unwrap().forget_folder(&path).map_err(err)?;
+    start_removal(&app, &state.db_path, path);
     Ok(())
+}
+
+/// Removes a forgotten folder's files from the index in the background, in
+/// small batches: with the text read from them, a large folder takes a
+/// while, and searches and other writes go on meanwhile.
+fn start_removal(app: &AppHandle, db_path: &std::path::Path, root: String) {
+    let (app, db_path) = (app.clone(), db_path.to_path_buf());
+    std::thread::spawn(move || {
+        let result = Index::open(&db_path).and_then(|mut index| index.remove_root_in_batches(&root, 100, |_| {}));
+        match result {
+            Ok(removed) => {
+                log::info!("removed {root}: {removed} items");
+                let _ = app.emit("index-changed", removed);
+            }
+            Err(e) => log::warn!("removing {root}: {e:#}"),
+        }
+    });
 }
 
 #[tauri::command]
@@ -134,9 +153,7 @@ fn set_ignore(app: AppHandle, state: State<AppState>, patterns: Vec<String>) -> 
 #[tauri::command]
 fn open_path(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
     // If it is waiting to be read inside, it is read next.
-    if extract::store::bump_opened(&mut state.reader.lock().unwrap(), &path).unwrap_or(false) {
-        state.extract.wake();
-    }
+    state.extract.opened(&path);
     app.opener().open_path(path, None::<&str>).map_err(err)
 }
 
@@ -194,6 +211,7 @@ pub fn run() {
             let patterns = index.ignore_patterns()?.unwrap_or_else(Rules::default_patterns);
             let rules = Arc::new(Mutex::new(Rules::new(&patterns, &home)?));
             let folders = index.folders()?;
+            let removals = index.removals()?;
             // The readers' extensions are in the index before anything is
             // scanned, so the queue's triggers see them.
             let registry = Arc::new(Registry::platform());
@@ -228,9 +246,13 @@ pub fn run() {
                 scanning,
                 extract: worker,
             };
-            // Catch up on what changed while the app was closed.
+            // Catch up on what changed while the app was closed, and finish
+            // removing folders it was removing when it stopped.
             for folder in folders {
                 start_scan(app.handle(), &state, folder);
+            }
+            for root in removals {
+                start_removal(app.handle(), &state.db_path, root);
             }
             app.manage(state);
 

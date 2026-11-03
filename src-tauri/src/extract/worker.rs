@@ -85,6 +85,8 @@ pub struct RunStats {
 
 struct Shared {
     stop: AtomicBool,
+    /// Files opened in SIFS since the worker last looked.
+    opened: Mutex<Vec<String>>,
     woken: Mutex<bool>,
     wake: Condvar,
 }
@@ -122,7 +124,12 @@ impl Worker {
     /// Starts the worker on the index at db_path. Its first job is checking
     /// the files already indexed against the readers, if they changed.
     pub fn start(db_path: PathBuf, registry: Arc<Registry>, options: WorkerOptions) -> Result<Worker> {
-        let shared = Arc::new(Shared { stop: AtomicBool::new(false), woken: Mutex::new(false), wake: Condvar::new() });
+        let shared = Arc::new(Shared {
+            stop: AtomicBool::new(false),
+            opened: Mutex::new(Vec::new()),
+            woken: Mutex::new(false),
+            wake: Condvar::new(),
+        });
         let inner = shared.clone();
         let thread = std::thread::Builder::new().name("sifs-extract".into()).spawn(move || {
             platform::lower_thread_priority();
@@ -139,6 +146,14 @@ impl Worker {
     }
 
     pub fn wake(&self) {
+        self.shared.wake();
+    }
+
+    /// A file opened in SIFS: if it is waiting to be read, it is read next.
+    /// The worker moves it, on its own connection, so the caller (the
+    /// window) never waits for the index.
+    pub fn opened(&self, path: &str) {
+        self.shared.opened.lock().unwrap_or_else(|p| p.into_inner()).push(path.to_string());
         self.shared.wake();
     }
 
@@ -188,6 +203,12 @@ fn run(index: &mut Index, registry: &Registry, options: &WorkerOptions, shared: 
     let mut last_progress: Option<Instant> = None;
     let mut unreported = true;
     while !stopped() {
+        let opened = std::mem::take(&mut *shared.opened.lock().unwrap_or_else(|p| p.into_inner()));
+        for path in opened {
+            if let Err(e) = store::bump_opened(index, &path) {
+                runner.error(e);
+            }
+        }
         if (options.pause)() {
             shared.wait(options.idle_poll);
             continue;

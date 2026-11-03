@@ -36,6 +36,9 @@ pub struct Index {
     pub(crate) conn: Connection,
 }
 
+/// The meta key marking a folder whose files are being removed, before its path.
+const REMOVING: &str = "removing:";
+
 /// Version 0 of the schema; later versions are in migrate.rs.
 pub(crate) const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS files (
@@ -134,6 +137,54 @@ impl Index {
     pub fn remove_root(&mut self, root: &str) -> Result<usize> {
         let _write = writer();
         Ok(self.conn.execute("DELETE FROM files WHERE root = ?1", params![root])?)
+    }
+
+    /// Forgets a folder the user removed: its row goes at once, and it is
+    /// marked for removal of everything indexed under it, which
+    /// remove_root_in_batches does. A mark left when SIFS stopped part way
+    /// is in removals, so the next start can finish.
+    pub fn forget_folder(&mut self, path: &str) -> Result<bool> {
+        let _write = writer();
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let removed = tx.execute("DELETE FROM folders WHERE path = ?1", params![path])? == 1;
+        tx.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, '1')", params![format!("{REMOVING}{path}")])?;
+        tx.commit()?;
+        Ok(removed)
+    }
+
+    /// Folders forgotten whose files are not all removed yet.
+    pub fn removals(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare("SELECT key FROM meta WHERE key >= ?1 AND key < ?2 ORDER BY key")?;
+        // ';' follows ':' in byte order: every key starting "removing:".
+        let rows = stmt.query_map(params![REMOVING, "removing;"], |r| r.get::<_, String>(0))?;
+        let keys: Vec<String> = rows.collect::<std::result::Result<_, _>>()?;
+        Ok(keys.into_iter().map(|k| k[REMOVING.len()..].to_string()).collect())
+    }
+
+    /// Removes everything indexed under root, batch rows at a time, each in
+    /// its own short transaction, so a large folder and the text read from
+    /// its files don't hold up searches and other writes; then clears
+    /// root's removal mark. progress is called after each batch with the
+    /// number removed so far.
+    pub fn remove_root_in_batches(&mut self, root: &str, batch: usize, mut progress: impl FnMut(usize)) -> Result<usize> {
+        let mut removed = 0;
+        loop {
+            let n = {
+                let _write = writer();
+                self.conn.execute(
+                    "DELETE FROM files WHERE id IN (SELECT id FROM files WHERE root = ?1 LIMIT ?2)",
+                    params![root, batch as i64],
+                )?
+            };
+            if n == 0 {
+                break;
+            }
+            removed += n;
+            progress(removed);
+        }
+        let _write = writer();
+        self.conn.execute("DELETE FROM meta WHERE key = ?1", params![format!("{REMOVING}{root}")])?;
+        Ok(removed)
     }
 
     pub fn get(&self, path: &str) -> Result<Option<FileRecord>> {

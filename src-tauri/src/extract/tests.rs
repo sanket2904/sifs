@@ -1229,3 +1229,68 @@ fn at_most_four_reads_are_abandoned_at_once_across_every_reader() {
     assert_eq!(queued(&index), 2, "the rest wait until a stuck read ends");
     assert_eq!(count(&index, "SELECT COUNT(*) FROM extract_queue WHERE attempts > 0"), 0);
 }
+
+#[test]
+fn a_removed_folder_goes_in_small_batches_and_its_removal_survives_a_restart() {
+    let home = Home::new();
+    for i in 0..25 {
+        home.write(&format!("Docs/n{i}.txt"), b"okapi words");
+    }
+    home.write("Other/keep.txt", b"okapi kept");
+    let registry = Registry::platform();
+    let mut index = home.open();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let (docs, other) = (home.at("Docs"), home.at("Other"));
+    for root in [&docs, &other] {
+        index.add_folder(root, 1).unwrap();
+        scan(&mut index, root, &home.rules, |_| {}).unwrap();
+    }
+    run(&mut index, &registry);
+    assert_eq!(found(&index, "okapi").len(), 26);
+
+    assert!(index.forget_folder(&docs).unwrap());
+    assert_eq!(index.folders().unwrap(), vec![other.clone()]);
+    drop(index);
+    // SIFS stopped before the files were removed: the next start knows.
+    let mut index = home.open();
+    assert_eq!(index.removals().unwrap(), vec![docs.clone()]);
+    let mut batches = 0;
+    let removed = index.remove_root_in_batches(&docs, 10, |_| batches += 1).unwrap();
+    assert_eq!((removed, batches), (26, 3), "the folder and its 25 files, ten at a time");
+    assert_eq!(index.count_root(&docs).unwrap(), 0);
+    assert!(index.removals().unwrap().is_empty());
+    assert_eq!(found(&index, "okapi"), vec![home.at("Other/keep.txt")]);
+    let orphans = "SELECT COUNT(*) FROM contents WHERE file_id NOT IN (SELECT id FROM files)";
+    assert_eq!(count(&index, orphans), 0);
+}
+
+#[test]
+fn a_file_opened_in_sifs_is_moved_to_the_front_by_the_worker() {
+    let home = Home::new();
+    for name in ["a", "b"] {
+        let path = home.write(&format!("{name}.txt"), b"tapir");
+        set_age(&path, 400);
+    }
+    let registry = Arc::new(Registry::platform());
+    let index = home.scanned(&registry);
+    let worker = Worker::start(
+        home.db.clone(),
+        registry,
+        WorkerOptions { pause: Arc::new(|| true), idle_poll: Duration::from_secs(60), ..options() },
+    )
+    .unwrap();
+    worker.opened(&home.at("b.txt"));
+    let priority = |name: &str| {
+        index
+            .conn
+            .query_row(
+                "SELECT priority FROM extract_queue WHERE file_id = (SELECT id FROM files WHERE path = ?1)",
+                [home.at(name)],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap()
+    };
+    eventually("the opened file moved to the front, even while paused", || priority("b.txt") == -1);
+    assert_eq!(priority("a.txt"), 1);
+    drop(worker);
+}
