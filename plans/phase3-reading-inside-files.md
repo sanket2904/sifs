@@ -181,7 +181,7 @@ Three readers, so a version bump to one re-reads only its files. All are documen
 | `xlsx` | xlsx, xlsm, xltx, xltm | `sharedStrings.xml`, `styles.xml` (which number formats are dates), then each sheet in the workbook's order (`workbook.xml` and its relationships), with cells as rows |
 | `pptx` | pptx, pptm, potx, potm, ppsx, ppsm | each slide in the presentation's order (`presentation.xml`'s slide list and its relationships), each followed by its notes |
 
-**Word.** Text is what is inside `w:t` (and `m:t` for equations); a paragraph ends a line, `w:tab` is a tab, `w:br` and `w:cr` a new line. Deleted text of tracked changes (`w:delText`) and field codes (`w:instrText`) are left out. In a table, a cell's paragraphs are joined by spaces, cells by tabs and rows by lines. Of an `mc:AlternateContent`, only the `mc:Choice` is read: the `mc:Fallback` repeats it (a text box's text would be found twice).
+**Word.** Text is what is inside `w:t` (and `m:t` for equations); a paragraph ends a line, `w:tab` is a tab, `w:br` and `w:cr` a new line. Text a tracked change deleted (`w:del`) or moved away (`w:moveFrom`, found again at its `w:moveTo`) and field codes (`w:instrText`) are left out. In a table, a cell's paragraphs are joined by spaces, cells by tabs and rows by lines. Of an `mc:AlternateContent`, only the `mc:Choice` is read: the `mc:Fallback` repeats it (a text box's text would be found twice).
 
 **Excel.** One part per sheet, labelled with the sheet's name; hidden sheets are read too. Each row is a line, its non-empty cells joined by tabs (empty cells are not padded). Cell values:
 - shared strings (`t="s"`), inline strings (`t="inlineStr"`, rich text runs joined, phonetic runs `rPh` left out) and formula strings (`t="str"`) as they are;
@@ -190,7 +190,7 @@ Three readers, so a version bump to one re-reads only its files. All are documen
 - dates: a number whose cell style has a date format (built-in ids 14–22, 27–36, 45–47, 50–58, or a custom format with d, m, y, h or s outside quotes and brackets) is shown as `2026-11-03`, or `2026-11-03 14:30` when it has a time, or `14:30:00` when it is only a time; the 1904 date system is honoured.
 Formulas are not indexed, only their values.
 
-**PowerPoint.** One part per slide, `slide 3`, and one per slide's notes, `slide 3 notes`. Text is what is inside `a:t`; a paragraph ends a line, `a:br` is a new line; tables as in Word. Charts, SmartArt and comments are left for later.
+**PowerPoint.** One part per slide, `slide 3`, and one per slide's notes, `slide 3 notes`. Text is what is inside `a:t`; a paragraph ends a line, `a:br` is a new line; tables as in Word. Slide-number fields (`a:fld type="slidenum"`, on every notes page) are left out. Charts, SmartArt and comments are left for later.
 
 ### Where the text goes
 
