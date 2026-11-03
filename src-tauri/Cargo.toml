@@ -3,7 +3,7 @@ name = "sifs"
 version = "0.2.0"
 description = "Search your files by name, content and meaning"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.90"
 default-run = "sifs"
 
 [lib]
