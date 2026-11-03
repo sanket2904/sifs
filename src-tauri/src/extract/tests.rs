@@ -66,10 +66,11 @@ impl Home {
         Index::open(&self.db).unwrap()
     }
 
-    /// Opens the index with registry's kinds and scans the home folder.
+    /// Opens the index with registry's kinds, adds the home folder and scans it.
     fn scanned(&self, registry: &Registry) -> Index {
         let mut index = self.open();
         store::register_kinds(&mut index, registry).unwrap();
+        index.add_folder(&self.root, 0).unwrap();
         scan(&mut index, &self.root, &self.rules, |_| {}).unwrap();
         index
     }
@@ -1952,6 +1953,158 @@ fn a_step_that_works_resets_the_wait_after_errors() {
     assert!(gap < Duration::from_millis(800), "waited {gap:?} after the first error since a success, not {idle_poll:?}");
 }
 
+// --- a row's root comes from the folders when it is written (reviewer's round 4) ---
+
+fn roots_of(index: &Index) -> Vec<(String, i64)> {
+    let mut stmt = index.conn.prepare("SELECT root, COUNT(*) FROM files GROUP BY root ORDER BY root").unwrap();
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+    rows.map(|r| r.unwrap()).collect()
+}
+
+/// Every row's root is a folder.
+fn assert_roots_are_folders(index: &Index, what: &str) {
+    let folders = index.folders().unwrap();
+    let bad: Vec<_> = roots_of(index).into_iter().filter(|(r, _)| !folders.contains(r)).collect();
+    assert!(bad.is_empty(), "{what}: rows whose root is not a folder: {bad:?} (folders {folders:?}, removals {:?})", index.removals().unwrap());
+}
+
+/// The reviewer's rv4_outer_folder_removed_before_a_taken_in_scan_ends.
+/// A folder taken in while its scan is stuck (a slow disk, the writer
+/// lock), the outer folder then removed and its removal finished, then the
+/// stuck scan ends: its late rows used to go to the removed folder, kept
+/// and searchable. Now they are removed, as no folder contains them.
+#[test]
+fn a_late_batch_of_a_folder_taken_in_goes_with_the_outer_folder_when_it_is_removed() {
+    let home = Home::new();
+    let mut index = home.open();
+    let (folders, go) = held_scan(&home, 2100);
+    let (docs, root) = (home.at("Docs"), home.root.clone());
+    home.write("top.txt", b"okapi top");
+    assert_eq!(folders.add(&mut index, &root, now()).unwrap(), vec![docs.clone()]);
+    // As the stuck scan's last upsert, waiting on the writer lock, would.
+    let late = home.write("Docs/late.txt", b"okapi late");
+    index.upsert(&[record_of(Path::new(&late), &docs).unwrap()], index.current_scan().unwrap()).unwrap();
+    folders.scan(root.clone());
+    folders.remove(&mut index, &root).unwrap();
+    eventually("the outer folder's scan and removal to end", || {
+        folders.scanning() == std::collections::HashSet::from([docs.clone()]) && index.removals().unwrap().is_empty()
+    });
+    std::thread::sleep(Duration::from_millis(200));
+    go.send(()).unwrap();
+    eventually("everything to settle", || folders.idle());
+    eprintln!("rv4 A: folders={:?} roots={:?} removals={:?} name hits for late: {}", index.folders().unwrap(), roots_of(&index), index.removals().unwrap(), name_hits(&index, "late"));
+    assert!(index.folders().unwrap().is_empty());
+    assert_roots_are_folders(&index, "after removing the only folder");
+}
+
+/// The reviewer's rv4_taken_in_twice_while_the_first_scan_is_stuck.
+/// A folder taken in while its scan is stuck, its new folder itself taken
+/// into one around it, then the stuck scan ends: its late rows go to the
+/// folder that contains them now, not to the one it was first taken into.
+#[test]
+fn a_late_batch_of_a_folder_taken_in_twice_goes_to_the_outermost() {
+    let home = Home::new();
+    let mut index = home.open();
+    let (folders, go) = held_scan(&home, 2100);
+    let (docs, root) = (home.at("Docs"), home.root.clone());
+    let base = Path::new(&root).parent().unwrap().to_str().unwrap().to_string();
+    assert_eq!(folders.add(&mut index, &root, now()).unwrap(), vec![docs.clone()]);
+    folders.scan(root.clone());
+    eventually("home's scan", || folders.scanning() == std::collections::HashSet::from([docs.clone()]));
+    assert_eq!(folders.add(&mut index, &base, now()).unwrap(), vec![root.clone()]);
+    folders.scan(base.clone());
+    eventually("base's scan", || folders.scanning() == std::collections::HashSet::from([docs.clone()]));
+    // As the stuck scan's last upsert, waiting on the writer lock, would.
+    let late = home.write("Docs/late.txt", b"okapi late");
+    index.upsert(&[record_of(Path::new(&late), &docs).unwrap()], index.current_scan().unwrap()).unwrap();
+    go.send(()).unwrap();
+    eventually("everything to settle", || folders.idle());
+    eprintln!("rv4 M: folders={:?} roots={:?}", index.folders().unwrap(), roots_of(&index));
+    assert_eq!(index.folders().unwrap(), vec![base.clone()]);
+    assert_roots_are_folders(&index, "taken in twice");
+}
+
+/// The reviewer's rv4_a_removed_folders_late_batch_after_an_outer_folder_scanned.
+/// A removed folder's scan writes one last batch (its upsert waited on the
+/// writer) after a folder added around it scanned those paths: the removal
+/// of the old root used to delete them; now it gives them to the new folder.
+#[test]
+fn a_removed_folders_late_batch_inside_a_folder_added_around_it_is_kept() {
+    let home = Home::new();
+    let mut index = home.open();
+    let (folders, go) = held_scan(&home, 2100);
+    let (docs, root) = (home.at("Docs"), home.root.clone());
+    folders.remove(&mut index, &docs).unwrap();
+    assert!(folders.add(&mut index, &root, now()).unwrap().is_empty());
+    folders.scan(root.clone());
+    eventually("home's scan", || folders.scanning() == std::collections::HashSet::from([docs.clone()]));
+    let late = home.at("Docs/d1/n1.txt");
+    let record = record_of(Path::new(&late), &docs).unwrap();
+    index.upsert(&[record], index.current_scan().unwrap()).unwrap();
+    go.send(()).unwrap();
+    eventually("everything to settle", || folders.idle());
+    assert_roots_are_folders(&index, "after the late batch");
+    assert!(index.get(&late).unwrap().is_some(), "{late} is under home, a folder, but is no longer indexed");
+}
+
+/// The reviewer's rv4_a_watcher_refresh_with_old_roots_after_a_take_in.
+/// The watcher's batch uses the roots it read when the batch began: a
+/// refresh with the old roots after a folder was taken in used to write rows
+/// under the old root, which removing the outer folder left, searchable.
+/// Now the root comes from the folders as the row is written.
+#[test]
+fn a_watcher_refresh_with_old_roots_writes_under_the_current_folder() {
+    let home = Home::new();
+    home.write("P/C/a.txt", b"okapi");
+    let mut index = home.open();
+    let (p, c) = (home.at("P"), home.at("P/C"));
+    let folders = folders(&home, |_| {});
+    folders.add(&mut index, &c, now()).unwrap();
+    scan(&mut index, &c, &home.rules, |_| {}).unwrap();
+    let old_roots = vec![c.clone()];
+    folders.add(&mut index, &p, now()).unwrap();
+    scan(&mut index, &p, &home.rules, |_| {}).unwrap();
+    let x = home.write("P/C/rv4zebra.txt", b"okapi");
+    refresh(&mut index, Path::new(&x), &old_roots, &home.rules).unwrap();
+    folders.remove(&mut index, &p).unwrap();
+    eventually("settle", || folders.idle());
+    eprintln!("rv4 watcher: roots={:?} hits={}", roots_of(&index), name_hits(&index, "rv4zebra"));
+    assert_roots_are_folders(&index, "after removing P");
+}
+
+/// The reviewer's rv4_restart_with_a_removed_folder_inside_an_added_one.
+/// Restart with a folder marked for removal and a folder around it: its rows
+/// are given to the outer folder and nothing is read again.
+#[test]
+fn a_removed_folder_inside_one_added_around_it_is_given_to_it_at_startup() {
+    let home = Home::new();
+    for i in 0..20 {
+        home.write(&format!("P/C/n{i}.txt"), b"okapi words");
+    }
+    let registry = Registry::platform();
+    let mut index = home.open();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let (p, c) = (home.at("P"), home.at("P/C"));
+    index.add_folder(&c, 1).unwrap();
+    scan(&mut index, &c, &home.rules, |_| {}).unwrap();
+    run(&mut index, &registry);
+    assert!(index.forget_folder(&c).unwrap());
+    index.add_folder_around(&p, 2).unwrap();
+    drop(index);
+    let mut index = home.open();
+    let tidy = index.tidy_roots().unwrap();
+    assert_eq!((tidy.reassigned, tidy.orphans), (1, 0), "given at once, not marked for removal");
+    assert_eq!(index.count_root(&p).unwrap(), 21, "C and its 20 files");
+    let folders = folders(&home, |_| {});
+    folders.resume(&mut index).unwrap();
+    eventually("settle", || folders.idle());
+    assert_roots_are_folders(&index, "after restart");
+    assert_eq!(index.count_root(&p).unwrap(), 22);
+    assert!(index.removals().unwrap().is_empty());
+    assert_eq!(queued(&index), 0, "nothing read again");
+}
+
+
 /// The reviewer's rv4_removing_a_taken_in_folder_keeps_the_outer_folder_watched
 /// (inotify): removing a path taken into a folder around it unwatched it,
 /// and notify then dropped the outer folder's watches on that subtree. As
@@ -1989,4 +2142,25 @@ fn removing_a_folder_taken_in_keeps_the_outer_folder_watched() {
     eventually("the control file", || index.get(&control).unwrap().is_some());
     eventually("P/C/after.txt, still watched through P", || index.get(&after).unwrap().is_some());
     assert_eq!(index.folders().unwrap(), vec![p.clone()]);
+}
+
+/// Rows given to a folder are marked seen by its newest scan: a late row
+/// given to a folder whose scan has walked past it, and is about to remove
+/// what it didn't see, stays.
+#[test]
+fn rows_given_to_a_folder_during_its_scan_are_not_removed_as_unseen() {
+    let home = Home::new();
+    let mut index = home.open();
+    // 30 files: one batch, so the scan is held after all its upserts and
+    // before it removes what it didn't see.
+    let (folders, go) = held_scan(&home, 30);
+    let docs = home.at("Docs");
+    let stray = format!("{docs}/d0");
+    let late = home.write("Docs/d0/late.txt", b"okapi late");
+    // Written under a root that is not a folder, before this scan began.
+    index.upsert(&[record_of(Path::new(&late), &stray).unwrap()], 0).unwrap();
+    assert_eq!(index.remove_root_in_batches(&stray, 10, |_| {}).unwrap(), 0, "given, not removed");
+    go.send(()).unwrap();
+    eventually("the scan to end", || folders.idle());
+    assert_eq!(index.get(&late).unwrap().map(|r| r.root), Some(docs.clone()));
 }

@@ -137,7 +137,9 @@ pub fn scan_cancellable(
 
 /// Brings one changed path up to date: indexed as it now is, with a new or
 /// moved-in folder walked, or removed with everything under it if it is
-/// gone or now ignored.
+/// gone or now ignored. roots (the watcher's copy) only filter and pick the
+/// ignore rules: each row's root is read from the folders when it is
+/// written, and a path no folder contains any more is skipped.
 pub fn refresh(index: &mut Index, path: &Path, roots: &[String], rules: &Rules) -> Result<()> {
     let Some(path_str) = path.to_str() else { return Ok(()) };
     let Some(root) = roots.iter().find(|r| path_str == r.as_str() || path_str.starts_with(&format!("{}/", r.trim_end_matches('/')))) else {
@@ -159,7 +161,7 @@ pub fn refresh(index: &mut Index, path: &Path, roots: &[String], rules: &Rules) 
     let seen = index.current_scan()?;
     if record.is_dir && !rules.is_opaque(path_str) {
         let known = index.get(path_str)?.is_some();
-        index.upsert(&[record], seen)?;
+        index.upsert_into_folders(&[record], seen)?;
         if !known {
             // A folder created or moved in: walk what came with it.
             let mut batch = Vec::new();
@@ -179,14 +181,14 @@ pub fn refresh(index: &mut Index, path: &Path, roots: &[String], rules: &Rules) 
                     walker.skip_current_dir();
                 }
                 if batch.len() >= BATCH {
-                    index.upsert(&batch, seen)?;
+                    index.upsert_into_folders(&batch, seen)?;
                     batch.clear();
                 }
             }
-            index.upsert(&batch, seen)?;
+            index.upsert_into_folders(&batch, seen)?;
         }
     } else {
-        index.upsert(&[record], seen)?;
+        index.upsert_into_folders(&[record], seen)?;
     }
     Ok(())
 }

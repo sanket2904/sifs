@@ -53,9 +53,6 @@ struct Scan {
     /// Asked for again while it ran (rules changed, or the folder was added
     /// again after a removal): another scan follows it.
     again: bool,
-    /// The folder added around this one, which took it in: what this scan
-    /// wrote becomes that folder's.
-    taken_into: Option<String>,
 }
 
 #[derive(Default)]
@@ -133,7 +130,6 @@ impl Folders {
             if let Some(scan) = jobs.scanning.get_mut(child) {
                 scan.cancel.store(true, Ordering::SeqCst);
                 scan.again = false;
-                scan.taken_into = Some(path.to_string());
             }
         }
         Ok(inside)
@@ -196,40 +192,22 @@ impl Folders {
             // What follows is registered under the same lock the scan is
             // taken off under, so the folder is never seen idle in between,
             // and a remove or scan asked for meanwhile finds it.
-            let mut handled: Option<String> = None;
-            let follow = loop {
+            let follow = {
                 let mut jobs = this.jobs();
-                let taken = jobs.scanning.get(&root).and_then(|s| s.taken_into.clone());
-                if taken != handled {
-                    // Taken into a folder added around it: what it wrote,
-                    // after that folder took the rest, becomes that folder's
-                    // too. Done without the lock, then checked again.
-                    drop(jobs);
-                    if let Some(to) = &taken {
-                        if let Err(e) = Index::open(&inner.db_path).and_then(|mut i| i.reassign_root(&root, to)) {
-                            log::warn!("giving the files of {root} to {to}: {e:#}");
-                        }
-                    }
-                    handled = taken;
-                    continue;
-                }
                 let again = jobs.scanning.remove(&root).is_some_and(|s| s.again);
-                break if again {
+                if again {
                     // Its folder may have been removed and added again:
                     // this scan saw only part of it, so a fresh one runs.
                     Follow::Scan(new_scan(&mut jobs, &root))
-                } else if handled.is_some() {
-                    Follow::Nothing
-                } else if cancel.load(Ordering::SeqCst) {
-                    // What it wrote of a removed folder goes.
-                    if new_removal(&mut jobs, &root) {
-                        Follow::Remove
-                    } else {
-                        Follow::Nothing
-                    }
+                } else if cancel.load(Ordering::SeqCst) && new_removal(&mut jobs, &root) {
+                    // Removed, or taken into a folder added around it: the
+                    // removal gives what it wrote that lies inside a folder
+                    // now to that folder, and deletes the rest, deciding in
+                    // the same transaction.
+                    Follow::Remove
                 } else {
                     Follow::Nothing
-                };
+                }
             };
             match result {
                 Ok(stats) => (inner.on_event)(Event::Scanned(stats)),
@@ -298,7 +276,7 @@ enum Follow {
 /// Registers a scan of root, returning its cancel flag.
 fn new_scan(jobs: &mut Jobs, root: &str) -> Arc<AtomicBool> {
     let cancel = Arc::new(AtomicBool::new(false));
-    jobs.scanning.insert(root.to_string(), Scan { cancel: cancel.clone(), again: false, taken_into: None });
+    jobs.scanning.insert(root.to_string(), Scan { cancel: cancel.clone(), again: false });
     cancel
 }
 

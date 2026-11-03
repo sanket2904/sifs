@@ -188,6 +188,7 @@ fn settings_are_kept() {
 fn refresh_follows_creates_renames_moves_and_deletes() {
     let (dir, home, rules) = fixture();
     let mut index = open(&dir);
+    index.add_folder(&home, 0).unwrap();
     scan(&mut index, &home, &rules, |_| {}).unwrap();
     let roots = vec![home.clone()];
     let at = |p: &str| format!("{home}/{p}");
@@ -233,6 +234,7 @@ fn refresh_follows_creates_renames_moves_and_deletes() {
 fn a_file_refreshed_during_a_scan_stays_indexed() {
     let (dir, home, rules) = fixture();
     let mut index = open(&dir);
+    index.add_folder(&home, 0).unwrap();
     scan(&mut index, &home, &rules, |_| {}).unwrap();
     // A scan starts (its number is taken), the watcher then refreshes a new
     // file, and the scan ends without having walked it.
@@ -277,6 +279,7 @@ fn the_watcher_keeps_the_index_current() {
     let (dir, home, rules) = fixture();
     let db = dir.path().join("sifs.db");
     let mut index = Index::open(&db).unwrap();
+    index.add_folder(&home, 0).unwrap();
     scan(&mut index, &home, &rules, |_| {}).unwrap();
     let _watch = Watch::start(db.clone(), vec![home.clone()], Arc::new(Mutex::new(rules)), |_| {}).unwrap();
     let reader = Index::open(&db).unwrap();
