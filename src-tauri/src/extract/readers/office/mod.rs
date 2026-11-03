@@ -19,6 +19,8 @@ mod review;
 #[cfg(test)]
 mod review2;
 #[cfg(test)]
+mod review3;
+#[cfg(test)]
 mod tests;
 
 pub use excel::Excel;
@@ -434,7 +436,11 @@ impl<R: BufRead> Read for Bounded<R> {
 
 impl<R: BufRead> BufRead for Bounded<R> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        let used = self.consumed - self.start;
+        // A byte-order mark is not part of the first event.
+        if self.consumed == 0 && self.start == 0 && self.inner.fill_buf()?.starts_with(b"\xEF\xBB\xBF") {
+            self.start = 3;
+        }
+        let used = self.consumed.saturating_sub(self.start);
         if used > self.max {
             self.over = true;
             return Err(io::Error::other("an XML event is too long"));
@@ -450,6 +456,9 @@ impl<R: BufRead> BufRead for Bounded<R> {
         self.inner.consume(n);
     }
 }
+
+/// Elements open at once: real Office files nest a few dozen deep.
+const MAX_DEPTH: usize = 10_000;
 
 /// The sink is asked about the time limit every this many events.
 const CHECK_EVERY: u32 = 4096;
@@ -467,6 +476,7 @@ fn walk<R: BufRead>(
     let mut reader = quick_xml::Reader::from_reader(xml);
     reader.config_mut().expand_empty_elements = true;
     let mut buf = Vec::new();
+    let mut depth = 0usize;
     loop {
         events.set(events.get().wrapping_add(1));
         if events.get().is_multiple_of(CHECK_EVERY) {
@@ -480,6 +490,18 @@ fn walk<R: BufRead>(
         };
         let bounded = reader.get_mut();
         bounded.start = bounded.consumed;
+        // The XML reader keeps every open element's name: deep nesting is
+        // stopped like a long event.
+        match &event {
+            Event::Start(_) => {
+                depth += 1;
+                if depth > MAX_DEPTH {
+                    return Err(Walked::Long);
+                }
+            }
+            Event::End(_) => depth = depth.saturating_sub(1),
+            _ => {}
+        }
         let flow = match event {
             Event::Start(e) => handler.open(e.local_name().as_ref().as_bytes(), &e, sink),
             Event::End(e) => handler.close(e.local_name().as_ref().as_bytes(), sink),
@@ -528,6 +550,7 @@ pub(crate) fn rel_id(e: &BytesStart) -> Option<String> {
     e.attributes()
         .flatten()
         .find(|a| a.key.prefix().is_some() && a.key.local_name().as_ref() == "id")
+        .filter(|a| a.value.len() <= MAX_ATTR)
         .and_then(|a| a.normalized_value(quick_xml::XmlVersion::Implicit1_0).ok().map(|v| v.into_owned()))
 }
 
@@ -582,26 +605,30 @@ pub(crate) fn resolve(dir: &str, target: &str) -> String {
 }
 
 /// Reads elements' text into facts: docProps/core.xml and app.xml.
+/// Each key's first value is kept: a file repeating an element millions of
+/// times makes one fact, not millions.
 struct Props {
     keys: Vec<(&'static [u8], &'static str)>,
     current: Option<&'static str>,
     value: String,
+    found: Vec<&'static str>,
 }
 
 impl Props {
     fn new(keys: &[(&'static [u8], &'static str)]) -> Props {
-        Props { keys: keys.to_vec(), current: None, value: String::new() }
+        Props { keys: keys.to_vec(), current: None, value: String::new(), found: Vec::new() }
     }
 }
 
 impl Handler for Props {
     fn open(&mut self, name: &[u8], _: &BytesStart, _: &mut Sink) -> Result<Flow, ReadError> {
-        self.current = self.keys.iter().find(|(n, _)| *n == name).map(|(_, k)| *k);
+        self.current = self.keys.iter().find(|(n, _)| *n == name).map(|(_, k)| *k).filter(|k| !self.found.contains(k));
         self.value.clear();
         Ok(Flow::More)
     }
     fn close(&mut self, _: &[u8], sink: &mut Sink) -> Result<Flow, ReadError> {
         if let Some(key) = self.current.take() {
+            self.found.push(key);
             sink.fact(key, std::mem::take(&mut self.value));
         }
         Ok(Flow::More)
@@ -627,6 +654,8 @@ pub(crate) struct Prose {
     cell: String,
     /// The current cell has been written in part already (it was long).
     cell_started: bool,
+    /// The current cell has had text other than white space.
+    cell_text: bool,
     /// Cells of the current row written.
     row_cells: usize,
     /// Tables, cells and runs open around the current position.
@@ -659,6 +688,7 @@ impl Prose {
             line: String::new(),
             cell: String::new(),
             cell_started: false,
+            cell_text: false,
             row_cells: 0,
             tables: 0,
             cells: 0,
@@ -690,6 +720,9 @@ impl Prose {
     /// come of a long one. Cells are joined by tabs.
     fn write_cell(&mut self, sink: &mut Sink, last: bool) -> Result<Flow, ReadError> {
         let cell = std::mem::take(&mut self.cell);
+        if last {
+            self.cell_text = false;
+        }
         let text = match (self.cell_started, last) {
             (false, true) => cell.trim(),
             (false, false) => cell.trim_start(),
@@ -717,17 +750,20 @@ impl Prose {
         if !self.paged {
             return Ok(Flow::More);
         }
-        let nothing_since = !self.text_on_page && self.line.trim().is_empty() && self.cell.trim().is_empty();
-        if !typed && nothing_since {
+        // Text arriving sets text_on_page, and a break clears it: so a
+        // rendered break with nothing since the last break is the one Word
+        // writes after a typed break, and is dropped.
+        if !typed && !self.text_on_page {
             return Ok(Flow::More);
         }
         if self.tables > 0 {
             // At a row's start (where Word marks a row that begins a page)
             // the row goes on the new page; else the next row does.
-            if self.row_cells == 0 && !self.cell_started && self.cell.trim().is_empty() {
+            if self.row_cells == 0 && !self.cell_started && !self.cell_text {
                 return self.new_page(sink);
             }
             self.pending_breaks = self.pending_breaks.saturating_add(1);
+            self.text_on_page = false;
             return Ok(Flow::More);
         }
         self.new_page(sink)
@@ -766,6 +802,9 @@ impl Prose {
         if !s.trim().is_empty() {
             self.any = true;
             self.text_on_page = true;
+            if self.cells > 0 {
+                self.cell_text = true;
+            }
         }
         if self.cells > 0 {
             self.cell.push_str(s);
@@ -780,7 +819,8 @@ impl Prose {
             let line = std::mem::take(&mut self.line);
             return sink.text(&line);
         }
-        if self.cell.len() >= LONG_LINE && self.tables == 1 {
+        // A nested table's text is part of its outer cell.
+        if self.cell.len() >= LONG_LINE && self.cells > 0 {
             return self.write_cell(sink, false);
         }
         Ok(Flow::More)

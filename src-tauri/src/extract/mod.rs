@@ -50,6 +50,9 @@ pub const MAX_FACT_CHARS: usize = 1000;
 /// its notes, fit.
 pub const MAX_PARTS: usize = 25_000;
 
+/// Facts kept per file: a reader's few, with room to spare.
+pub const MAX_FACTS: usize = 1000;
+
 /// How much a reader may take on.
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
@@ -256,7 +259,7 @@ impl Sink {
             Some((cut, _)) => &value[..cut],
             None => value,
         };
-        if !value.is_empty() {
+        if !value.is_empty() && self.facts.len() < MAX_FACTS {
             self.facts.push((key.to_string(), value.to_string()));
         }
     }

@@ -608,6 +608,10 @@ fn a_long_paragraph_or_table_cell_is_written_as_it_comes() {
     for (what, body) in [
         ("paragraph", format!("<w:p>{runs}</w:p>")),
         ("cell", format!("<w:tbl><w:tr><w:tc><w:p>{runs}</w:p></w:tc></w:tr></w:tbl>")),
+        (
+            "nested table's cell",
+            format!("<w:tbl><w:tr><w:tc><w:tbl><w:tr><w:tc><w:p>{runs}</w:p></w:tc></w:tr></w:tbl></w:tc></w:tr></w:tbl>"),
+        ),
     ] {
         let bytes = sample::docx(&body);
         let (got, held) = sample::held::peak(|| read(&Word::default(), "long.docx", &bytes));
@@ -825,4 +829,39 @@ fn styles_past_excels_own_limit_are_left_out() {
         let (got, _) = read(&Excel::default(), "nf.xlsx", &sample::xlsx(&[("S", sheet)], &[], &styles, false)).unwrap();
         assert_eq!(got[0].text, if date { "2026-11-03\n" } else { "46329\n" }, "{count} formats before it");
     }
+}
+
+// --- From the third review ---
+
+#[test]
+fn nesting_past_its_cap_stops_reading_and_keeps_what_was_read() {
+    for (depth, cut) in [(10_000, false), (10_001, true)] {
+        // The document, body and paragraph are three levels already.
+        let body = format!("{}<w:p>{}{}</w:p>{}", paras(&["kept"]), "<w:x>".repeat(depth - 3), "</w:x>".repeat(depth - 3), paras(&["later"]));
+        let (got, facts) = read(&Word::default(), "deep.docx", &sample::docx(&body)).unwrap();
+        let text: String = got.iter().map(|p| p.text.as_str()).collect();
+        assert_eq!(text, if cut { "kept\n" } else { "kept\nlater\n" }, "{depth}");
+        assert_eq!(fact(&facts, "truncated").is_some(), cut, "{depth}");
+    }
+}
+
+#[test]
+fn a_property_keeps_its_first_value_and_facts_are_capped() {
+    let core = r#"<cp:coreProperties xmlns:cp="c" xmlns:dc="d"><dc:title>First</dc:title><dc:title>Second</dc:title></cp:coreProperties>"#;
+    let bytes = sample::zip(&[
+        ("_rels/.rels", sample::rels(&[("rId1", "officeDocument", "word/document.xml"), ("rId2", "core-properties", "docProps/core.xml")]).as_bytes()),
+        ("docProps/core.xml", core.as_bytes()),
+        ("word/document.xml", format!(r#"<w:document {W}><w:body>{}</w:body></w:document>"#, paras(&["x"])).as_bytes()),
+    ]);
+    let (_, facts) = read(&Word::default(), "p.docx", &bytes).unwrap();
+    let titles: Vec<&str> = facts.iter().filter(|(k, _)| k == "title").map(|(_, v)| v.as_str()).collect();
+    assert_eq!(titles, ["First"]);
+    let max = crate::extract::MAX_FACTS;
+    let mut sink = Sink::new(10, Instant::now() + Duration::from_secs(10));
+    for i in 0..max + 1 {
+        sink.fact("k", format!("{i}"));
+    }
+    let (_, facts) = sink.finish();
+    assert_eq!(facts.len(), max);
+    assert_eq!(facts.last().unwrap().1, format!("{}", max - 1));
 }

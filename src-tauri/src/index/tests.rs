@@ -274,6 +274,25 @@ pub(crate) fn eventually(what: &str, mut check: impl FnMut() -> bool) {
     panic!("timed out waiting for {what}");
 }
 
+/// Waits until left() reaches 0, failing only if it stops going down for
+/// 20 s: a long queue on a loaded machine takes as long as it takes, but a
+/// stuck one fails.
+pub(crate) fn drains(what: &str, mut left: impl FnMut() -> usize) {
+    let mut last = left();
+    let mut moved = Instant::now();
+    while last > 0 {
+        if moved.elapsed() > Duration::from_secs(20) {
+            panic!("{what}: stuck at {last} for 20 s");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        let now = left();
+        if now < last {
+            moved = Instant::now();
+        }
+        last = now;
+    }
+}
+
 #[test]
 fn the_watcher_keeps_the_index_current() {
     let (dir, home, rules) = fixture();
@@ -350,7 +369,7 @@ fn concurrent_writers_never_see_a_locked_database() {
     let index = Index::open(&db).unwrap();
     assert_eq!(index.count().unwrap(), 4 * (1 + 40 + 40 * 60));
     worker.wake();
-    eventually("every file read", || crate::extract::store::progress(&index).unwrap().waiting == 0);
+    drains("every file read", || crate::extract::store::progress(&index).unwrap().waiting as usize);
     let stats = worker.stop();
     assert!(stats.errors.is_empty(), "{:#?}", stats.errors);
     assert_eq!(crate::extract::store::progress(&index).unwrap().read, 4 * 40 * 60);
