@@ -242,6 +242,28 @@ fn the_sink_cuts_text_on_a_character_boundary_and_records_it() {
 }
 
 #[test]
+fn the_sink_relabels_cuts_and_notes_what_was_left_out() {
+    let mut sink = Sink::new(100, Instant::now() + Duration::from_secs(10));
+    sink.part("");
+    sink.text("one").unwrap();
+    sink.relabel("page 1");
+    sink.part("page 2");
+    sink.text("two").unwrap();
+    sink.note_truncated();
+    assert_eq!(sink.text("more").unwrap(), Flow::More, "noting doesn't stop the text");
+    assert_eq!(sink.cut(), Flow::Full);
+    assert_eq!(sink.text("dropped").unwrap(), Flow::Full);
+    let (parts, facts) = sink.finish();
+    let parts: Vec<(&str, &str)> = parts.iter().map(|p| (p.label.as_str(), p.text.as_str())).collect();
+    assert_eq!(parts, vec![("page 1", "one"), ("page 2", "twomore")]);
+    assert_eq!(facts, vec![("truncated".to_string(), "1".to_string())]);
+    let mut sink = Sink::new(100, Instant::now() + Duration::from_secs(10));
+    sink.note_truncated();
+    sink.text("kept").unwrap();
+    assert_eq!(sink.finish().1, vec![("truncated".to_string(), "1".to_string())]);
+}
+
+#[test]
 fn the_sink_stops_a_reader_past_its_time_limit() {
     let sink = Sink::new(100, Instant::now() - Duration::from_millis(1));
     assert!(matches!(sink.check(), Err(ReadError::Timeout)));
