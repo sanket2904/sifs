@@ -20,7 +20,9 @@ pub struct Watch {
 
 impl Watch {
     /// Starts watching roots, applying changes to the index at db_path.
-    /// on_change is called after each batch of changes is applied.
+    /// on_change is called after each batch of changes is applied. A root
+    /// that can't be watched (inotify's limit, say) is logged and the rest
+    /// are watched.
     pub fn start(
         db_path: PathBuf,
         roots: Vec<String>,
@@ -30,7 +32,9 @@ impl Watch {
         let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
         let mut watcher = notify::recommended_watcher(tx)?;
         for root in &roots {
-            watcher.watch(Path::new(root), RecursiveMode::Recursive)?;
+            if let Err(e) = watcher.watch(Path::new(root), RecursiveMode::Recursive) {
+                log::warn!("watching {root}: {e}; its changes are missed until SIFS starts again");
+            }
         }
         let roots = Arc::new(Mutex::new(roots));
         let shared = roots.clone();
@@ -69,9 +73,10 @@ impl Watch {
         Ok(Watch { watcher, roots })
     }
 
+    /// Watches root. If that fails part way, what was watched still counts.
     pub fn add_root(&mut self, root: &str) -> Result<()> {
-        self.watcher.watch(Path::new(root), RecursiveMode::Recursive)?;
         self.roots.lock().unwrap().push(root.to_string());
+        self.watcher.watch(Path::new(root), RecursiveMode::Recursive)?;
         Ok(())
     }
 

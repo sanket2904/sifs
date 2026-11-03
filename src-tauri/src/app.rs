@@ -95,17 +95,25 @@ fn content_failures(state: State<AppState>, limit: Option<usize>) -> Result<Vec<
 fn add_folder(state: State<AppState>, path: String) -> Result<(), String> {
     let path = std::fs::canonicalize(&path).map_err(err)?.to_str().ok_or("the folder's path is not valid UTF-8")?.to_string();
     let inside = state.folders.add(&mut state.reader.lock().unwrap(), &path, now()).map_err(err)?;
+    let mut watched = Ok(());
     if let Some(watch) = state.watch.lock().unwrap().as_mut() {
         // Folders taken into this one stop being watched on their own
         // first, so unwatching them can't drop the new watch's paths.
         for child in &inside {
-            watch.remove_root(child).map_err(err)?;
+            if let Err(e) = watch.remove_root(child) {
+                log::warn!("unwatching {child}: {e:#}");
+            }
         }
-        watch.add_root(&path).map_err(err)?;
+        watched = watch.add_root(&path);
     }
+    // Scanned even if it can't be watched (inotify's limit, say): its files
+    // are found, only later changes are missed until SIFS starts again.
     // The window reloads its settings after adding, so it shows only this one.
-    state.folders.scan(path);
-    Ok(())
+    state.folders.scan(path.clone());
+    watched.map_err(|e| {
+        log::warn!("watching {path}: {e:#}");
+        format!("{path} was added, but changes in it won't be noticed until SIFS restarts: {e:#}")
+    })
 }
 
 #[tauri::command]
@@ -208,12 +216,15 @@ pub fn run() {
             let _ = reading.set(worker.waker());
             let handle = app.handle().clone();
             let reading = worker.waker();
+            // Without a watcher SIFS still scans; it just misses changes.
             let watch = Watch::start(db_path.clone(), roots, rules.clone(), move |applied| {
                 if applied > 0 {
                     let _ = handle.emit("index-changed", applied);
                     reading.wake();
                 }
-            })?;
+            })
+            .map_err(|e| log::warn!("watching for changes: {e:#}"))
+            .ok();
             // Catch up on what changed while the app was closed, and finish
             // removing folders it was removing when it stopped.
             folders.resume(&mut index)?;
@@ -221,7 +232,7 @@ pub fn run() {
                 home,
                 reader: Mutex::new(index),
                 rules,
-                watch: Mutex::new(Some(watch)),
+                watch: Mutex::new(watch),
                 folders,
                 extract: worker,
             };

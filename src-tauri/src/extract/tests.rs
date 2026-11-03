@@ -2144,6 +2144,22 @@ fn removing_a_folder_taken_in_keeps_the_outer_folder_watched() {
     assert_eq!(index.folders().unwrap(), vec![p.clone()]);
 }
 
+/// A folder that can't be watched doesn't stop the others being watched.
+#[test]
+fn the_watcher_watches_what_it_can() {
+    let home = Home::new();
+    let docs = home.at("Docs");
+    home.write("Docs/a.txt", b"okapi");
+    let mut index = home.open();
+    index.add_folder(&docs, 0).unwrap();
+    scan(&mut index, &docs, &home.rules, |_| {}).unwrap();
+    let rules = Arc::new(Mutex::new(Rules::new(&Rules::default_patterns(), &home.root).unwrap()));
+    let gone = home.at("not-there");
+    let _watch = Watch::start(home.db.clone(), vec![gone, docs.clone()], rules, |_| {}).unwrap();
+    let new = home.write("Docs/new.txt", b"okapi");
+    eventually("a change in the folder that is watched", || index.get(&new).unwrap().is_some());
+}
+
 /// Rows given to a folder are marked seen by its newest scan: a late row
 /// given to a folder whose scan has walked past it, and is about to remove
 /// what it didn't see, stays.
