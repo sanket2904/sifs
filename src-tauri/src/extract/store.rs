@@ -186,15 +186,10 @@ pub fn requeue_not_downloaded(index: &mut Index) -> Result<usize> {
 /// attempt on each before anything is read, and commits that. While any
 /// file has an attempt that never finished (SIFS stopped while reading it),
 /// those come first and one at a time, so a file that stops SIFS is known
-/// to be the one. Files with these extensions are left waiting.
-pub fn claim(index: &mut Index, limit: usize, except: &[&str]) -> Result<Vec<Job>> {
+/// to be the one.
+pub fn claim(index: &mut Index, limit: usize) -> Result<Vec<Job>> {
     let _write = writer();
     let tx = index.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let except_sql = if except.is_empty() {
-        String::new()
-    } else {
-        format!(" AND f.ext NOT IN ({})", vec!["?"; except.len()].join(", "))
-    };
     let select = "SELECT q.file_id, f.path, f.ext, q.modified, q.size, q.attempts + 1
                   FROM extract_queue q JOIN files f ON f.id = q.file_id";
     let to_job = |r: &rusqlite::Row| {
@@ -208,15 +203,13 @@ pub fn claim(index: &mut Index, limit: usize, except: &[&str]) -> Result<Vec<Job
         })
     };
     let mut jobs: Vec<Job> = {
-        let mut stmt = tx.prepare_cached(&format!("{select} WHERE q.attempts > 0{except_sql} LIMIT 1"))?;
-        let rows = stmt.query_map(rusqlite::params_from_iter(except.iter()), to_job)?;
+        let mut stmt = tx.prepare_cached(&format!("{select} WHERE q.attempts > 0 LIMIT 1"))?;
+        let rows = stmt.query_map([], to_job)?;
         rows.collect::<std::result::Result<_, _>>()?
     };
     if jobs.is_empty() {
-        let mut stmt = tx.prepare_cached(&format!(
-            "{select} WHERE 1{except_sql} ORDER BY q.priority, q.modified DESC LIMIT {limit}"
-        ))?;
-        let rows = stmt.query_map(rusqlite::params_from_iter(except.iter()), to_job)?;
+        let mut stmt = tx.prepare_cached(&format!("{select} ORDER BY q.priority, q.modified DESC LIMIT {limit}"))?;
+        let rows = stmt.query_map([], to_job)?;
         jobs = rows.collect::<std::result::Result<_, _>>()?;
     }
     {

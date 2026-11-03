@@ -14,7 +14,7 @@ use super::{describe_size, describe_time, platform, ReadError, Reader, Registry,
 use crate::index::db::Index;
 use anyhow::Result;
 use rusqlite::{params, OptionalExtension};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -24,8 +24,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Why a file is recorded failed after two reads that never finished.
 pub const STOPPED_TWICE: &str = "SIFS stopped twice while reading this file";
-/// A reader with this many abandoned reads still running gets no more
-/// files until some finish.
+/// With this many abandoned reads still running, of any reader, no more
+/// reads start until some finish.
 const MAX_ABANDONED: usize = 4;
 /// RunStats keeps at most this many errors (the latest) and lock holds (the
 /// first), so a worker running for months doesn't grow without end.
@@ -291,15 +291,15 @@ struct Runner<'a> {
     tx: mpsc::Sender<(u64, Outcome)>,
     rx: mpsc::Receiver<(u64, Outcome)>,
     next_token: u64,
-    /// Abandoned reads still running, by reader.
-    abandoned: HashMap<&'static str, Arc<AtomicUsize>>,
+    /// Abandoned reads still running, of every reader.
+    abandoned: Arc<AtomicUsize>,
     stats: RunStats,
 }
 
 impl<'a> Runner<'a> {
     fn new(registry: &'a Registry, options: &'a WorkerOptions) -> Runner<'a> {
         let (tx, rx) = mpsc::channel();
-        Runner { registry, options, tx, rx, next_token: 0, abandoned: HashMap::new(), stats: RunStats::default() }
+        Runner { registry, options, tx, rx, next_token: 0, abandoned: Arc::default(), stats: RunStats::default() }
     }
 
     fn error(&mut self, e: anyhow::Error) {
@@ -317,29 +317,43 @@ impl<'a> Runner<'a> {
         }
     }
 
-    fn abandoned_of(&mut self, reader: &'static str) -> Arc<AtomicUsize> {
-        self.abandoned.entry(reader).or_default().clone()
-    }
-
-    /// The extensions of readers with too many abandoned reads running.
-    fn paused_exts(&self) -> Vec<&'static str> {
-        let mut exts = Vec::new();
-        for (ext, reader) in self.registry.kinds() {
-            if self.abandoned.get(reader.id()).is_some_and(|n| n.load(Ordering::SeqCst) >= MAX_ABANDONED) {
-                exts.push(ext);
-            }
-        }
-        exts
+    fn stuck(&self) -> bool {
+        self.abandoned.load(Ordering::SeqCst) >= MAX_ABANDONED
     }
 
     /// Claims a batch, reads it and writes it. Returns how many files it
-    /// claimed: 0 when the queue is empty. Once stopped returns true, it
-    /// starts no more reads and puts back what it hadn't started.
+    /// claimed: 0 when the queue is empty, or while too many abandoned reads
+    /// are still running. Once stopped returns true, it starts no more reads
+    /// and puts back what it hadn't started. If anything fails, the files
+    /// claimed and not yet written go back too: an error is not a crash.
     fn step(&mut self, index: &mut Index, stopped: &dyn Fn() -> bool) -> Result<usize> {
-        let paused = self.paused_exts();
-        let jobs = store::claim(index, self.options.batch, &paused)?;
+        if self.stuck() {
+            return Ok(0);
+        }
+        let jobs = store::claim(index, self.options.batch)?;
         let claimed = jobs.len();
         self.stats.claimed += claimed;
+        let mut written = HashSet::new();
+        if let Err(e) = self.settle(index, jobs.clone(), stopped, &mut written) {
+            let back: Vec<Finished> =
+                jobs.into_iter().filter(|j| !written.contains(&j.file_id)).map(Finished::Unclaim).collect();
+            if let Err(again) = store::write_results(index, &back, now()) {
+                log::warn!("putting back claimed files: {again:#}");
+            }
+            return Err(e);
+        }
+        Ok(claimed)
+    }
+
+    /// Reads the claimed jobs and writes what came of them, noting each file
+    /// written in written.
+    fn settle(
+        &mut self,
+        index: &mut Index,
+        jobs: Vec<Job>,
+        stopped: &dyn Fn() -> bool,
+        written: &mut HashSet<i64>,
+    ) -> Result<()> {
         let mut results = Vec::new();
         let mut pending = VecDeque::new();
         for job in jobs {
@@ -357,8 +371,8 @@ impl<'a> Runner<'a> {
                     break;
                 };
                 let p = pending.remove(at).unwrap();
-                if self.abandoned_of(p.reader.id()).load(Ordering::SeqCst) >= MAX_ABANDONED {
-                    log::warn!("reader {} has {MAX_ABANDONED} reads stuck; its files wait", p.reader.id());
+                if self.stuck() {
+                    log::warn!("{MAX_ABANDONED} reads are stuck; files wait until one ends");
                     results.push(Finished::Unclaim(p.job));
                     continue;
                 }
@@ -396,7 +410,7 @@ impl<'a> Runner<'a> {
                         if flight.state.compare_exchange(RUNNING, ABANDONED, Ordering::SeqCst, Ordering::SeqCst).is_ok()
                         {
                             let flight = flights.remove(&token).unwrap();
-                            self.abandoned_of(flight.reader.id()).fetch_add(1, Ordering::SeqCst);
+                            self.abandoned.fetch_add(1, Ordering::SeqCst);
                             self.stats.abandoned += 1;
                             let limit = flight.reader.limits().time;
                             let error = format!("took longer than {}", describe_time(limit));
@@ -415,12 +429,11 @@ impl<'a> Runner<'a> {
                 Err(RecvTimeoutError::Disconnected) => unreachable!("the runner holds a sender"),
             }
             if results.iter().map(text_bytes).sum::<usize>() >= self.options.batch_bytes {
-                self.write(index, &mut results)?;
+                self.write(index, &mut results, written)?;
             }
         }
         results.extend(pending.into_iter().map(|p| Finished::Unclaim(p.job)));
-        self.write(index, &mut results)?;
-        Ok(claimed)
+        self.write(index, &mut results, written)
     }
 
     /// Settles a job without reading it, or returns it to be read.
@@ -471,7 +484,7 @@ impl<'a> Runner<'a> {
         let limits = p.reader.limits();
         let deadline = Instant::now() + limits.time;
         let state = Arc::new(AtomicU8::new(RUNNING));
-        let abandoned = self.abandoned_of(p.reader.id());
+        let abandoned = self.abandoned.clone();
         let (reader, path, tx, thread_state) =
             (p.reader.clone(), PathBuf::from(&p.job.path), self.tx.clone(), state.clone());
         let spawned = std::thread::Builder::new().name("sifs-read".into()).spawn(move || {
@@ -502,15 +515,21 @@ impl<'a> Runner<'a> {
         }
     }
 
-    fn write(&mut self, index: &mut Index, results: &mut Vec<Finished>) -> Result<()> {
+    fn write(&mut self, index: &mut Index, results: &mut Vec<Finished>, written: &mut HashSet<i64>) -> Result<()> {
         if !results.is_empty() {
             let held = store::write_results(index, results, now())?;
             if self.stats.holds.len() < MAX_HOLDS {
                 self.stats.holds.push(held);
             }
-            results.clear();
+            written.extend(results.drain(..).map(|f| job_of(&f).file_id));
         }
         Ok(())
+    }
+}
+
+fn job_of(f: &Finished) -> &Job {
+    match f {
+        Finished::Drop(job) | Finished::Unclaim(job) | Finished::Clear(job) | Finished::Read(job, _) => job,
     }
 }
 

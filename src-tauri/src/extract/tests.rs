@@ -405,7 +405,7 @@ fn ordered_home() -> (Home, Registry) {
 }
 
 fn claim_order(index: &mut Index) -> Vec<String> {
-    let jobs = store::claim(index, 16, &[]).unwrap();
+    let jobs = store::claim(index, 16).unwrap();
     jobs.into_iter().map(|j| j.path.rsplit('/').next().unwrap().to_string()).collect()
 }
 
@@ -585,7 +585,10 @@ fn a_slow_reader_is_recorded_failed_and_the_worker_carries_on() {
     let text = Fake::new("fake", &["txt"]);
     let registry = Registry::with(vec![Arc::new(slow.clone()), Arc::new(text.clone())]);
     let mut index = home.scanned(&registry);
-    let stats = run(&mut index, &registry);
+    // A full second's grace: the polite reader is never abandoned for being
+    // scheduled late on a busy machine.
+    let grace = WorkerOptions { grace: Duration::from_secs(1), ..options() };
+    let stats = run_until_empty(&mut index, &registry, &grace).unwrap();
     let late = ("failed".to_string(), Some("took longer than 200 ms".to_string()));
     assert_eq!(status(&index, &stuck), late);
     assert_eq!(status(&index, &polite), late);
@@ -1177,4 +1180,52 @@ fn an_html_title_without_its_end_tag_makes_a_capped_fact() {
     let mut index = home.scanned(&registry);
     run(&mut index, &registry);
     assert_eq!(fact_of(&index, &page, "title").unwrap().chars().count(), MAX_FACT_CHARS);
+}
+
+#[test]
+fn an_error_after_a_claim_puts_the_files_back_and_is_not_a_crash() {
+    let home = Home::new();
+    for name in ["a", "b", "c"] {
+        home.write(&format!("{name}.txt"), b"tapir");
+    }
+    let fake = Fake::new("fake", &["txt"]);
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    // Every write of what was read fails, as on a full disk.
+    index
+        .conn
+        .execute_batch("CREATE TRIGGER fail BEFORE INSERT ON extracts BEGIN SELECT RAISE(ABORT, 'disk full'); END")
+        .unwrap();
+    for _ in 0..3 {
+        assert!(run_until_empty(&mut index, &registry, &options()).is_err());
+        assert_eq!(count(&index, "SELECT COUNT(*) FROM extract_queue WHERE attempts > 0"), 0, "the claims are undone");
+    }
+    index.conn.execute_batch("DROP TRIGGER fail").unwrap();
+    run(&mut index, &registry);
+    for name in ["a", "b", "c"] {
+        assert_eq!(status(&index, &home.at(&format!("{name}.txt"))), ("done".into(), None), "{name}");
+    }
+}
+
+#[test]
+fn at_most_four_reads_are_abandoned_at_once_across_every_reader() {
+    let home = Home::new();
+    for name in ["a1.one", "a2.one", "a3.one", "b1.two", "b2.two", "b3.two"] {
+        home.write(name, b"x");
+    }
+    let stuck = |id: &'static str, ext: &'static str| {
+        let mut fake = Fake::new(id, &[ext]).body(|_, _, _| {
+            std::thread::sleep(Duration::from_secs(2));
+            Ok(())
+        });
+        fake.limits.time = Duration::from_millis(100);
+        Arc::new(fake) as Arc<dyn Reader>
+    };
+    let registry = Registry::with(vec![stuck("one", "one"), stuck("two", "two")]);
+    let mut index = home.scanned(&registry);
+    let stats = run(&mut index, &registry);
+    assert_eq!(stats.abandoned, 4);
+    assert_eq!(count(&index, "SELECT COUNT(*) FROM extracts WHERE status = 'failed'"), 4);
+    assert_eq!(queued(&index), 2, "the rest wait until a stuck read ends");
+    assert_eq!(count(&index, "SELECT COUNT(*) FROM extract_queue WHERE attempts > 0"), 0);
 }
