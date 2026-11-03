@@ -54,12 +54,12 @@ pub(crate) fn stream_names(file: &mut File) -> Option<Vec<String>> {
             return Some(names);
         }
         read_sector(file, sid, &mut sector)?;
-        for entry in sector.chunks_exact(128) {
+        for entry in sector.as_chunks::<128>().0 {
             // The name's length in bytes, with its terminating zero.
             let len = (u16::from_le_bytes([entry[0x40], entry[0x41]]) as usize).min(64);
             if len >= 2 && entry[0x42] != 0 {
                 let units: Vec<u16> =
-                    entry[..len - 2].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+                    entry[..len - 2].as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
                 names.push(String::from_utf16_lossy(&units));
             }
         }

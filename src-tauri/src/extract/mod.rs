@@ -310,7 +310,7 @@ impl Registry {
 
 /// "4 MB", "512 KB": for reasons shown to the user.
 pub(crate) fn describe_size(bytes: u64) -> String {
-    if bytes >= MB && bytes % MB == 0 {
+    if bytes >= MB && bytes.is_multiple_of(MB) {
         format!("{} MB", bytes / MB)
     } else if bytes >= 1024 {
         format!("{} KB", bytes / 1024)
@@ -321,7 +321,7 @@ pub(crate) fn describe_size(bytes: u64) -> String {
 
 /// "10 s", "200 ms".
 pub(crate) fn describe_time(time: Duration) -> String {
-    if time.as_millis() % 1000 == 0 {
+    if time.as_millis().is_multiple_of(1000) {
         format!("{} s", time.as_secs())
     } else {
         format!("{} ms", time.as_millis())

@@ -15,6 +15,8 @@ mod word;
 #[cfg(test)]
 pub(crate) mod sample;
 #[cfg(test)]
+mod review;
+#[cfg(test)]
 mod tests;
 
 pub use excel::Excel;
@@ -397,7 +399,7 @@ fn walk(xml: impl BufRead, handler: &mut dyn Handler, sink: &mut Sink, events: &
     let mut buf = Vec::new();
     loop {
         events.set(events.get().wrapping_add(1));
-        if events.get() % CHECK_EVERY == 0 {
+        if events.get().is_multiple_of(CHECK_EVERY) {
             sink.check().map_err(Walked::Read)?;
         }
         buf.clear();

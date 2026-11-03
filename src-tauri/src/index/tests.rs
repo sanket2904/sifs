@@ -242,7 +242,7 @@ fn a_file_refreshed_during_a_scan_stays_indexed() {
     let running = scanner.next_scan().unwrap();
     let created = format!("{home}/Documents/created-during-scan.txt");
     touch(Path::new(&created));
-    refresh(&mut index, Path::new(&created), &[home.clone()], &rules).unwrap();
+    refresh(&mut index, Path::new(&created), std::slice::from_ref(&home), &rules).unwrap();
     scanner.remove_unseen(&home, running).unwrap();
     assert!(index.get(&created).unwrap().is_some(), "a refreshed row is not unseen by a scan running when it was refreshed");
 }

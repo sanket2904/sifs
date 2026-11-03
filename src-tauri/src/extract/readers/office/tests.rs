@@ -444,3 +444,274 @@ fn relationship_targets_resolve_within_the_package() {
     assert_eq!(resolve("", "word/document.xml"), "word/document.xml");
     assert_eq!(resolve("a", "../../../x.xml"), "x.xml");
 }
+
+// --- From the step 2 review: each test fails without its rule ---
+
+/// Letters that don't compress much, so a test file is no zip bomb.
+fn letters(n: usize, seed: &mut u64) -> String {
+    (0..n)
+        .map(|_| {
+            *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (b'a' + ((*seed >> 33) % 26) as u8) as char
+        })
+        .collect()
+}
+
+/// A workbook listing these (name, relationship id) sheets, each id
+/// pointing at a sheet with one inline string: (id, text).
+fn workbook(listed: &[(&str, &str)], sheets: &[(&str, &str)]) -> Vec<u8> {
+    let mut wb = format!(r#"<?xml version="1.0"?><workbook {}><sheets>"#, sample::S);
+    for (name, id) in listed {
+        wb.push_str(&format!(r#"<sheet name="{name}" r:id="{id}"/>"#));
+    }
+    wb.push_str("</sheets></workbook>");
+    let targets: Vec<(String, String)> =
+        sheets.iter().map(|(id, _)| (id.to_string(), format!("worksheets/{id}.xml"))).collect();
+    let rels: Vec<(&str, &str, &str)> = targets.iter().map(|(id, t)| (id.as_str(), "worksheet", t.as_str())).collect();
+    let mut parts: Vec<(String, Vec<u8>)> = vec![
+        ("_rels/.rels".into(), sample::rels(&[("rId1", "officeDocument", "xl/workbook.xml")]).into_bytes()),
+        ("xl/workbook.xml".into(), wb.into_bytes()),
+        ("xl/_rels/workbook.xml.rels".into(), sample::rels(&rels).into_bytes()),
+    ];
+    for (id, text) in sheets {
+        let sheet = format!(
+            r#"<worksheet {}><sheetData><row><c t="inlineStr"><is><t>{text}</t></is></c></row></sheetData></worksheet>"#,
+            sample::S
+        );
+        parts.push((format!("xl/worksheets/{id}.xml"), sheet.into_bytes()));
+    }
+    let parts: Vec<(&str, &[u8])> = parts.iter().map(|(n, b)| (n.as_str(), b.as_slice())).collect();
+    sample::zip(&parts)
+}
+
+#[test]
+fn past_the_cap_on_sheets_and_slides_the_rest_are_left_out_and_recorded() {
+    let two = Caps { listed: 2, ..Caps::default() };
+    let bytes = sample::xlsx(&[("A", "<row><c><v>1</v></c></row>"), ("B", "<row><c><v>2</v></c></row>"), ("C", "<row><c><v>3</v></c></row>")], &[], "", false);
+    let (got, facts) = read(&Excel { caps: two }, "s.xlsx", &bytes).unwrap();
+    let labels: Vec<&str> = got.iter().map(|p| p.label.as_str()).collect();
+    assert_eq!(labels, ["A", "B"]);
+    assert_eq!(fact(&facts, "sheets"), Some("A, B"));
+    assert_eq!(fact(&facts, "truncated"), Some("1"));
+
+    let bytes = sample::pptx(&[(&shape(&["one"]), None), (&shape(&["two"]), None), (&shape(&["three"]), None)]);
+    let (got, facts) = read(&PowerPoint { caps: two }, "s.pptx", &bytes).unwrap();
+    let labels: Vec<&str> = got.iter().map(|p| p.label.as_str()).collect();
+    assert_eq!(labels, ["slide 1", "slide 2"]);
+    assert_eq!(fact(&facts, "slides"), Some("3"), "the count is the presentation's");
+    assert_eq!(fact(&facts, "truncated"), Some("1"));
+    // At the cap exactly, nothing is left out.
+    let (_, facts) = read(&PowerPoint { caps: Caps { listed: 3, ..Caps::default() } }, "s.pptx", &bytes).unwrap();
+    assert_eq!(fact(&facts, "truncated"), None);
+}
+
+#[test]
+fn a_sheet_or_slide_listed_twice_is_read_once() {
+    let bytes = workbook(&[("A", "rId1"), ("B", "rId1"), ("C", "rId2")], &[("rId1", "first"), ("rId2", "second")]);
+    assert_eq!(
+        parts(read(&Excel::default(), "twice.xlsx", &bytes)),
+        [("A".to_string(), "first\n".to_string()), ("C".to_string(), "second\n".to_string())]
+    );
+    // Both slide entries name the same relationship.
+    let pres = format!(
+        r#"<?xml version="1.0"?><p:presentation {}><p:sldIdLst><p:sldId id="256" r:id="rId0"/><p:sldId id="257" r:id="rId0"/></p:sldIdLst></p:presentation>"#,
+        sample::P
+    );
+    let slide = format!(r#"<p:sld {}><p:cSld><p:spTree>{}</p:spTree></p:cSld></p:sld>"#, sample::P, shape(&["only"]));
+    let bytes = sample::zip(&[
+        ("_rels/.rels", sample::rels(&[("rId1", "officeDocument", "ppt/presentation.xml")]).as_bytes()),
+        ("ppt/presentation.xml", pres.as_bytes()),
+        ("ppt/_rels/presentation.xml.rels", sample::rels(&[("rId0", "slide", "slides/slide1.xml")]).as_bytes()),
+        ("ppt/slides/slide1.xml", slide.as_bytes()),
+    ]);
+    assert_eq!(parts(read(&PowerPoint::default(), "twice.pptx", &bytes)), [("slide 1".to_string(), "only\n".to_string())]);
+}
+
+#[test]
+fn past_the_cap_on_shared_strings_the_rest_of_the_list_is_not_read() {
+    let sheet = r#"<row><c t="s"><v>0</v></c><c t="s"><v>1</v></c><c t="s"><v>2</v></c></row>"#;
+    let bytes = sample::xlsx(&[("S", sheet)], &["<t>a</t>", "<t>b</t>", "<t>c</t>"], "", false);
+    let (got, facts) = read(&Excel { caps: Caps { shared_strings: 2, ..Caps::default() } }, "n.xlsx", &bytes).unwrap();
+    assert_eq!(got[0].text, "a\tb\n", "the sheets are still read");
+    assert_eq!(fact(&facts, "truncated"), Some("1"));
+    let (got, facts) = read(&Excel { caps: Caps { shared_strings: 3, ..Caps::default() } }, "n.xlsx", &bytes).unwrap();
+    assert_eq!(got[0].text, "a\tb\tc\n");
+    assert_eq!(fact(&facts, "truncated"), None);
+}
+
+#[test]
+fn a_cells_value_is_kept_up_to_excels_own_limit() {
+    let long = "é".repeat(super::excel::MAX_CELL_BYTES); // two bytes each
+    let sheet = format!(r#"<row><c t="inlineStr"><is><t>{long}</t></is></c></row>"#);
+    let bytes = sample::xlsx(&[("S", &sheet)], &[], "", false);
+    let mut sink = Sink::new(10_000_000, Instant::now() + Duration::from_secs(10));
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("long.xlsx");
+    std::fs::write(&path, &bytes).unwrap();
+    Excel::default().read(&path, &mut sink).unwrap();
+    let (got, _) = sink.finish();
+    assert_eq!(got[0].text, format!("{}\n", "é".repeat(super::excel::MAX_CELL_BYTES / 2)));
+}
+
+#[test]
+fn page_breaks_inside_a_table_move_the_rows_after_them() {
+    let row = |cells: &[&str]| -> String {
+        let cells: String = cells.iter().map(|c| format!("<w:tc>{c}</w:tc>")).collect();
+        format!("<w:tr>{cells}</w:tr>")
+    };
+    let p = |t: &str| format!("<w:p><w:r><w:t>{t}</w:t></w:r></w:p>");
+    // Word marks the first run of a row that starts a new page.
+    let body = format!(
+        "{}<w:tbl>{}{}</w:tbl>{}",
+        p("before"),
+        row(&[&p("r1a"), &p("r1b")]),
+        row(&["<w:p><w:r><w:lastRenderedPageBreak/><w:t>r2a</w:t></w:r></w:p>", &p("r2b")]),
+        p("after"),
+    );
+    assert_eq!(
+        parts(read(&Word::default(), "t.docx", &sample::docx(&body))),
+        [("page 1".to_string(), "before\nr1a\tr1b\n".to_string()), ("page 2".to_string(), "r2a\tr2b\nafter\n".to_string())]
+    );
+    // A break typed in a row's second cell: the next row starts the page.
+    let body = format!(
+        "{}<w:tbl>{}{}</w:tbl>",
+        p("before"),
+        row(&[&p("x"), &format!("{}<w:p><w:r><w:br w:type=\"page\"/></w:r><w:r><w:t>z</w:t></w:r></w:p>", p("y"))]),
+        row(&[&p("next")]),
+    );
+    assert_eq!(
+        parts(read(&Word::default(), "t.docx", &sample::docx(&body))),
+        [("page 1".to_string(), "before\nx\ty z\n".to_string()), ("page 2".to_string(), "next\n".to_string())]
+    );
+}
+
+#[test]
+fn a_compound_file_whose_directory_chain_loops_still_ends() {
+    let mut bytes = sample::compound(&["EncryptionInfo", "EncryptedPackage"]);
+    // The FAT entry of the directory's sector (1) points at itself.
+    bytes[512 + 4..512 + 8].copy_from_slice(&1u32.to_le_bytes());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(read(&Word::default(), "loop.docx", &bytes).map(|_| ()));
+    });
+    let got = rx.recv_timeout(Duration::from_secs(10)).expect("reading a looping directory chain never ended");
+    assert!(matches!(&got, Err(ReadError::Unsupported(why)) if why == "password-protected"), "{got:?}");
+}
+
+#[test]
+fn a_long_paragraph_or_table_cell_is_written_as_it_comes() {
+    // 8 MB in 1 KB runs: held whole, the line or cell would grow to 8 MB
+    // before the sink (1M characters) cut it.
+    let mut seed = 7;
+    let runs: String = (0..8 * 1024).map(|_| format!("<w:r><w:t>{}</w:t></w:r>", letters(1024, &mut seed))).collect();
+    for (what, body) in [
+        ("paragraph", format!("<w:p>{runs}</w:p>")),
+        ("cell", format!("<w:tbl><w:tr><w:tc><w:p>{runs}</w:p></w:tc></w:tr></w:tbl>")),
+    ] {
+        let bytes = sample::docx(&body);
+        let (got, held) = sample::held::peak(|| read(&Word::default(), "long.docx", &bytes));
+        let (parts, facts) = got.unwrap();
+        assert_eq!(parts.iter().map(|p| p.text.chars().count()).sum::<usize>(), 1_000_000, "{what}");
+        assert_eq!(fact(&facts, "truncated"), Some("1"));
+        assert!(held < 6 * MB as usize, "a long {what} held {} KB", held / 1024);
+    }
+}
+
+#[test]
+fn a_documents_property_is_held_only_up_to_what_a_fact_keeps() {
+    // A 6 MB title in many pieces (each &amp; splits the text).
+    let mut seed = 9;
+    let title: String = (0..600_000).map(|_| format!("{}&amp;", letters(5, &mut seed))).collect();
+    let core = sample::core(&title, "Asha Rao");
+    let bytes = sample::zip(&[
+        (
+            "_rels/.rels",
+            sample::rels(&[("rId1", "officeDocument", "word/document.xml"), ("rId2", "core-properties", "docProps/core.xml")])
+                .as_bytes(),
+        ),
+        ("docProps/core.xml", core.as_bytes()),
+        ("word/document.xml", format!(r#"<w:document {W}><w:body>{}</w:body></w:document>"#, paras(&["x"])).as_bytes()),
+    ]);
+    let (got, held) = sample::held::peak(|| read(&Word::default(), "props.docx", &bytes));
+    let (_, facts) = got.unwrap();
+    assert_eq!(fact(&facts, "title").unwrap().chars().count(), crate::extract::MAX_FACT_CHARS);
+    assert!(held < 2 * MB as usize, "the title held {} KB", held / 1024);
+}
+
+#[test]
+fn an_external_relationship_is_never_read_as_a_part() {
+    let footnotes = format!(r#"<w:footnotes {W}>{}</w:footnotes>"#, paras(&["note text"]));
+    let doc_rels = r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml" TargetMode="External"/></Relationships>"#;
+    let bytes = sample::zip(&[
+        ("_rels/.rels", sample::rels(&[("rId1", "officeDocument", "word/document.xml")]).as_bytes()),
+        ("word/document.xml", format!(r#"<w:document {W}><w:body>{}</w:body></w:document>"#, paras(&["body"])).as_bytes()),
+        ("word/_rels/document.xml.rels", doc_rels.as_bytes()),
+        ("word/footnotes.xml", footnotes.as_bytes()),
+    ]);
+    assert_eq!(parts(read(&Word::default(), "ext.docx", &bytes)), [("".to_string(), "body\n".to_string())]);
+}
+
+#[test]
+fn a_slides_fallback_content_is_left_out() {
+    let alt = r#"<mc:AlternateContent><mc:Choice Requires="p14"><p:sp><p:txBody><a:p><a:r><a:t>chosen</a:t></a:r></a:p></p:txBody></p:sp></mc:Choice><mc:Fallback><p:sp><p:txBody><a:p><a:r><a:t>fallback</a:t></a:r></a:p></p:txBody></p:sp></mc:Fallback></mc:AlternateContent>"#;
+    assert_eq!(parts(read(&PowerPoint::default(), "alt.pptx", &sample::pptx(&[(alt, None)]))), [("slide 1".to_string(), "chosen\n".to_string())]);
+}
+
+#[test]
+fn word_hyphens_and_symbols_come_through_as_shown() {
+    let body = concat!(
+        r#"<w:p><w:r><w:t>co</w:t></w:r><w:r><w:softHyphen/></w:r><w:r><w:t>operate</w:t></w:r></w:p>"#,
+        r#"<w:p><w:r><w:t>well</w:t></w:r><w:r><w:noBreakHyphen/></w:r><w:r><w:t>known</w:t></w:r></w:p>"#,
+        r#"<w:p><w:r><w:t>done </w:t></w:r><w:r><w:sym w:font="Segoe UI Symbol" w:char="2713"/></w:r><w:r><w:sym w:font="Wingdings" w:char="F04A"/></w:r></w:p>"#,
+    );
+    assert_eq!(parts(read(&Word::default(), "h.docx", &sample::docx(body))), [("".to_string(), "cooperate\nwell-known\ndone ✓\n".to_string())]);
+}
+
+#[test]
+fn the_time_limit_is_asked_between_sheets_slides_and_parts() {
+    // Parts with no text (writing text asks the sink itself), far from the
+    // XML loop's every-4,096-events check, with the time already up.
+    let past = |reader: &dyn Reader, name: &str, bytes: &[u8]| read_at(reader, name, bytes, Instant::now());
+    let xlsx = sample::xlsx(&[("A", ""), ("B", "")], &[], "", false);
+    assert!(matches!(past(&Excel::default(), "t.xlsx", &xlsx), Err(ReadError::Timeout)));
+    let pptx = sample::pptx(&[("", None), ("", None)]);
+    assert!(matches!(past(&PowerPoint::default(), "t.pptx", &pptx), Err(ReadError::Timeout)));
+    let header = format!(r#"<w:hdr {W}/>"#);
+    let docx = sample::docx_with("", &[("word/header1.xml", header)], &[("rId7", "header", "header1.xml")]);
+    assert!(matches!(past(&Word::default(), "t.docx", &docx), Err(ReadError::Timeout)));
+    // With time to spare, they read.
+    assert!(read(&Excel::default(), "t.xlsx", &xlsx).is_ok());
+    assert!(read(&PowerPoint::default(), "t.pptx", &pptx).is_ok());
+    assert!(read(&Word::default(), "t.docx", &docx).is_ok());
+}
+
+#[test]
+fn sheets_and_slides_are_found_among_many_relationships_at_once() {
+    // 100,000 listed (the cap raised for the test) against 100,000
+    // relationships, none matching: looked up one by one that is 10
+    // billion comparisons, far past the reader's 10 s; at once, about a
+    // second in a debug build.
+    let n = 100_000;
+    let caps = Caps { listed: n, ..Caps::default() };
+    let rels: String =
+        (0..n).map(|j| format!(r#"<Relationship Id="y{j}" Type="t/worksheet" Target="s.xml"/>"#)).collect();
+    let rels = format!(r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rels}</Relationships>"#);
+    let sheets: String = (0..n).map(|i| format!(r#"<sheet name="s{i}" r:id="x{i}"/>"#)).collect();
+    let wb = format!(r#"<workbook {}><sheets>{sheets}</sheets></workbook>"#, sample::S);
+    let xlsx = sample::zip(&[
+        ("_rels/.rels", sample::rels(&[("rId1", "officeDocument", "xl/workbook.xml")]).as_bytes()),
+        ("xl/workbook.xml", wb.as_bytes()),
+        ("xl/_rels/workbook.xml.rels", rels.as_bytes()),
+    ]);
+    let slides: String = (0..n).map(|i| format!(r#"<p:sldId r:id="x{i}"/>"#)).collect();
+    let pres = format!(r#"<p:presentation {}><p:sldIdLst>{slides}</p:sldIdLst></p:presentation>"#, sample::P);
+    let pptx = sample::zip(&[
+        ("_rels/.rels", sample::rels(&[("rId1", "officeDocument", "ppt/presentation.xml")]).as_bytes()),
+        ("ppt/presentation.xml", pres.as_bytes()),
+        ("ppt/_rels/presentation.xml.rels", rels.as_bytes()),
+    ]);
+    for (reader, name, bytes) in [(&Excel { caps } as &dyn Reader, "many.xlsx", &xlsx), (&PowerPoint { caps }, "many.pptx", &pptx)] {
+        let got = read(reader, name, bytes);
+        assert!(got.is_ok(), "{name}: {:?}", got.map(|_| ()));
+    }
+}
