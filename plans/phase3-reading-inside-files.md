@@ -98,12 +98,13 @@ A `Reader` trait (`id`, `version`, extensions, class, limits, `read(path, sink)`
 |---|---|---|
 | text | txt, text, log, md, markdown, rst, org, tex, csv, tsv | markdown title and author from front matter or the first heading; CSV/TSV column names as a fact |
 | code | the code extensions from `search.rs` | lowest priority |
+| plain | files without an extension (README, Makefile, LICENSE) | binary check, 1 MB cap |
 | json | json, geojson, ipynb | keys and string values; raw text if it doesn't parse |
 | html | html, htm, xhtml | tags, scripts, styles and comments stripped; entities decoded; title and author as facts |
 
 **Encodings, for every reader:** a byte-order mark decides UTF-8 or UTF-16; UTF-16 without a mark is recognised from its zero bytes; other zero bytes mean binary (skipped); valid UTF-8 is used as is; anything else is guessed (`chardetng`) and decoded (`encoding_rs`), and the encoding is kept as a fact. HTML's `<meta charset>` is honoured first.
 
-**Defaults, to confirm:** skip files over 4 MB; keep at most 1 million characters per file (the rest is cut, and a `truncated` fact recorded); a 10-second limit per file; files without an extension (README, Makefile) aren't read.
+**Limits:** skip files over 4 MB (JSON and files without an extension: 1 MB); keep at most 1 million characters per file (the rest is cut, and a `truncated` fact recorded); a 10-second limit per file.
 
 **New dependencies:** `encoding_rs`, `chardetng`, `html-escape`, `libc`.
 
@@ -141,16 +142,19 @@ On a folder of sample files (`tests/fixtures/contents/`): text, markdown with "r
 - **The tokenizer doesn't split Chinese or Japanese** into words.
 - **Extracted text is stored unencrypted** in `sifs.db`, protected by FileVault.
 
-### Open questions for the owner
+### Decisions (owner, 2026-11-03)
 
-1. Skip files over 4 MB, or read the first part of large logs and CSVs? Keep 1 million characters per file?
-2. Read files without an extension (README, Makefile), with a binary check and a 1 MB cap?
-3. Index code files' contents by default, at the lowest priority?
-4. A lower cap, 1 MB, for large data JSON?
-5. Should a name match always rank above a content match, or only for the same kind and place?
-6. Pause reading during scans only, or also on battery or a busy CPU?
-7. Read where a file was downloaded from during the crawl, or in a later pass?
-8. Mac framework readers in-process, or in a helper process that can be killed?
+The owner took the recommended defaults, to be revisited once SIFS has run on real folders:
+1. **Size:** skip files over 4 MB; keep at most 1 million characters per file.
+2. **Files without an extension** (README, Makefile) are read, with the binary check and a 1 MB cap.
+3. **Code files' contents are indexed,** at the lowest priority. A per-folder switch can come later.
+4. **JSON** has a 1 MB cap.
+5. **Ranking (step 3):** a name match ranks above a content match only when kind and place are equal.
+6. **Reading pauses during scans** only, for now.
+7. **Where a file was downloaded from** is read in a later pass, not during the crawl.
+8. **Mac framework readers run in-process** first; a helper process if crashes show up.
+
+Step 1 is built alongside the engine's PR #35, since it doesn't depend on it.
 
 ### Left for a Mac session
 
