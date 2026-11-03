@@ -110,10 +110,15 @@ fn add_folder(state: State<AppState>, path: String) -> Result<(), String> {
 
 #[tauri::command]
 fn remove_folder(state: State<AppState>, path: String) -> Result<(), String> {
-    if let Some(watch) = state.watch.lock().unwrap().as_mut() {
-        watch.remove_root(&path).map_err(err)?;
+    let forgot = state.folders.remove(&mut state.reader.lock().unwrap(), &path).map_err(err)?;
+    // Only a folder is unwatched: a path taken into a folder around it is
+    // watched through that folder, and unwatching it would drop those watches.
+    if forgot {
+        if let Some(watch) = state.watch.lock().unwrap().as_mut() {
+            watch.remove_root(&path).map_err(err)?;
+        }
     }
-    state.folders.remove(&mut state.reader.lock().unwrap(), &path).map_err(err)
+    Ok(())
 }
 
 #[tauri::command]

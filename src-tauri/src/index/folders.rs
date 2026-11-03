@@ -140,12 +140,14 @@ impl Folders {
     }
 
     /// Stops searching a folder and removes its files in the background,
-    /// once its scan, if one is running, has stopped.
-    /// A path that is not a folder (taken into one added around it) is left
-    /// alone: its files are that folder's.
-    pub fn remove(&self, index: &mut Index, path: &str) -> Result<()> {
+    /// once its scan, if one is running, has stopped. A path that is not a
+    /// folder (taken into one added around it) is left alone: its files are
+    /// that folder's. Returns whether it was a folder, so the caller stops
+    /// watching it only then (unwatching a path inside a watched folder
+    /// would drop that folder's watches there).
+    pub fn remove(&self, index: &mut Index, path: &str) -> Result<bool> {
         if !index.forget_folder(path)? {
-            return Ok(());
+            return Ok(false);
         }
         {
             let mut jobs = self.jobs();
@@ -155,11 +157,11 @@ impl Folders {
                 // after being added again: no scan follows, a removal does.
                 scan.cancel.store(true, Ordering::SeqCst);
                 scan.again = false;
-                return Ok(());
+                return Ok(true);
             }
         }
         self.start_removal(path.to_string());
-        Ok(())
+        Ok(true)
     }
 
     /// Scans one folder in the background. If it is being scanned, another

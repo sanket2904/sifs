@@ -1951,3 +1951,42 @@ fn a_step_that_works_resets_the_wait_after_errors() {
     drop(worker);
     assert!(gap < Duration::from_millis(800), "waited {gap:?} after the first error since a success, not {idle_poll:?}");
 }
+
+/// The reviewer's rv4_removing_a_taken_in_folder_keeps_the_outer_folder_watched
+/// (inotify): removing a path taken into a folder around it unwatched it,
+/// and notify then dropped the outer folder's watches on that subtree. As
+/// app.rs's remove_folder now does, it is unwatched only if it was a folder.
+#[cfg(target_os = "linux")]
+#[test]
+fn removing_a_folder_taken_in_keeps_the_outer_folder_watched() {
+    let home = Home::new();
+    home.write("P/C/a.txt", b"okapi");
+    home.write("P/top.txt", b"okapi");
+    let mut index = home.open();
+    let (p, c) = (home.at("P"), home.at("P/C"));
+    let folders = folders(&home, |_| {});
+    folders.add(&mut index, &c, now()).unwrap();
+    scan(&mut index, &c, &home.rules, |_| {}).unwrap();
+    let rules = Arc::new(Mutex::new(Rules::new(&Rules::default_patterns(), &home.root).unwrap()));
+    let mut watch = Watch::start(home.db.clone(), vec![c.clone()], rules, |_| {}).unwrap();
+    // app.rs add_folder(P)
+    let inside = folders.add(&mut index, &p, now()).unwrap();
+    for child in &inside {
+        watch.remove_root(child).unwrap();
+    }
+    watch.add_root(&p).unwrap();
+    scan(&mut index, &p, &home.rules, |_| {}).unwrap();
+    let before = home.write("P/C/before.txt", b"okapi");
+    eventually("a file under C, watched through P", || index.get(&before).unwrap().is_some());
+    // app.rs remove_folder(P/C)
+    let forgot = folders.remove(&mut index, &c).unwrap();
+    assert!(!forgot, "P/C is not a folder now");
+    if forgot {
+        watch.remove_root(&c).unwrap();
+    }
+    let after = home.write("P/C/after.txt", b"okapi");
+    let control = home.write("P/control.txt", b"okapi");
+    eventually("the control file", || index.get(&control).unwrap().is_some());
+    eventually("P/C/after.txt, still watched through P", || index.get(&after).unwrap().is_some());
+    assert_eq!(index.folders().unwrap(), vec![p.clone()]);
+}
