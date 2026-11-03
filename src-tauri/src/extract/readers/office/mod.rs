@@ -21,6 +21,8 @@ mod review2;
 #[cfg(test)]
 mod review3;
 #[cfg(test)]
+mod review4;
+#[cfg(test)]
 mod tests;
 
 pub use excel::Excel;
@@ -300,7 +302,7 @@ impl Package {
             None => ("", part),
         };
         let name = if dir.is_empty() { format!("_rels/{file}.rels") } else { format!("{dir}/_rels/{file}.rels") };
-        let mut rels = Rels { dir: dir.to_string(), found: Vec::new(), over: false };
+        let mut rels = Rels { dir: dir.to_string(), found: Vec::new(), bytes: 0, over: false };
         self.parse(&name, &mut rels, sink)?;
         if rels.over {
             sink.note_truncated();
@@ -460,6 +462,10 @@ impl<R: BufRead> BufRead for Bounded<R> {
 /// Elements open at once: real Office files nest a few dozen deep.
 const MAX_DEPTH: usize = 10_000;
 
+/// Bytes of an element's name: Office's are under 64. With MAX_DEPTH, this
+/// bounds the open names the XML reader keeps (2.5 MB).
+const MAX_NAME: usize = 256;
+
 /// The sink is asked about the time limit every this many events.
 const CHECK_EVERY: u32 = 4096;
 
@@ -493,9 +499,9 @@ fn walk<R: BufRead>(
         // The XML reader keeps every open element's name: deep nesting is
         // stopped like a long event.
         match &event {
-            Event::Start(_) => {
+            Event::Start(e) => {
                 depth += 1;
-                if depth > MAX_DEPTH {
+                if depth > MAX_DEPTH || e.name().as_ref().len() > MAX_NAME {
                     return Err(Walked::Long);
                 }
             }
@@ -530,6 +536,9 @@ fn walk<R: BufRead>(
 }
 
 /// The value of the attribute with this local name, entities decoded.
+/// Attributes are read without quick-xml's check for repeated names: that
+/// check scans every earlier name for each repeat, all within one event
+/// where the time limit is never asked, and Office files don't repeat them.
 /// An attribute value read is at most this long: every one the readers use
 /// (ids, types, paths, names, format codes) is far shorter. A longer one
 /// reads as absent.
@@ -538,6 +547,7 @@ const MAX_ATTR: usize = 4096;
 /// An attribute's value, by its local name (any prefix).
 pub(crate) fn attr(e: &BytesStart, local: &[u8]) -> Option<String> {
     e.attributes()
+        .with_checks(false)
         .flatten()
         .find(|a| a.key.local_name().as_ref().as_bytes() == local)
         .filter(|a| a.value.len() <= MAX_ATTR)
@@ -548,6 +558,7 @@ pub(crate) fn attr(e: &BytesStart, local: &[u8]) -> Option<String> {
 /// with one, since an element may have its own plain id too).
 pub(crate) fn rel_id(e: &BytesStart) -> Option<String> {
     e.attributes()
+        .with_checks(false)
         .flatten()
         .find(|a| a.key.prefix().is_some() && a.key.local_name().as_ref() == "id")
         .filter(|a| a.value.len() <= MAX_ATTR)
@@ -557,10 +568,18 @@ pub(crate) fn rel_id(e: &BytesStart) -> Option<String> {
 /// Relationships kept from one .rels part: past it, the rest are left out.
 const MAX_RELS: usize = 50_000;
 
-/// Reads a .rels part, its first MAX_RELS relationships.
+/// Bytes of resolved targets kept from one .rels part: a target is joined
+/// to its part's folder, itself perhaps long, so the count alone doesn't
+/// bound them.
+const MAX_RELS_BYTES: usize = 4 * MB as usize;
+
+/// Reads a .rels part, its first MAX_RELS relationships. A target that
+/// resolves to a path longer than MAX_ATTR is left out (no part of an
+/// Office file has such a name).
 struct Rels {
     dir: String,
     found: Vec<Rel>,
+    bytes: usize,
     over: bool,
 }
 
@@ -575,7 +594,16 @@ impl Handler for Rels {
                 return Ok(Flow::More);
             };
             let kind = kind.rsplit('/').next().unwrap_or_default().to_string();
-            self.found.push(Rel { id, kind, target: resolve(&self.dir, &target) });
+            let target = resolve(&self.dir, &target);
+            if target.len() > MAX_ATTR {
+                return Ok(Flow::More);
+            }
+            self.bytes += id.len() + kind.len() + target.len();
+            if self.bytes > MAX_RELS_BYTES {
+                self.over = true;
+                return Ok(Flow::Full);
+            }
+            self.found.push(Rel { id, kind, target });
         }
         Ok(Flow::More)
     }

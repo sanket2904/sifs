@@ -1,0 +1,183 @@
+//! The step 2 reviewer's fourth-round tests, kept (handover/step2-review-r4/REPORT.txt).
+use super::*;
+use super::sample;
+use crate::extract::{Part, Reader};
+use std::time::{Duration, Instant};
+use std::fmt::Write as _;
+
+type Output = (Vec<Part>, Vec<(String, String)>);
+fn read(reader: &dyn Reader, bytes: &[u8]) -> Result<Output, ReadError> {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("review.office");
+    std::fs::write(&path, bytes).unwrap();
+    let mut sink = Sink::new(1_000_000, Instant::now() + Duration::from_secs(10));
+    reader.read(&path, &mut sink)?;
+    Ok(sink.finish())
+}
+
+#[test]
+fn r4_resolved_relationships_have_a_total_memory_bound() {
+    // Both raw Targets obey 4 KB. The slide's base directory is 8 KB,
+    // copied into every otherwise tiny relationship. No raised caps.
+    let a = "a".repeat(4000);
+    let b = "b".repeat(4000);
+    let main = format!("{a}/presentation.xml");
+    let slide_target = format!("{b}/slide.xml");
+    let slide = format!("{a}/{slide_target}");
+    let main_rels = format!("{a}/_rels/presentation.xml.rels");
+    let slide_rels = format!("{a}/{b}/_rels/slide.xml.rels");
+    let root_rels = sample::rels(&[("p", "officeDocument", &main)]);
+    let presentation = format!("<p:presentation {}><p:sldIdLst><p:sldId r:id=\"s\"/></p:sldIdLst></p:presentation>", sample::P);
+    let pres_rels = sample::rels(&[("s", "slide", &slide_target)]);
+    let mut rels = String::from("<Relationships>");
+    for i in 0..50_000 {
+        write!(rels, "<Relationship Id=\"r{i}\" Type=\"image\" Target=\"x\"/>").unwrap();
+    }
+    rels.push_str("</Relationships>");
+    let bytes = sample::zip(&[
+        ("_rels/.rels", root_rels.as_bytes()),
+        (&main, presentation.as_bytes()),
+        (&main_rels, pres_rels.as_bytes()),
+        (&slide, b"<sld/>"),
+        (&slide_rels, rels.as_bytes()),
+    ]);
+    let start = Instant::now();
+    let (result, peak) = sample::held::peak(|| read(&PowerPoint::default(), &bytes));
+    eprintln!("path expansion: zip={} peak={} MiB elapsed={:?} result={:?}", bytes.len(), peak / MB as usize, start.elapsed(), result.as_ref().map(|o| o.0.len()));
+    // Independently count *live* storage, avoiding realloc peak-accounting artifacts.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("paths.pptx");
+    std::fs::write(&path, &bytes).unwrap();
+    let mut package = Package::open(&path, Kind::PowerPoint, Caps::default()).unwrap();
+    let mut sink = Sink::new(1_000_000, Instant::now() + Duration::from_secs(10));
+    let rels = package.rels(&slide, &mut sink).unwrap();
+    let retained = rels.capacity() * std::mem::size_of::<Rel>()
+        + rels.iter().map(|r| r.id.capacity() + r.kind.capacity() + r.target.capacity()).sum::<usize>();
+    eprintln!("path expansion: relationships={} retained={} bytes ({} MiB) inflated={}", rels.len(), retained, retained / MB as usize, package.inflated.get());
+    assert!(retained < 256 * MB as usize, "resolved relationships exceed 256 MiB");
+    assert!(peak < 256 * MB as usize);
+}
+
+#[test]
+fn r4_word_document_relationships_have_a_total_memory_bound() {
+    // Word: the main part sits in a 4,000-byte folder (a Target under the
+    // 4 KB limit); each of its 50,000 one-byte relationship Targets is kept
+    // resolved, folder and all.
+    let a = "a".repeat(4000);
+    let main = format!("{a}/document.xml");
+    let root_rels = sample::rels(&[("d", "officeDocument", &main)]);
+    let document = format!("<w:document {}><w:body><w:p><w:r><w:t>hi</w:t></w:r></w:p></w:body></w:document>", sample::W);
+    let mut rels = String::from("<Relationships>");
+    for i in 0..50_000 {
+        write!(rels, "<Relationship Id=\"r{i}\" Type=\"footnotes\" Target=\"x\"/>").unwrap();
+    }
+    rels.push_str("</Relationships>");
+    let doc_rels = format!("{a}/_rels/document.xml.rels");
+    let bytes = sample::zip(&[
+        ("_rels/.rels", root_rels.as_bytes()),
+        (&main, document.as_bytes()),
+        (&doc_rels, rels.as_bytes()),
+    ]);
+    let start = Instant::now();
+    let (result, peak) = sample::held::peak(|| read(&Word::default(), &bytes));
+    eprintln!("word path expansion: zip={} peak={} MiB elapsed={:?} result={:?}", bytes.len(), peak / MB as usize, start.elapsed(), result.as_ref().map(|o| o.0.len()));
+    assert!(peak < 128 * MB as usize, "a 100 KB document held {} MiB of relationship paths", peak / MB as usize);
+}
+
+/// A Word body with `tags` page breaks, each with `unique` distinct
+/// attributes and then `dups` repeats of the last one.
+fn duplicate_attribute_docx(unique: usize, dups: usize, tags: usize) -> (Vec<u8>, usize) {
+    let mut tag = String::from("<w:br");
+    for i in 0..unique {
+        write!(tag, " a{i:06}=\"\"").unwrap();
+    }
+    let last = format!(" a{:06}=\"\"", unique - 1);
+    for _ in 0..dups { tag.push_str(&last); }
+    tag.push_str("/>");
+    assert!(tag.len() < Caps::default().event);
+    let body = format!("<w:p><w:r>{}</w:r></w:p>", tag.repeat(tags));
+    (sample::docx(&body), tag.len())
+}
+
+#[test]
+fn r4_duplicate_attributes_obey_deadline() {
+    // quick-xml's hash prefilter handles unique attributes, but a duplicate
+    // still searches its Vec for the original position. attr()'s flatten()
+    // swallows the error and repeats that linear search for every duplicate,
+    // all inside one event: the sink's clock is never asked.
+    let (bytes, event) = duplicate_attribute_docx(50_000, 50_000, 1);
+    let start = Instant::now();
+    let result = read(&Word::default(), &bytes);
+    eprintln!("duplicate attributes: zip={} event={} elapsed={:?} result={:?}", bytes.len(), event, start.elapsed(), result.as_ref().map(|o| o.0.len()));
+    assert!(start.elapsed() < Duration::from_secs(15), "attribute scan ignored 10-second deadline (5s grace)");
+}
+
+/// The same, sized for a release build: run with
+/// `cargo test --release --lib r4_duplicate_attributes_release -- --ignored --nocapture`.
+#[test]
+fn r4_duplicate_attributes_release() {
+    for (unique, dups, tags) in [(50_000, 50_000, 1), (150_000, 150_000, 1), (150_000, 150_000, 4)] {
+        let (bytes, event) = duplicate_attribute_docx(unique, dups, tags);
+        let start = Instant::now();
+        let result = read(&Word::default(), &bytes);
+        eprintln!("duplicate attributes (release): unique={unique} dups={dups} tags={tags} zip={} event={} elapsed={:?} result={:?}", bytes.len(), event, start.elapsed(), result.as_ref().map(|o| o.0.len()));
+    }
+}
+
+/// Word sorts its headers with a fresh String per comparison: 50,000
+/// header relationships with 4 KB resolved targets. Release timing:
+/// `cargo test --release --lib r4_header_sort -- --ignored --nocapture`.
+#[test]
+fn r4_header_sort_release() {
+    let a = "a".repeat(4000);
+    let main = format!("{a}/document.xml");
+    let root_rels = sample::rels(&[("d", "officeDocument", &main)]);
+    let document = format!("<w:document {}><w:body><w:p><w:r><w:t>hi</w:t></w:r></w:p></w:body></w:document>", sample::W);
+    let mut rels = String::from("<Relationships>");
+    for i in 0..50_000 {
+        write!(rels, "<Relationship Id=\"r{i}\" Type=\"header\" Target=\"h{}\"/>", (i * 7919) % 50_000).unwrap();
+    }
+    rels.push_str("</Relationships>");
+    let doc_rels = format!("{a}/_rels/document.xml.rels");
+    let bytes = sample::zip(&[
+        ("_rels/.rels", root_rels.as_bytes()),
+        (&main, document.as_bytes()),
+        (&doc_rels, rels.as_bytes()),
+    ]);
+    let start = Instant::now();
+    let (result, peak) = sample::held::peak(|| read(&Word::default(), &bytes));
+    eprintln!("header sort: zip={} peak={} MiB elapsed={:?} result={:?}", bytes.len(), peak / MB as usize, start.elapsed(), result.as_ref().map(|o| o.0.len()));
+}
+
+#[test]
+fn r4_open_element_names_have_a_total_memory_bound() {
+    // quick-xml keeps the name of every open element. Depth is capped at
+    // 10,000, each name only by the 4 MB event cap: 10,000 nested elements
+    // with 12 KB names stay under both caps, and under the unpack cap.
+    // A random tail keeps the part under the 100:1 bomb ratio.
+    let prefix = "n".repeat(12_000);
+    let mut seed = 0x2545_F491_4F6C_DD1Du64;
+    let mut body = String::new();
+    // The first name (after w:document and w:body, 17 bytes) sets quick-xml's buffer capacity, which then doubles:
+    // 14,080 x 2^13 = 110 MiB, so passing 110 MiB of names reserves 220 MiB.
+    let mut names = vec![format!("w:{}", "f".repeat(14_061))];
+    write!(body, "<{}>", names[0]).unwrap();
+    for _ in 0..9_990 {
+        let mut name = format!("w:{prefix}");
+        for _ in 0..120 {
+            seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17;
+            name.push((b'a' + (seed % 26) as u8) as char);
+        }
+        write!(body, "<{name}>").unwrap();
+        names.push(name);
+    }
+    body.push_str("<w:p><w:r><w:t>deep</w:t></w:r></w:p>");
+    for name in names.iter().rev() {
+        write!(body, "</{name}>").unwrap();
+    }
+    let bytes = sample::docx(&body);
+    let start = Instant::now();
+    let (result, peak) = sample::held::peak(|| read(&Word::default(), &bytes));
+    eprintln!("open names: xml={} zip={} peak={} MiB elapsed={:?} result={:?}", body.len(), bytes.len(), peak / MB as usize, start.elapsed(), result.as_ref().map(|o| (o.0.len(), o.1.clone())));
+    assert!(peak < 256 * MB as usize);
+}

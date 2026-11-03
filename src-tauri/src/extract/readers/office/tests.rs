@@ -865,3 +865,40 @@ fn a_property_keeps_its_first_value_and_facts_are_capped() {
     assert_eq!(facts.len(), max);
     assert_eq!(facts.last().unwrap().1, format!("{}", max - 1));
 }
+
+// --- From the fourth review ---
+
+#[test]
+fn a_relationship_resolving_past_4_kb_is_left_out() {
+    // The main document sits in a 3,000-byte folder; its header's target,
+    // joined to that folder, comes to 4,096 bytes or one more.
+    let folder = "f".repeat(3000);
+    for (name_len, found) in [(4096 - 3001, true), (4097 - 3001, false)] {
+        let header_name = format!("{}.xml", "h".repeat(name_len - 4));
+        let header_path = format!("{folder}/{header_name}");
+        let header = format!(r#"<w:hdr {W}>{}</w:hdr>"#, paras(&["head"]));
+        let document = format!(r#"<w:document {W}><w:body>{}</w:body></w:document>"#, paras(&["body"]));
+        let root = sample::rels(&[("rId1", "officeDocument", &format!("{folder}/document.xml"))]);
+        let doc_rels = sample::rels(&[("rH", "header", &header_name)]);
+        let bytes = sample::zip(&[
+            ("_rels/.rels", root.as_bytes()),
+            (&format!("{folder}/document.xml"), document.as_bytes()),
+            (&format!("{folder}/_rels/document.xml.rels"), doc_rels.as_bytes()),
+            (&header_path, header.as_bytes()),
+        ]);
+        let got = parts(read(&Word::default(), "deep.docx", &bytes));
+        assert_eq!(got.iter().any(|(_, t)| t == "head\n"), found, "{} bytes", header_path.len());
+    }
+}
+
+#[test]
+fn an_element_name_past_256_bytes_stops_reading() {
+    for (len, cut) in [(256, false), (257, true)] {
+        let name = format!("w:{}", "x".repeat(len - 2));
+        let body = format!("{}<{name}/>{}", paras(&["kept"]), paras(&["later"]));
+        let (got, facts) = read(&Word::default(), "n.docx", &sample::docx(&body)).unwrap();
+        let text: String = got.iter().map(|p| p.text.as_str()).collect();
+        assert_eq!(text, if cut { "kept\n" } else { "kept\nlater\n" }, "{len}");
+        assert_eq!(fact(&facts, "truncated").is_some(), cut, "{len}");
+    }
+}

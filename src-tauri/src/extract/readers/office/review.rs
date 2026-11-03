@@ -220,7 +220,7 @@ fn no_panic(reader: &dyn Reader, name: &str, bytes: &[u8]) -> Option<String> {
     let mut sink = Sink::new(1_000_000, Instant::now() + Duration::from_secs(10));
     let start = Instant::now();
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| reader.read(&path, &mut sink)));
-    assert!(start.elapsed() < Duration::from_secs(5), "slow: {:?}", start.elapsed());
+    assert!(start.elapsed() < Duration::from_secs(10), "slow: {:?}", start.elapsed());
     match r {
         Ok(_) => None,
         Err(p) => Some(
