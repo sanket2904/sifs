@@ -331,6 +331,18 @@ fn a_password_protected_file_is_skipped_as_one_and_an_old_format_as_another() {
 }
 
 #[test]
+fn a_zip_with_encrypted_parts_is_skipped_as_password_protected() {
+    let mut bytes = sample::docx(&paras(&["secret"]));
+    // Set the encrypted flag on the document's entry in the list of parts.
+    let name = b"word/document.xml";
+    let at = (0..bytes.len() - 46)
+        .find(|&i| bytes[i..i + 4] == *b"PK\x01\x02" && bytes[i + 46..].starts_with(name))
+        .unwrap();
+    bytes[at + 8] |= 1;
+    assert_eq!(skipped(read(&Word::default(), "zipcrypto.docx", &bytes)), PASSWORD);
+}
+
+#[test]
 fn a_truncated_zip_is_recorded_damaged() {
     let bytes = sample::docx(&paras(&["hello"]));
     let why = failed(read(&Word::default(), "cut.docx", &bytes[..bytes.len() / 2]));
