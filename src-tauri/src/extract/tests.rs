@@ -952,3 +952,136 @@ fn the_hindi_sample_is_found_by_its_own_word() {
     assert_eq!(found(&index, "किराया"), vec![home.at("samples/hindi.txt")]);
     assert_eq!(found(&index, "रुपये"), vec![home.at("samples/hindi.txt")]);
 }
+
+#[test]
+fn indic_words_are_kept_whole() {
+    let home = Home::new();
+    let rent = home.write("rent.txt", "मकान का किराया बाकी है".as_bytes());
+    let work = home.write("work.txt", "काम कराया गया".as_bytes());
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    index.conn.execute_batch("CREATE VIRTUAL TABLE temp.terms USING fts5vocab(main, contents_fts, row)").unwrap();
+    let mut stmt = index.conn.prepare("SELECT term FROM temp.terms ORDER BY term").unwrap();
+    let terms: Vec<String> = stmt.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+    // Vowel signs are part of the word, not separators.
+    assert!(terms.contains(&"किराया".to_string()), "{terms:?}");
+    assert!(terms.contains(&"कराया".to_string()), "{terms:?}");
+    assert_eq!(found(&index, "किराया"), vec![rent]);
+    assert_eq!(found(&index, "कराया"), vec![work]);
+    // A fragment of a word is not the word.
+    assert!(found(&index, "कर").is_empty(), "{:?}", found(&index, "कर"));
+    assert!(found(&index, "क").is_empty(), "{:?}", found(&index, "क"));
+}
+
+#[test]
+fn the_migration_keeps_every_phase_1_row() {
+    let home = Home::new();
+    for i in 0..300 {
+        home.write(&format!("d{}/f{i}.txt", i % 7), format!("body {i}").as_bytes());
+    }
+    let dump = |conn: &rusqlite::Connection| -> Vec<String> {
+        let mut out = Vec::new();
+        for table in ["files", "folders", "ignore_patterns", "meta"] {
+            let mut stmt = conn.prepare(&format!("SELECT * FROM {table} ORDER BY 1")).unwrap();
+            let n = stmt.column_count();
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok((0..n).map(|c| format!("{:?}", r.get_ref(c).unwrap())).collect::<Vec<_>>().join("|"))
+                })
+                .unwrap();
+            out.extend(rows.map(|r| format!("{table}:{}", r.unwrap())));
+        }
+        let mut stmt = conn.prepare("SELECT rowid FROM files_fts WHERE files_fts MATCH 'f12' ORDER BY rowid").unwrap();
+        out.extend(stmt.query_map([], |r| r.get::<_, i64>(0)).unwrap().map(|r| format!("fts:{}", r.unwrap())));
+        out
+    };
+    let before = {
+        // Written as phase 1 wrote them.
+        let conn = rusqlite::Connection::open(&home.db).unwrap();
+        conn.execute_batch(crate::index::db::SCHEMA).unwrap();
+        for entry in walkdir::WalkDir::new(&home.root) {
+            let r = record_of(entry.unwrap().path(), &home.root).unwrap();
+            conn.execute(
+                "INSERT INTO files (path, root, name, ext, is_dir, size, modified, inode, seen) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1)",
+                params![r.path, r.root, r.name, r.ext, r.is_dir, r.size, r.modified, r.inode],
+            )
+            .unwrap();
+        }
+        conn.execute("INSERT INTO folders VALUES (?1, 5)", [&home.root]).unwrap();
+        conn.execute("INSERT INTO ignore_patterns VALUES ('**/x')", []).unwrap();
+        conn.execute("INSERT INTO meta VALUES ('ignore_set', '1')", []).unwrap();
+        conn.execute("INSERT INTO meta VALUES ('scan', '3')", []).unwrap();
+        dump(&conn)
+    };
+    assert_eq!(dump(&home.open().conn), before);
+    let index = home.open();
+    assert_eq!(dump(&index.conn), before, "a second open changes nothing");
+    assert_eq!(count(&index, "PRAGMA user_version"), 1);
+}
+
+#[test]
+fn a_migration_that_fails_leaves_the_index_as_it_was() {
+    let home = Home::new();
+    {
+        let conn = rusqlite::Connection::open(&home.db).unwrap();
+        conn.execute_batch(crate::index::db::SCHEMA).unwrap();
+        conn.execute(
+            "INSERT INTO files (path, root, name, ext, is_dir, size, modified, inode) VALUES ('/a/x.txt', '/a', 'x.txt', 'txt', 0, 1, 1, 1)",
+            [],
+        )
+        .unwrap();
+        // Migration 1 fails part way, at CREATE TABLE facts.
+        conn.execute_batch("CREATE TABLE facts (x)").unwrap();
+    }
+    assert!(Index::open(&home.db).is_err());
+    let conn = rusqlite::Connection::open(&home.db).unwrap();
+    assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    let left: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('extracts', 'contents', 'contents_fts', 'files_ai_extract')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(left, 0, "nothing of the failed migration is left");
+    assert_eq!(conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+}
+
+#[test]
+fn a_rename_moves_the_text_and_the_full_text_index_stays_consistent() {
+    let home = Home::new();
+    home.write("a/old.txt", b"okapi alpha");
+    home.write("a/two.txt", b"okapi beta");
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    fs::rename(home.at("a/old.txt"), home.at("a/new.txt")).unwrap();
+    home.refresh(&mut index, "a/new.txt");
+    home.refresh(&mut index, "a/old.txt");
+    home.refresh(&mut index, "a/two.txt");
+    assert_eq!(queued(&index), 1, "only the renamed file");
+    run(&mut index, &registry);
+    assert_eq!(found(&index, "alpha"), vec![home.at("a/new.txt")]);
+    assert_eq!(count(&index, "SELECT COUNT(*) FROM contents_fts WHERE contents_fts MATCH 'alpha'"), 1);
+    let integrity = "INSERT INTO contents_fts(contents_fts, rank) VALUES ('integrity-check', 1)";
+    index.conn.execute(integrity, []).unwrap();
+    fs::remove_dir_all(home.at("a")).unwrap();
+    home.refresh(&mut index, "a");
+    assert_eq!(count(&index, "SELECT COUNT(*) FROM contents_fts WHERE contents_fts MATCH 'okapi'"), 0);
+    index.conn.execute(integrity, []).unwrap();
+}
+
+#[test]
+fn queries_with_full_text_syntax_in_them_are_safe() {
+    let home = Home::new();
+    home.write("d.txt", b"dont' \"quoted\" weird*chars OR AND NOT NEAR");
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    for q in ["\"", "*", "OR", "NEAR(", "a:b", "-x", "^", "\"quoted\"", "weird*", "(", ")", "{a}"] {
+        let r = store::match_contents(&index, q, 10);
+        assert!(r.is_ok(), "query {q:?}: {r:?}");
+    }
+    assert_eq!(found(&index, "OR"), vec![home.at("d.txt")], "a word, not an operator");
+}

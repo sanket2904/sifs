@@ -36,9 +36,13 @@ CREATE TABLE contents (
     text    TEXT NOT NULL
 );
 CREATE INDEX contents_file ON contents(file_id, part);
+-- Letters, numbers and combining marks make words. Without the marks (M*),
+-- Hindi and other Indic words split at every vowel sign ("किराया" into
+-- क / र / य); a decomposed accent is still folded away ("résumé" is
+-- "resume").
 CREATE VIRTUAL TABLE contents_fts USING fts5(
     label UNINDEXED, text, content='contents', content_rowid='id',
-    tokenize='unicode61 remove_diacritics 2'
+    tokenize="unicode61 remove_diacritics 2 categories 'L* N* Co M*'"
 );
 CREATE TRIGGER contents_ai AFTER INSERT ON contents BEGIN
     INSERT INTO contents_fts(rowid, label, text) VALUES (new.id, new.label, new.text);
