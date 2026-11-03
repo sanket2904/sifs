@@ -240,7 +240,12 @@ mod tests {
     fn the_limits_are_the_ones_the_owner_chose() {
         for reader in super::super::all() {
             let limits = reader.limits();
-            let max = if matches!(reader.id(), "json" | "plain") { MB } else { 4 * MB };
+            let max = match reader.id() {
+                "json" | "plain" => MB,
+                // Only an Office file's XML is unpacked, within caps of its own.
+                "docx" | "xlsx" | "pptx" => 100 * MB,
+                _ => 4 * MB,
+            };
             assert_eq!(limits.max_bytes, max, "{}", reader.id());
             assert_eq!(limits.max_chars, 1_000_000, "{}", reader.id());
             assert_eq!(limits.time, Duration::from_secs(10), "{}", reader.id());
