@@ -15,7 +15,7 @@ use std::sync::{Mutex, MutexGuard};
 /// locked" rather than wait. busy_timeout covers other processes.
 static WRITER: Mutex<()> = Mutex::new(());
 
-fn writer() -> MutexGuard<'static, ()> {
+pub(crate) fn writer() -> MutexGuard<'static, ()> {
     WRITER.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
@@ -36,7 +36,8 @@ pub struct Index {
     pub(crate) conn: Connection,
 }
 
-const SCHEMA: &str = r#"
+/// Version 0 of the schema; later versions are in migrate.rs.
+pub(crate) const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS files (
     id       INTEGER PRIMARY KEY,
     path     TEXT NOT NULL UNIQUE,
@@ -79,12 +80,13 @@ CREATE TABLE IF NOT EXISTS meta (
 impl Index {
     /// Opens, creating if needed, the index at path.
     pub fn open(path: &Path) -> Result<Index> {
-        let conn = Connection::open(path).with_context(|| format!("open index {}", path.display()))?;
+        let mut conn = Connection::open(path).with_context(|| format!("open index {}", path.display()))?;
         conn.busy_timeout(std::time::Duration::from_secs(60))?;
         let _write = writer();
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.execute_batch(SCHEMA)?;
+        super::migrate::migrate(&mut conn)?;
         Ok(Index { conn })
     }
 
