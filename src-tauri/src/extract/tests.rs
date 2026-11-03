@@ -1403,3 +1403,86 @@ fn a_file_replaced_by_a_fifo_is_cleared_not_opened() {
     assert_eq!(found(&index, "again"), vec![real]);
     assert!(started.elapsed() < Duration::from_secs(5));
 }
+
+// --- folders scanned and removed in the background ---
+
+use crate::index::folders::{Event, Folders};
+
+fn folders(home: &Home, on_event: impl Fn(Event) + Send + Sync + 'static) -> Folders {
+    Folders::new(home.db.clone(), home.root.clone(), Duration::from_millis(20), on_event)
+}
+
+/// The scan of a folder still running when the folder is removed used to
+/// write rows after the removal ended, and nothing ever removed them.
+#[test]
+fn a_folder_removed_during_its_scan_leaves_nothing_behind() {
+    let home = Home::new();
+    // More than one batch of the crawler's (2000), so the scan is caught
+    // between two.
+    for i in 0..2100 {
+        home.write(&format!("Docs/d{}/n{i}.txt", i % 10), b"okapi words");
+    }
+    let registry = Registry::platform();
+    let mut index = home.open();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let docs = home.at("Docs");
+    let (in_flight, waiting) = std::sync::mpsc::channel::<()>();
+    let (go, gate) = std::sync::mpsc::channel::<()>();
+    let gate = Mutex::new(gate);
+    let first = AtomicBool::new(true);
+    let scanned = Arc::new(Mutex::new(None));
+    let stats = scanned.clone();
+    let folders = folders(&home, move |event| {
+        if let Event::Scanned(s) = &event {
+            *stats.lock().unwrap() = Some(s.clone());
+        }
+        // The first batch is written: hold the scan there.
+        if let Event::Progress { .. } = event {
+            if first.swap(false, Ordering::SeqCst) {
+                in_flight.send(()).unwrap();
+                gate.lock().unwrap().recv().unwrap();
+            }
+        }
+    });
+    folders.add(&mut index, &docs, now()).unwrap();
+    folders.scan(docs.clone());
+    waiting.recv().unwrap();
+    assert!(index.count_root(&docs).unwrap() >= 2000);
+    folders.remove(&mut index, &docs).unwrap();
+    // Time for a removal that didn't wait for the scan to run to its end.
+    std::thread::sleep(Duration::from_millis(300));
+    go.send(()).unwrap();
+    eventually("the scan and the removal to end", || folders.idle());
+    assert_eq!(index.count_root(&docs).unwrap(), 0, "left behind after the removal");
+    let stats = scanned.lock().unwrap().clone().unwrap();
+    assert!(stats.cancelled && stats.indexed == 2000, "the scan stopped before its next batch: {stats:?}");
+    assert!(index.removals().unwrap().is_empty());
+    assert!(index.folders().unwrap().is_empty());
+}
+
+/// Rows of a folder no longer searched, however they got there, are
+/// removed at the next start.
+#[test]
+fn rows_no_folder_owns_are_removed_at_startup() {
+    let home = Home::new();
+    for i in 0..30 {
+        home.write(&format!("Docs/n{i}.txt"), b"okapi words");
+    }
+    home.write("Other/keep.txt", b"okapi kept");
+    let registry = Registry::platform();
+    let mut index = home.open();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let (docs, other) = (home.at("Docs"), home.at("Other"));
+    index.add_folder(&other, 1).unwrap();
+    for root in [&docs, &other] {
+        scan(&mut index, root, &home.rules, |_| {}).unwrap();
+    }
+    run(&mut index, &registry);
+    assert_eq!(found(&index, "okapi").len(), 31);
+    let folders = folders(&home, |_| {});
+    folders.resume(&mut index).unwrap();
+    eventually("the leftover rows to be removed", || folders.idle() && index.count_root(&docs).unwrap() == 0);
+    assert_eq!(found(&index, "okapi"), vec![home.at("Other/keep.txt")]);
+    assert!(index.removals().unwrap().is_empty());
+    assert_eq!(index.count_root(&other).unwrap(), 2);
+}

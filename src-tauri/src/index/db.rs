@@ -161,6 +161,19 @@ impl Index {
         Ok(keys.into_iter().map(|k| k[REMOVING.len()..].to_string()).collect())
     }
 
+    /// Marks for removal every root files are indexed under that is not a
+    /// folder the user chose: rows a scan or the watcher wrote after their
+    /// folder was removed, or left by an older SIFS. Returns how many.
+    pub fn mark_orphan_roots(&mut self) -> Result<usize> {
+        let _write = writer();
+        Ok(self.conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value)
+             SELECT ?1 || root, '1' FROM (SELECT DISTINCT root FROM files)
+             WHERE root NOT IN (SELECT path FROM folders)",
+            params![REMOVING],
+        )?)
+    }
+
     /// Removes everything indexed under root, batch rows at a time, each in
     /// its own short transaction, so a large folder and the text read from
     /// its files don't hold up searches and other writes; then clears

@@ -1,31 +1,29 @@
 //! The desktop app: Tauri commands over the index, background scans, the
 //! watcher, reading inside files, and the tray.
 
-use crate::extract::{self, Registry, Worker, WorkerOptions};
-use crate::index::crawl::{self, ScanStats};
+use crate::extract::{self, Registry, Waker, Worker, WorkerOptions};
 use crate::index::db::Index;
+use crate::index::folders::{Event, Folders};
 use crate::index::ignore::Rules;
 use crate::index::search::{self, Hit};
 use crate::index::watch::Watch;
 use serde::Serialize;
-use std::collections::HashSet;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_opener::OpenerExt;
 
 struct AppState {
-    db_path: PathBuf,
     home: String,
     /// The connection searches and settings use. The crawler and the
     /// watcher open their own.
     reader: Mutex<Index>,
     rules: Arc<Mutex<Rules>>,
     watch: Mutex<Option<Watch>>,
-    scanning: Arc<Mutex<HashSet<String>>>,
+    /// Scans and removals of folders, in the background.
+    folders: Folders,
     /// Reads inside files in the background; paused while a scan runs.
     extract: Worker,
 }
@@ -69,7 +67,7 @@ fn search_files(state: State<AppState>, query: String, limit: Option<usize>) -> 
 #[tauri::command]
 fn settings(state: State<AppState>) -> Result<Settings, String> {
     let index = state.reader.lock().unwrap();
-    let scanning = state.scanning.lock().unwrap().clone();
+    let scanning = state.folders.scanning();
     let folders = index
         .folders()
         .map_err(err)?
@@ -94,58 +92,32 @@ fn content_failures(state: State<AppState>, limit: Option<usize>) -> Result<Vec<
 }
 
 #[tauri::command]
-fn add_folder(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
+fn add_folder(state: State<AppState>, path: String) -> Result<(), String> {
     let path = std::fs::canonicalize(&path).map_err(err)?.to_str().ok_or("the folder's path is not valid UTF-8")?.to_string();
-    let existing = state.reader.lock().unwrap().folders().map_err(err)?;
-    if existing.iter().any(|f| path == *f || path.starts_with(&format!("{}/", f.trim_end_matches('/')))) {
-        return Err(format!("{path} is already searched, as part of a folder you added"));
-    }
-    if state.reader.lock().unwrap().removals().map_err(err)?.contains(&path) {
-        return Err(format!("{path} is still being removed; add it again in a moment"));
-    }
-    state.reader.lock().unwrap().add_folder(&path, now()).map_err(err)?;
+    state.folders.add(&mut state.reader.lock().unwrap(), &path, now()).map_err(err)?;
     if let Some(watch) = state.watch.lock().unwrap().as_mut() {
         watch.add_root(&path).map_err(err)?;
     }
-    start_scan(&app, &state, path);
+    state.folders.scan(path);
     Ok(())
 }
 
 #[tauri::command]
-fn remove_folder(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
+fn remove_folder(state: State<AppState>, path: String) -> Result<(), String> {
     if let Some(watch) = state.watch.lock().unwrap().as_mut() {
         watch.remove_root(&path).map_err(err)?;
     }
-    state.reader.lock().unwrap().forget_folder(&path).map_err(err)?;
-    start_removal(&app, &state.db_path, path);
-    Ok(())
-}
-
-/// Removes a forgotten folder's files from the index in the background, in
-/// small batches: with the text read from them, a large folder takes a
-/// while, and searches and other writes go on meanwhile.
-fn start_removal(app: &AppHandle, db_path: &std::path::Path, root: String) {
-    let (app, db_path) = (app.clone(), db_path.to_path_buf());
-    std::thread::spawn(move || {
-        let result = Index::open(&db_path).and_then(|mut index| index.remove_root_in_batches(&root, 100, |_| {}));
-        match result {
-            Ok(removed) => {
-                log::info!("removed {root}: {removed} items");
-                let _ = app.emit("index-changed", removed);
-            }
-            Err(e) => log::warn!("removing {root}: {e:#}"),
-        }
-    });
+    state.folders.remove(&mut state.reader.lock().unwrap(), &path).map_err(err)
 }
 
 #[tauri::command]
-fn set_ignore(app: AppHandle, state: State<AppState>, patterns: Vec<String>) -> Result<(), String> {
+fn set_ignore(state: State<AppState>, patterns: Vec<String>) -> Result<(), String> {
     let rules = Rules::new(&patterns, &state.home).map_err(err)?;
     state.reader.lock().unwrap().set_ignore_patterns(&patterns).map_err(err)?;
     *state.rules.lock().unwrap() = rules;
     // Rescan so newly ignored files leave the index and unignored ones join.
     for folder in state.reader.lock().unwrap().folders().map_err(err)? {
-        start_scan(&app, &state, folder);
+        state.folders.scan(folder);
     }
     Ok(())
 }
@@ -162,40 +134,27 @@ fn reveal_path(app: AppHandle, path: String) -> Result<(), String> {
     app.opener().reveal_item_in_dir(path).map_err(err)
 }
 
-/// Scans one folder in the background, reporting progress as events.
-fn start_scan(app: &AppHandle, state: &AppState, root: String) {
-    if !state.scanning.lock().unwrap().insert(root.clone()) {
-        return;
-    }
-    let app = app.clone();
-    let db_path = state.db_path.clone();
-    let home = state.home.clone();
-    let scanning = state.scanning.clone();
-    let reading = state.extract.waker();
-    std::thread::spawn(move || {
-        let result = (|| -> anyhow::Result<ScanStats> {
-            let mut index = Index::open(&db_path)?;
-            // Its own copy of the rules as saved, so a long scan holds no
-            // lock the watcher needs.
-            let patterns = index.ignore_patterns()?.unwrap_or_else(Rules::default_patterns);
-            let rules = Rules::new(&patterns, &home)?;
-            crawl::scan(&mut index, &root, &rules, |indexed| {
-                let _ = app.emit("scan-progress", Progress { root: root.clone(), indexed });
-            })
-        })();
-        scanning.lock().unwrap().remove(&root);
-        // Reading inside files waits for scans to finish.
-        reading.wake();
-        match result {
-            Ok(stats) => {
-                log::info!("scanned {}: {} indexed in {} ms", stats.root, stats.indexed, stats.millis);
-                let _ = app.emit("scan-done", stats);
-            }
-            Err(e) => {
-                let _ = app.emit("scan-error", format!("{root}: {e:#}"));
-            }
+/// Passes the background scans' and removals' news on to the window, and
+/// wakes the reader of files when a scan ends (it waits for scans).
+fn folder_event(app: &AppHandle, reading: &OnceLock<Waker>, event: Event) {
+    match event {
+        Event::Progress { root, indexed } => {
+            let _ = app.emit("scan-progress", Progress { root, indexed });
         }
-    });
+        Event::Scanned(stats) => {
+            log::info!("scanned {}: {} indexed in {} ms", stats.root, stats.indexed, stats.millis);
+            let _ = app.emit("scan-done", stats);
+        }
+        Event::ScanFailed { root, error } => {
+            let _ = app.emit("scan-error", format!("{root}: {error}"));
+        }
+        Event::Removed { removed, .. } => {
+            let _ = app.emit("index-changed", removed);
+        }
+    }
+    if let Some(reading) = reading.get() {
+        reading.wake();
+    }
 }
 
 pub fn run() {
@@ -210,50 +169,48 @@ pub fn run() {
             let mut index = Index::open(&db_path)?;
             let patterns = index.ignore_patterns()?.unwrap_or_else(Rules::default_patterns);
             let rules = Arc::new(Mutex::new(Rules::new(&patterns, &home)?));
-            let folders = index.folders()?;
-            let removals = index.removals()?;
+            let roots = index.folders()?;
             // The readers' extensions are in the index before anything is
             // scanned, so the queue's triggers see them.
             let registry = Arc::new(Registry::platform());
             extract::store::register_kinds(&mut index, &registry)?;
-            let scanning: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
-            let (busy, progress) = (scanning.clone(), app.handle().clone());
+            let reading: Arc<OnceLock<Waker>> = Arc::default();
+            let (handle, woken) = (app.handle().clone(), reading.clone());
+            let folders = Folders::new(db_path.clone(), home.clone(), Duration::from_secs(5), move |event| {
+                folder_event(&handle, &woken, event)
+            });
+            let (busy, progress) = (folders.clone(), app.handle().clone());
             let worker = Worker::start(
                 db_path.clone(),
                 registry,
                 WorkerOptions {
-                    pause: Arc::new(move || !busy.lock().unwrap().is_empty()),
+                    pause: Arc::new(move || busy.is_scanning()),
                     on_progress: Arc::new(move |p: &extract::Progress| {
                         let _ = progress.emit("extract-progress", p);
                     }),
                     ..WorkerOptions::default()
                 },
             )?;
+            let _ = reading.set(worker.waker());
             let handle = app.handle().clone();
             let reading = worker.waker();
-            let watch = Watch::start(db_path.clone(), folders.clone(), rules.clone(), move |applied| {
+            let watch = Watch::start(db_path.clone(), roots, rules.clone(), move |applied| {
                 if applied > 0 {
                     let _ = handle.emit("index-changed", applied);
                     reading.wake();
                 }
             })?;
+            // Catch up on what changed while the app was closed, and finish
+            // removing folders it was removing when it stopped.
+            folders.resume(&mut index)?;
             let state = AppState {
-                db_path,
                 home,
                 reader: Mutex::new(index),
                 rules,
                 watch: Mutex::new(Some(watch)),
-                scanning,
+                folders,
                 extract: worker,
             };
-            // Catch up on what changed while the app was closed, and finish
-            // removing folders it was removing when it stopped.
-            for folder in folders {
-                start_scan(app.handle(), &state, folder);
-            }
-            for root in removals {
-                start_removal(app.handle(), &state.db_path, root);
-            }
             app.manage(state);
 
             let show = MenuItem::with_id(app, "show", "Show SIFS", true, None::<&str>)?;
