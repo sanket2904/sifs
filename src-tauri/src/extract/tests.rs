@@ -1877,3 +1877,77 @@ fn a_batch_written_after_a_folder_was_taken_in_is_given_to_the_new_one() {
     assert_eq!(index.get(&late).unwrap().map(|r| r.root), Some(root.clone()));
     assert!(index.removals().unwrap().is_empty());
 }
+
+/// The reviewer's rv3_stop_is_prompt_during_a_long_backoff: after errors in
+/// a row the worker waits long; wakes (the watcher's, say) don't end that
+/// wait, and stop still does at once.
+#[test]
+fn stop_is_prompt_and_wakes_are_ignored_during_a_long_backoff() {
+    let home = Home::new();
+    home.write("a.txt", b"tapir");
+    let fake = Fake::new("fake", &["txt"]);
+    let registry = Arc::new(fake.registry());
+    let index = home.scanned(&registry);
+    index
+        .conn
+        .execute_batch("CREATE TRIGGER fail BEFORE INSERT ON extracts BEGIN SELECT RAISE(ABORT, 'disk full'); END")
+        .unwrap();
+    let worker = Worker::start(home.db.clone(), registry, WorkerOptions { idle_poll: Duration::from_millis(300), ..options() })
+        .unwrap();
+    // Tries at 0, 300 and 900 ms: now waiting 1200 ms.
+    std::thread::sleep(Duration::from_millis(1000));
+    let waker = worker.waker();
+    for _ in 0..20 {
+        waker.wake();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let started = std::time::Instant::now();
+    let stats = worker.stop();
+    assert!(started.elapsed() < Duration::from_millis(250), "stop took {:?}", started.elapsed());
+    assert!(stats.errors.len() <= 3, "wakes ended the backoff early: {} tries", stats.errors.len());
+}
+
+/// An error, a success, then an error: each error is waited out idle_poll,
+/// since a step that works starts the count again.
+#[test]
+fn a_step_that_works_resets_the_wait_after_errors() {
+    let home = Home::new();
+    home.write("a.txt", b"tapir");
+    let reads: Arc<Mutex<Vec<(String, std::time::Instant)>>> = Arc::default();
+    let log = reads.clone();
+    let fake = Fake::new("fake", &["txt"]).body(move |path, sink, _| {
+        log.lock().unwrap().push((path.file_name().unwrap().to_str().unwrap().to_string(), std::time::Instant::now()));
+        sink.text("tapir")?;
+        Ok(())
+    });
+    let registry = Arc::new(fake.registry());
+    let mut index = home.scanned(&registry);
+    let fail = |on: bool| {
+        let sql = if on {
+            "CREATE TRIGGER fail BEFORE INSERT ON extracts BEGIN SELECT RAISE(ABORT, 'disk full'); END"
+        } else {
+            "DROP TRIGGER fail"
+        };
+        Index::open(&home.db).unwrap().conn.execute_batch(sql).unwrap();
+    };
+    let reads_of = |name: &str| -> Vec<std::time::Instant> {
+        reads.lock().unwrap().iter().filter(|(n, _)| n == name).map(|(_, t)| *t).collect()
+    };
+    fail(true);
+    let idle_poll = Duration::from_millis(300);
+    let worker = Worker::start(home.db.clone(), registry, WorkerOptions { idle_poll, ..options() }).unwrap();
+    // Two errors: the wait is now 600 ms, and would be 1200 after a third.
+    eventually("two failed tries", || reads_of("a.txt").len() >= 2);
+    fail(false);
+    eventually("a.txt read", || count(&index, "SELECT COUNT(*) FROM extracts WHERE status = 'done'") == 1);
+    // Then an error again, on a new file.
+    fail(true);
+    home.write("b.txt", b"tapir");
+    home.refresh(&mut index, "b.txt");
+    worker.wake();
+    eventually("two failed tries of b.txt", || reads_of("b.txt").len() >= 2);
+    let b = reads_of("b.txt");
+    let gap = b[1] - b[0];
+    drop(worker);
+    assert!(gap < Duration::from_millis(800), "waited {gap:?} after the first error since a success, not {idle_poll:?}");
+}
