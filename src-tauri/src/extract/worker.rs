@@ -432,9 +432,10 @@ impl<'a> Runner<'a> {
             Ok(meta) => meta,
             Err(_) => return Ok(Ok(Finished::Drop(job))),
         };
-        // A link's target is read where it is indexed, if it is.
+        // A link's target is read where it is indexed, if it is. A file
+        // replaced by a link or a folder loses what was read from it.
         if meta.file_type().is_symlink() || (meta.is_dir() && !reader.packages()) {
-            return Ok(Ok(Finished::Drop(job)));
+            return Ok(Ok(Finished::Clear(job)));
         }
         let stat = Stat::of(&meta);
         let read: Option<(String, u32, i64, i64)> = index

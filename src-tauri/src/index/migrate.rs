@@ -100,6 +100,17 @@ WHEN new.modified IS NOT old.modified OR new.size IS NOT old.size BEGIN
     SELECT new.id, 0, new.modified, new.size, 0
     FROM extract_kinds k WHERE k.ext = new.ext AND (new.is_dir = 0 OR k.packages = 1);
 END;
+-- A row that changed into something no reader takes (a file replaced by a
+-- folder of the same name, which keeps the row and its id): what was read
+-- from the file goes.
+CREATE TRIGGER files_au_unread AFTER UPDATE OF is_dir, modified, size ON files
+WHEN (new.is_dir IS NOT old.is_dir OR new.modified IS NOT old.modified OR new.size IS NOT old.size)
+    AND NOT EXISTS (SELECT 1 FROM extract_kinds k WHERE k.ext = new.ext AND (new.is_dir = 0 OR k.packages = 1)) BEGIN
+    DELETE FROM contents WHERE file_id = new.id;
+    DELETE FROM facts WHERE file_id = new.id;
+    DELETE FROM extracts WHERE file_id = new.id;
+    DELETE FROM extract_queue WHERE file_id = new.id;
+END;
 CREATE TRIGGER files_ad_extract AFTER DELETE ON files BEGIN
     DELETE FROM contents WHERE file_id = old.id;
     DELETE FROM facts WHERE file_id = old.id;

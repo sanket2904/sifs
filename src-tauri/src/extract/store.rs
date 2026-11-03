@@ -78,6 +78,9 @@ pub enum Finished {
     /// Not read after all (it changed while it was read, or the worker
     /// stopped first): it stays queued, and the claim doesn't count.
     Unclaim(Job),
+    /// The path is no longer something its reader reads (a file replaced
+    /// by a link): what was read from it goes, and it leaves the queue.
+    Clear(Job),
     Read(Job, Extract),
 }
 
@@ -246,6 +249,7 @@ pub fn write_results(index: &mut Index, results: &[Finished], now: i64) -> Resul
         let mut path_of = tx.prepare_cached("SELECT path FROM files WHERE id = ?1")?;
         let mut clear_contents = tx.prepare_cached("DELETE FROM contents WHERE file_id = ?1")?;
         let mut clear_facts = tx.prepare_cached("DELETE FROM facts WHERE file_id = ?1")?;
+        let mut clear_extract = tx.prepare_cached("DELETE FROM extracts WHERE file_id = ?1")?;
         let mut add_part =
             tx.prepare_cached("INSERT INTO contents (file_id, part, label, text) VALUES (?1, ?2, ?3, ?4)")?;
         let mut add_fact =
@@ -255,6 +259,16 @@ pub fn write_results(index: &mut Index, results: &[Finished], now: i64) -> Resul
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         )?;
         for result in results {
+            let job = match result {
+                Finished::Drop(job) | Finished::Unclaim(job) | Finished::Clear(job) | Finished::Read(job, _) => job,
+            };
+            // Ids are reused after a delete (a rename is a delete and an
+            // insert): the row must still be the file that was claimed, or
+            // what is written, or the queue row removed, is another file's.
+            let path: Option<String> = path_of.query_row(params![job.file_id], |r| r.get(0)).optional()?;
+            if path.as_deref() != Some(job.path.as_str()) {
+                continue;
+            }
             match result {
                 Finished::Drop(job) => {
                     dequeue.execute(params![job.file_id, job.modified, job.size])?;
@@ -262,13 +276,13 @@ pub fn write_results(index: &mut Index, results: &[Finished], now: i64) -> Resul
                 Finished::Unclaim(job) => {
                     unclaim.execute(params![job.file_id, job.modified, job.size])?;
                 }
+                Finished::Clear(job) => {
+                    clear_contents.execute(params![job.file_id])?;
+                    clear_facts.execute(params![job.file_id])?;
+                    clear_extract.execute(params![job.file_id])?;
+                    dequeue.execute(params![job.file_id, job.modified, job.size])?;
+                }
                 Finished::Read(job, extract) => {
-                    // Ids are reused after a delete: the row must still be
-                    // the file that was read.
-                    let path: Option<String> = path_of.query_row(params![job.file_id], |r| r.get(0)).optional()?;
-                    if path.as_deref() != Some(job.path.as_str()) {
-                        continue;
-                    }
                     clear_contents.execute(params![job.file_id])?;
                     clear_facts.execute(params![job.file_id])?;
                     for part in &extract.parts {

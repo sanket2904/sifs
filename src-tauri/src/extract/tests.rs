@@ -260,7 +260,9 @@ fn a_new_index_reaches_version_1_with_every_table() {
         let n = count(&index, &format!("SELECT COUNT(*) FROM sqlite_master WHERE name = '{table}'"));
         assert_eq!(n, 1, "{table}");
     }
-    for trigger in ["files_ai_extract", "files_au_extract", "files_ad_extract", "contents_ai", "contents_ad"] {
+    for trigger in
+        ["files_ai_extract", "files_au_extract", "files_au_unread", "files_ad_extract", "contents_ai", "contents_ad"]
+    {
         let n =
             count(&index, &format!("SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name = '{trigger}'"));
         assert_eq!(n, 1, "{trigger}");
@@ -1084,4 +1086,74 @@ fn queries_with_full_text_syntax_in_them_are_safe() {
         assert!(r.is_ok(), "query {q:?}: {r:?}");
     }
     assert_eq!(found(&index, "OR"), vec![home.at("d.txt")], "a word, not an operator");
+}
+
+/// The crawler's upsert keeps a row's id when its path stays, so a file
+/// replaced by a folder or a link of the same name is the same row.
+#[test]
+fn a_file_replaced_by_a_folder_of_the_same_name_loses_its_text() {
+    let home = Home::new();
+    home.write("notes.txt", b"zebu secret words");
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!(found(&index, "zebu"), vec![home.at("notes.txt")]);
+    fs::remove_file(home.at("notes.txt")).unwrap();
+    fs::create_dir(home.at("notes.txt")).unwrap();
+    home.refresh(&mut index, "notes.txt");
+    run(&mut index, &registry);
+    assert!(found(&index, "zebu").is_empty(), "{:?}", found(&index, "zebu"));
+    let id = id_of(&index, &home.at("notes.txt"));
+    for table in ["contents", "facts", "extracts", "extract_queue"] {
+        assert_eq!(count(&index, &format!("SELECT COUNT(*) FROM {table} WHERE file_id = {id}")), 0, "{table}");
+    }
+}
+
+#[test]
+fn a_file_replaced_by_a_link_of_the_same_name_loses_its_text() {
+    let home = Home::new();
+    home.write("notes.txt", b"zebu secret words");
+    home.write("other.bin", b"x");
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    fs::remove_file(home.at("notes.txt")).unwrap();
+    std::os::unix::fs::symlink(home.at("other.bin"), home.at("notes.txt")).unwrap();
+    home.refresh(&mut index, "notes.txt");
+    run(&mut index, &registry);
+    assert!(found(&index, "zebu").is_empty(), "{:?}", found(&index, "zebu"));
+    assert_eq!(count(&index, "SELECT COUNT(*) FROM extracts"), 0);
+    assert_eq!(queued(&index), 0);
+}
+
+/// Renamed while being read, and the new path's row took the old id (the
+/// old row had the highest), with the time and size a rename keeps.
+#[test]
+fn a_file_renamed_during_its_read_onto_its_own_id_is_still_read() {
+    let home = Home::new();
+    home.write("keep.txt", b"tapir");
+    let (db, root) = (home.db.clone(), home.root.clone());
+    let renamed = home.at("renamed.txt");
+    let to = renamed.clone();
+    let fake = Fake::new("fake", &["txt"]).body(move |path, sink, _| {
+        let text = fs::read_to_string(path)?;
+        if path.ends_with("doomed.txt") {
+            fs::rename(path, &to).unwrap();
+            // The watcher sees the old path gone, then the new one.
+            let mut index = Index::open(&db).unwrap();
+            index.remove_tree(path.to_str().unwrap()).unwrap();
+            index.upsert(&[record_of(Path::new(&to), &root).unwrap()], 1).unwrap();
+        }
+        sink.text(&text)?;
+        Ok(())
+    });
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    let doomed = home.write("doomed.txt", b"doomed okapi");
+    home.refresh(&mut index, "doomed.txt");
+    let doomed_id = id_of(&index, &doomed);
+    run(&mut index, &registry);
+    assert_eq!(id_of(&index, &renamed), doomed_id, "the id was reused");
+    assert_eq!(found(&index, "okapi"), vec![renamed.clone()], "read under its new name");
+    assert_eq!(fake.of(&renamed), 1);
 }
