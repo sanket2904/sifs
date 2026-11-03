@@ -1412,6 +1412,10 @@ fn folders(home: &Home, on_event: impl Fn(Event) + Send + Sync + 'static) -> Fol
     Folders::new(home.db.clone(), home.root.clone(), Duration::from_millis(20), on_event)
 }
 
+fn name_hits(index: &Index, query: &str) -> usize {
+    crate::index::search::search(index, query, 100, now()).unwrap().len()
+}
+
 /// The scan of a folder still running when the folder is removed used to
 /// write rows after the removal ended, and nothing ever removed them.
 #[test]
@@ -1449,6 +1453,7 @@ fn a_folder_removed_during_its_scan_leaves_nothing_behind() {
     waiting.recv().unwrap();
     assert!(index.count_root(&docs).unwrap() >= 2000);
     folders.remove(&mut index, &docs).unwrap();
+    assert_eq!(name_hits(&index, "n12"), 0, "not found while it is being removed");
     // Time for a removal that didn't wait for the scan to run to its end.
     std::thread::sleep(Duration::from_millis(300));
     go.send(()).unwrap();
@@ -1485,4 +1490,77 @@ fn rows_no_folder_owns_are_removed_at_startup() {
     assert_eq!(found(&index, "okapi"), vec![home.at("Other/keep.txt")]);
     assert!(index.removals().unwrap().is_empty());
     assert_eq!(index.count_root(&other).unwrap(), 2);
+}
+
+/// Name and text searches leave out a folder being removed.
+#[test]
+fn a_folder_being_removed_is_not_found() {
+    let home = Home::new();
+    home.write("Docs/okapi-notes.txt", b"okapi words");
+    home.write("Other/okapi-kept.txt", b"okapi kept");
+    let registry = Registry::platform();
+    let mut index = home.open();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let (docs, other) = (home.at("Docs"), home.at("Other"));
+    for root in [&docs, &other] {
+        index.add_folder(root, 1).unwrap();
+        scan(&mut index, root, &home.rules, |_| {}).unwrap();
+    }
+    run(&mut index, &registry);
+    assert_eq!(found(&index, "okapi").len(), 2);
+    assert_eq!(name_hits(&index, "okapi"), 2);
+    assert_eq!(name_hits(&index, "okapy"), 2, "the typo-tolerant search finds both");
+    // Marked, its rows not yet removed.
+    index.forget_folder(&docs).unwrap();
+    assert_eq!(found(&index, "okapi"), vec![home.at("Other/okapi-kept.txt")]);
+    let names = |q: &str| -> Vec<String> {
+        crate::index::search::search(&index, q, 100, now()).unwrap().into_iter().map(|h| h.file.path).collect()
+    };
+    assert_eq!(names("okapi"), vec![home.at("Other/okapi-kept.txt")]);
+    assert_eq!(names("ok"), vec![home.at("Other/okapi-kept.txt")]);
+    assert_eq!(names("okapy"), vec![home.at("Other/okapi-kept.txt")]);
+}
+
+/// A removal that fails is tried again, and adding the folder while its
+/// mark is left with no removal running starts one.
+#[test]
+fn a_failed_removal_is_tried_again() {
+    let home = Home::new();
+    for i in 0..30 {
+        home.write(&format!("Docs/n{i}.txt"), b"okapi words");
+    }
+    let registry = Registry::platform();
+    let mut index = home.open();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let docs = home.at("Docs");
+    let folders = folders(&home, |_| {});
+    folders.add(&mut index, &docs, now()).unwrap();
+    scan(&mut index, &docs, &home.rules, |_| {}).unwrap();
+    index
+        .conn
+        .execute_batch("CREATE TRIGGER fail BEFORE DELETE ON files BEGIN SELECT RAISE(ABORT, 'busy'); END")
+        .unwrap();
+    folders.remove(&mut index, &docs).unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(index.count_root(&docs).unwrap(), 31);
+    assert!(!folders.idle(), "still trying");
+    assert!(folders.add(&mut index, &docs, now()).is_err(), "still being removed");
+    index.conn.execute_batch("DROP TRIGGER fail").unwrap();
+    eventually("the removal to succeed on a later try", || folders.idle());
+    assert_eq!(index.count_root(&docs).unwrap(), 0);
+    assert!(index.removals().unwrap().is_empty());
+
+    // A mark left with no removal running (as after an error, before this
+    // fix): adding the folder again starts its removal.
+    for i in 0..5 {
+        home.write(&format!("Docs/m{i}.txt"), b"okapi words");
+    }
+    scan(&mut index, &docs, &home.rules, |_| {}).unwrap();
+    index.forget_folder(&docs).unwrap();
+    let err = folders.add(&mut index, &docs, now()).unwrap_err().to_string();
+    assert!(err.contains("still being removed"), "{err}");
+    eventually("the removal add_folder started", || folders.idle() && index.removals().unwrap().is_empty());
+    assert_eq!(index.count_root(&docs).unwrap(), 0);
+    folders.add(&mut index, &docs, now()).unwrap();
+    assert_eq!(index.folders().unwrap(), vec![docs]);
 }

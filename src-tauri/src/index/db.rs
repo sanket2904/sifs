@@ -39,6 +39,12 @@ pub struct Index {
 /// The meta key marking a folder whose files are being removed, before its path.
 const REMOVING: &str = "removing:";
 
+/// A condition on files f: not under a folder being removed. Searches use
+/// it, so a large folder's files stop being found as soon as it is removed,
+/// not when the last batch goes. There are few marks, so it is cheap.
+pub(crate) const NOT_REMOVING: &str =
+    "f.root NOT IN (SELECT substr(key, 10) FROM meta WHERE key >= 'removing:' AND key < 'removing;')";
+
 /// Version 0 of the schema; later versions are in migrate.rs.
 pub(crate) const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS files (

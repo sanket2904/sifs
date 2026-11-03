@@ -3,7 +3,7 @@
 //! writer lock, as the crawler and the watcher do.
 
 use super::{platform, Part, Registry};
-use crate::index::db::{writer, Index};
+use crate::index::db::{writer, Index, NOT_REMOVING};
 use anyhow::Result;
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use std::time::{Duration, Instant};
@@ -353,10 +353,10 @@ pub fn match_contents(index: &Index, query: &str, limit: usize) -> Result<Vec<Co
     if phrase.is_empty() {
         return Ok(Vec::new());
     }
-    let mut stmt = index.conn.prepare_cached(
+    let mut stmt = index.conn.prepare_cached(&format!(
         "SELECT f.path, c.part, c.label FROM contents_fts JOIN contents c ON c.id = contents_fts.rowid
-         JOIN files f ON f.id = c.file_id WHERE contents_fts MATCH ?1 ORDER BY rank",
-    )?;
+         JOIN files f ON f.id = c.file_id WHERE contents_fts MATCH ?1 AND {NOT_REMOVING} ORDER BY rank"
+    ))?;
     let rows =
         stmt.query_map(params![phrase], |r| Ok(ContentMatch { path: r.get(0)?, part: r.get(1)?, label: r.get(2)? }))?;
     let mut out: Vec<ContentMatch> = Vec::new();

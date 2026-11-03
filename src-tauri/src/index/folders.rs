@@ -3,8 +3,9 @@
 //!
 //! A folder removed while it is being scanned is removed once the scan
 //! stops: the scan is told to stop before its next batch, so nothing it
-//! writes is left behind. Any rows still left (from a race with the
-//! watcher, or an older SIFS) are found at the next start.
+//! writes is left behind. A removal that fails is tried again, waiting
+//! longer each time, and any rows still left (from a race with the watcher,
+//! or an older SIFS) are found at the next start.
 
 use super::crawl::{self, ScanStats};
 use super::db::Index;
@@ -16,6 +17,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
+/// The longest wait between tries of a removal that keeps failing.
+const MAX_RETRY: Duration = Duration::from_secs(600);
 /// Files removed per transaction.
 const REMOVE_BATCH: usize = 100;
 
@@ -37,7 +40,7 @@ pub struct Folders {
 struct Inner {
     db_path: PathBuf,
     home: String,
-    #[allow(dead_code)]
+    /// The first wait after a removal fails; it doubles after each failure.
     retry: Duration,
     on_event: Box<dyn Fn(Event) + Send + Sync>,
     jobs: Mutex<Jobs>,
@@ -102,6 +105,8 @@ impl Folders {
             bail!("{path} is already searched, as part of a folder you added");
         }
         if index.removals()?.iter().any(|r| r == path) {
+            // A removal that stopped (an error, say) is started again.
+            self.start_removal(path.to_string());
             bail!("{path} is still being removed; add it again in a moment");
         }
         index.add_folder(path, now)?;
@@ -179,6 +184,7 @@ impl Folders {
         let this = self.clone();
         std::thread::spawn(move || {
             let inner = &this.inner;
+            let mut wait = inner.retry;
             loop {
                 let result = Index::open(&inner.db_path).and_then(|mut index| {
                     // Added again since (once its mark was cleared): it stays.
@@ -189,6 +195,7 @@ impl Folders {
                 });
                 match result {
                     Ok(removed) => {
+                        wait = inner.retry;
                         if let Some(removed) = removed {
                             log::info!("removed {root}: {removed} items");
                             (inner.on_event)(Event::Removed { root: root.clone(), removed });
@@ -203,9 +210,9 @@ impl Folders {
                         }
                     }
                     Err(e) => {
-                        log::warn!("removing {root}: {e:#}");
-                        this.jobs().removing.remove(&root);
-                        return;
+                        log::warn!("removing {root}: {e:#}; trying again in {} s", wait.as_secs_f64());
+                        std::thread::sleep(wait);
+                        wait = (wait * 2).min(MAX_RETRY);
                     }
                 }
             }
