@@ -376,7 +376,9 @@ fn a_sheet_past_the_cell_cap_is_cut_and_recorded() {
     let bytes = sample::xlsx(&[("S", &format!("<row>{row}</row>")), ("T", "<row><c><v>99</v></c></row>")], &[], "", false);
     let excel = Excel { caps: Caps { cells: 10, ..Caps::default() } };
     let (got, facts) = read(&excel, "wide.xlsx", &bytes).unwrap();
-    assert_eq!(got.len(), 0, "the row in progress is not written: {got:?}");
+    // Cells are written as they end, so the first ten are kept.
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].text, "0\t1\t2\t3\t4\t5\t6\t7\t8\t9");
     assert_eq!(fact(&facts, "truncated"), Some("1"));
     let rows: String = (0..30).map(|i| format!("<row><c><v>{i}</v></c></row>")).collect();
     let bytes = sample::xlsx(&[("S", &rows), ("T", "<row><c><v>99</v></c></row>")], &[], "", false);
@@ -422,6 +424,8 @@ fn the_caps_and_limits_are_the_planned_ones() {
             inflated: 128 * MB,
             cells: 1_000_000,
             shared_chars: 4_000_000,
+            shared_strings: 1_000_000,
+            listed: 10_000,
         }
     );
     for reader in [&Word::default() as &dyn Reader, &Excel::default(), &PowerPoint::default()] {

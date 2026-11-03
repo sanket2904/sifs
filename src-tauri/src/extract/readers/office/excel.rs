@@ -6,10 +6,11 @@
 //! 14:30:00. Other number formats (thousands separators, currencies,
 //! decimals) are not applied: the digits are what a search needs.
 
-use super::{attr, limits, rel_id, Caps, Handler, Kind, Package, Root};
+use super::{attr, limits, rel_id, targets, Caps, Handler, Kind, Package, Root};
 use crate::extract::{fact, Flow, Limits, ReadError, Reader, Sink};
 use quick_xml::events::BytesStart;
-use std::collections::HashMap;
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 #[derive(Default)]
@@ -33,17 +34,22 @@ impl Reader for Excel {
     fn read(&self, path: &Path, sink: &mut Sink) -> Result<(), ReadError> {
         let mut package = Package::open(path, Kind::Excel, self.caps)?;
         let main = package.main_part(sink)?;
-        let mut workbook = Workbook::default();
+        let mut workbook = Workbook { max: self.caps.listed, ..Workbook::default() };
         package.parse(&main, &mut workbook, sink)?;
         package.check_root(workbook.root.get())?;
+        if workbook.over {
+            sink.note_truncated();
+        }
         let rels = package.rels(&main, sink)?;
         let target_of = |kind: &str| rels.iter().find(|r| r.kind == kind).map(|r| r.target.clone());
-        let names: Vec<&str> = workbook.sheets.iter().map(|(name, _)| name.as_str()).collect();
+        let names: Vec<&str> = workbook.sheets.iter().map(|s| s.name.as_str()).collect();
         sink.fact(fact::SHEETS, names.join(", "));
 
-        let mut shared = Shared { max_chars: self.caps.shared_chars, ..Shared::default() };
+        let mut shared =
+            Shared { max_chars: self.caps.shared_chars, max_strings: self.caps.shared_strings, ..Shared::default() };
         if let Some(target) = target_of("sharedStrings") {
-            if package.parse(&target, &mut shared, sink)? == Some(Flow::Full) {
+            // Full from the list itself (past its count) still reads the sheets.
+            if package.parse(&target, &mut shared, sink)? == Some(Flow::Full) && !shared.cut {
                 return Ok(());
             }
         }
@@ -62,16 +68,23 @@ impl Reader for Excel {
             date1904: workbook.date1904,
             cells: 0,
             max_cells: self.caps.cells,
-            row: Vec::new(),
+            row_cells: 0,
             cell: None,
             in_value: false,
             in_inline: 0,
             skip: 0,
         };
-        for (name, id) in &workbook.sheets {
-            let Some(rel) = rels.iter().find(|r| &r.id == id) else { continue };
-            sink.part(name.clone());
-            let flow = package.parse(&rel.target, &mut sheet, sink)?;
+        let targets = targets(&rels);
+        let mut read = HashSet::new();
+        for listed in &workbook.sheets {
+            sink.check()?;
+            let Some(&target) = targets.get(listed.id.as_str()) else { continue };
+            // A part named by two sheets is read once.
+            if !read.insert(target) {
+                continue;
+            }
+            sink.part(if listed.hidden { format!("{} (hidden)", listed.name) } else { listed.name.clone() });
+            let flow = package.parse(target, &mut sheet, sink)?;
             if sheet.cells > sheet.max_cells {
                 sink.cut();
                 return Ok(());
@@ -84,13 +97,23 @@ impl Reader for Excel {
     }
 }
 
-/// workbook.xml: the sheets in order, and the date system.
+/// A sheet as the workbook lists it.
+struct Listed {
+    name: String,
+    /// Its relationship id.
+    id: String,
+    hidden: bool,
+}
+
+/// workbook.xml: the sheets in order, and the date system. Very hidden
+/// sheets (shown only to macros) are left out; at most max are listed.
 #[derive(Default)]
 struct Workbook {
     root: Root,
-    /// (name, relationship id)
-    sheets: Vec<(String, String)>,
+    sheets: Vec<Listed>,
     date1904: bool,
+    max: usize,
+    over: bool,
 }
 
 impl Handler for Workbook {
@@ -102,8 +125,16 @@ impl Handler for Workbook {
         match name {
             b"workbookPr" => self.date1904 = matches!(attr(e, b"date1904").as_deref(), Some("1" | "true")),
             b"sheet" => {
-                if let (Some(sheet), Some(id)) = (attr(e, b"name"), rel_id(e)) {
-                    self.sheets.push((sheet, id));
+                let state = attr(e, b"state");
+                if state.as_deref() == Some("veryHidden") {
+                    return Ok(Flow::More);
+                }
+                if self.sheets.len() >= self.max {
+                    self.over = true;
+                    return Ok(Flow::Full);
+                }
+                if let (Some(name), Some(id)) = (attr(e, b"name"), rel_id(e)) {
+                    self.sheets.push(Listed { name, id, hidden: state.as_deref() == Some("hidden") });
                 }
             }
             _ => {}
@@ -119,7 +150,8 @@ impl Handler for Workbook {
 }
 
 /// sharedStrings.xml: each si's text, rich runs joined, phonetic guides
-/// (rPh) left out. Past max_chars in all, later strings are empty.
+/// (rPh) left out. Past max_chars in all, later strings are empty; past
+/// max_strings, the rest of the list is not read.
 #[derive(Default)]
 struct Shared {
     strings: Vec<String>,
@@ -128,6 +160,7 @@ struct Shared {
     in_phonetic: u32,
     chars: usize,
     max_chars: usize,
+    max_strings: usize,
     cut: bool,
 }
 
@@ -144,6 +177,10 @@ impl Handler for Shared {
     fn close(&mut self, name: &[u8], _: &mut Sink) -> Result<Flow, ReadError> {
         match name {
             b"si" => {
+                if self.strings.len() >= self.max_strings {
+                    self.cut = true;
+                    return Ok(Flow::Full);
+                }
                 let s = std::mem::take(&mut self.current);
                 let n = s.chars().count();
                 if self.chars + n > self.max_chars {
@@ -285,6 +322,11 @@ pub(crate) fn show_date(serial: f64, shown: Shown, date1904: bool) -> Option<Str
     if !serial.is_finite() || !(0.0..3_000_000.0).contains(&serial) {
         return None;
     }
+    // Before day 1 of the 1900 system Excel shows "1900-01-00": shown as
+    // the number it is.
+    if !date1904 && serial < 1.0 && shown != Shown::Time {
+        return None;
+    }
     let mut days = serial.floor() as i64;
     let mut seconds = ((serial - serial.floor()) * 86_400.0).round() as i64;
     if seconds >= 86_400 {
@@ -334,7 +376,12 @@ struct Cell {
     value: String,
 }
 
-/// One sheet's cells as rows.
+/// A cell's value is kept up to this many bytes: Excel's own limit of
+/// 32,767 characters, at four bytes each.
+pub(crate) const MAX_CELL_BYTES: usize = 32_767 * 4;
+
+/// One sheet's cells as rows, each cell written as it ends: tabs between
+/// cells, a line end after each row. Nothing of a row is held.
 struct Sheet {
     shared: Vec<String>,
     dates: Vec<Shown>,
@@ -342,7 +389,8 @@ struct Sheet {
     /// Cells looked at so far, over every sheet.
     cells: usize,
     max_cells: usize,
-    row: Vec<String>,
+    /// Cells of the current row written.
+    row_cells: usize,
     cell: Option<Cell>,
     in_value: bool,
     /// Inside an inline string's t.
@@ -351,25 +399,24 @@ struct Sheet {
     skip: u32,
 }
 
-impl Sheet {
-    fn shown(&self, cell: Cell) -> String {
-        let value = cell.value;
-        match cell.kind.as_str() {
-            "s" => value.trim().parse::<usize>().ok().and_then(|i| self.shared.get(i)).cloned().unwrap_or_default(),
-            "b" => match value.trim() {
-                "1" => "TRUE".into(),
-                "0" => "FALSE".into(),
-                other => other.into(),
-            },
-            "inlineStr" | "str" | "e" | "d" => value,
-            _ => {
-                let shown = self.dates.get(cell.style).copied().unwrap_or(Shown::Number);
-                match value.trim().parse::<f64>() {
-                    Ok(serial) if shown != Shown::Number => {
-                        show_date(serial, shown, self.date1904).unwrap_or_else(|| value.trim().to_string())
-                    }
-                    _ => value.trim().to_string(),
+/// What a cell shows, borrowed where it can be (a shared string).
+fn shown<'a>(cell: &'a Cell, shared: &'a [String], dates: &[Shown], date1904: bool) -> Cow<'a, str> {
+    let value = cell.value.trim();
+    match cell.kind.as_str() {
+        "s" => Cow::Borrowed(value.parse::<usize>().ok().and_then(|i| shared.get(i)).map_or("", |s| s.as_str())),
+        "b" => Cow::Borrowed(match value {
+            "1" => "TRUE",
+            "0" => "FALSE",
+            other => other,
+        }),
+        "inlineStr" | "str" | "e" | "d" => Cow::Borrowed(&cell.value),
+        _ => {
+            let kind = dates.get(cell.style).copied().unwrap_or(Shown::Number);
+            match value.parse::<f64>() {
+                Ok(serial) if kind != Shown::Number => {
+                    show_date(serial, kind, date1904).map_or(Cow::Borrowed(value), Cow::Owned)
                 }
+                _ => Cow::Borrowed(value),
             }
         }
     }
@@ -378,7 +425,7 @@ impl Sheet {
 impl Handler for Sheet {
     fn open(&mut self, name: &[u8], e: &BytesStart, _: &mut Sink) -> Result<Flow, ReadError> {
         match name {
-            b"row" => self.row.clear(),
+            b"row" => self.row_cells = 0,
             b"c" => {
                 self.cells += 1;
                 if self.cells > self.max_cells {
@@ -403,18 +450,25 @@ impl Handler for Sheet {
             b"t" => self.in_inline = self.in_inline.saturating_sub(1),
             b"rPh" => self.skip = self.skip.saturating_sub(1),
             b"c" => {
-                if let Some(cell) = self.cell.take() {
-                    let shown = self.shown(cell);
-                    let shown = shown.trim();
-                    if !shown.is_empty() {
-                        self.row.push(shown.replace(['\t', '\n', '\r'], " "));
-                    }
+                let Some(cell) = self.cell.take() else { return Ok(Flow::More) };
+                let shown = shown(&cell, &self.shared, &self.dates, self.date1904);
+                let shown = shown.trim();
+                if shown.is_empty() {
+                    return Ok(Flow::More);
                 }
+                if self.row_cells > 0 && sink.text("\t")? == Flow::Full {
+                    return Ok(Flow::Full);
+                }
+                self.row_cells += 1;
+                return if shown.contains(['\t', '\n', '\r']) {
+                    sink.text(&shown.replace(['\t', '\n', '\r'], " "))
+                } else {
+                    sink.text(shown)
+                };
             }
-            b"row" if !self.row.is_empty() => {
-                let mut line = std::mem::take(&mut self.row).join("\t");
-                line.push('\n');
-                return sink.text(&line);
+            b"row" if self.row_cells > 0 => {
+                self.row_cells = 0;
+                return sink.text("\n");
             }
             _ => {}
         }
@@ -423,8 +477,13 @@ impl Handler for Sheet {
     fn text(&mut self, text: &str, _: &mut Sink) -> Result<Flow, ReadError> {
         if let Some(cell) = &mut self.cell {
             let inline = cell.kind == "inlineStr" && self.in_inline > 0 && self.skip == 0;
-            if (self.in_value || inline) && cell.value.len() < 1_000_000 {
-                cell.value.push_str(text);
+            if self.in_value || inline {
+                let room = MAX_CELL_BYTES.saturating_sub(cell.value.len());
+                let mut cut = text.len().min(room);
+                while !text.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                cell.value.push_str(&text[..cut]);
             }
         }
         Ok(Flow::More)

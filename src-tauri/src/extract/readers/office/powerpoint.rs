@@ -1,9 +1,10 @@
 //! PowerPoint presentations: one part per slide, in the presentation's
 //! order, each followed by its notes.
 
-use super::{limits, rel_id, Caps, Handler, Kind, Package, Prose, Root};
+use super::{limits, rel_id, targets, Caps, Handler, Kind, Package, Prose, Root};
 use crate::extract::{fact, Flow, Limits, ReadError, Reader, Sink};
 use quick_xml::events::BytesStart;
+use std::collections::HashSet;
 use std::path::Path;
 
 /// What an mc:AlternateContent repeats for older readers.
@@ -30,19 +31,29 @@ impl Reader for PowerPoint {
     fn read(&self, path: &Path, sink: &mut Sink) -> Result<(), ReadError> {
         let mut package = Package::open(path, Kind::PowerPoint, self.caps)?;
         let main = package.main_part(sink)?;
-        let mut presentation = Presentation::default();
+        let mut presentation = Presentation { max: self.caps.listed, ..Presentation::default() };
         package.parse(&main, &mut presentation, sink)?;
         package.check_root(presentation.root.get())?;
-        sink.fact(fact::SLIDES, presentation.slides.len().to_string());
+        sink.fact(fact::SLIDES, presentation.total.to_string());
+        if presentation.total > presentation.slides.len() {
+            sink.note_truncated();
+        }
         let rels = package.rels(&main, sink)?;
+        let targets = targets(&rels);
+        let mut read = HashSet::new();
         for (n, id) in presentation.slides.iter().enumerate() {
-            let Some(slide) = rels.iter().find(|r| &r.id == id).map(|r| r.target.clone()) else { continue };
+            sink.check()?;
+            let Some(&slide) = targets.get(id.as_str()) else { continue };
+            // A part named by two slides is read once.
+            if !read.insert(slide) {
+                continue;
+            }
             sink.part(format!("slide {}", n + 1));
             let mut prose = Prose::new(SKIPPED, false);
-            if package.parse(&slide, &mut prose, sink)? == Some(Flow::Full) || prose.finish(sink)? == Flow::Full {
+            if package.parse(slide, &mut prose, sink)? == Some(Flow::Full) || prose.finish(sink)? == Flow::Full {
                 return Ok(());
             }
-            let notes = package.rels(&slide, sink)?.into_iter().find(|r| r.kind == "notesSlide");
+            let notes = package.rels(slide, sink)?.into_iter().find(|r| r.kind == "notesSlide");
             if let Some(notes) = notes {
                 sink.part(format!("slide {} notes", n + 1));
                 let mut prose = Prose::new(SKIPPED, false);
@@ -57,11 +68,14 @@ impl Reader for PowerPoint {
     }
 }
 
-/// presentation.xml: the slides in order, by relationship id.
+/// presentation.xml: the slides in order, by relationship id, the first
+/// max of them, and how many it lists.
 #[derive(Default)]
 struct Presentation {
     root: Root,
     slides: Vec<String>,
+    total: usize,
+    max: usize,
 }
 
 impl Handler for Presentation {
@@ -71,7 +85,8 @@ impl Handler for Presentation {
             return Ok(Flow::Full);
         }
         if name == b"sldId" {
-            if let Some(id) = rel_id(e) {
+            self.total += 1;
+            if let Some(id) = rel_id(e).filter(|_| self.slides.len() < self.max) {
                 self.slides.push(id);
             }
         }

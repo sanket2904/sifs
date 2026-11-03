@@ -4,6 +4,7 @@
 use super::{limits, Caps, Handler, Kind, Package, Prose, Root};
 use crate::extract::{Flow, Limits, ReadError, Reader, Sink};
 use quick_xml::events::BytesStart;
+use std::collections::HashSet;
 use std::path::Path;
 
 /// Left out of Word text: what an mc:AlternateContent repeats for older
@@ -45,7 +46,12 @@ impl Reader for Word {
             ("endnotes", Vec::new()),
             ("comments", Vec::new()),
         ];
+        // Each part once, however many relationships name it.
+        let mut seen = HashSet::new();
         for rel in &rels {
+            if !seen.insert(rel.target.as_str()) {
+                continue;
+            }
             let at = match rel.kind.as_str() {
                 "header" | "footer" => 0,
                 "footnotes" => 1,
@@ -63,6 +69,7 @@ impl Reader for Word {
             }
             sink.part(label);
             for target in targets {
+                sink.check()?;
                 let mut prose = Prose::new(SKIPPED, false);
                 if package.parse(target, &mut prose, sink)? == Some(Flow::Full) || prose.finish(sink)? == Flow::Full {
                     return Ok(());

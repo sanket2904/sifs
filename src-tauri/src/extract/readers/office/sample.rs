@@ -208,3 +208,71 @@ pub(crate) fn compound(streams: &[&str]) -> Vec<u8> {
     }
     [header, fat, dir].concat()
 }
+
+/// Counts the bytes each thread has allocated and not yet freed, so a test
+/// can see how much a read held at most, whatever other tests do at the
+/// same time (unlike the process's peak memory).
+pub(crate) mod held {
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::cell::Cell;
+
+    struct Counting;
+
+    thread_local! {
+        static NOW: Cell<isize> = const { Cell::new(0) };
+        static PEAK: Cell<isize> = const { Cell::new(0) };
+    }
+
+    fn add(n: usize) {
+        let _ = NOW.try_with(|now| {
+            let v = now.get() + n as isize;
+            now.set(v);
+            let _ = PEAK.try_with(|peak| peak.set(peak.get().max(v)));
+        });
+    }
+
+    fn sub(n: usize) {
+        let _ = NOW.try_with(|now| now.set(now.get() - n as isize));
+    }
+
+    unsafe impl GlobalAlloc for Counting {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            let p = System.alloc(layout);
+            if !p.is_null() {
+                add(layout.size());
+            }
+            p
+        }
+        unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+            let p = System.alloc_zeroed(layout);
+            if !p.is_null() {
+                add(layout.size());
+            }
+            p
+        }
+        unsafe fn dealloc(&self, p: *mut u8, layout: Layout) {
+            System.dealloc(p, layout);
+            sub(layout.size());
+        }
+        unsafe fn realloc(&self, p: *mut u8, layout: Layout, new: usize) -> *mut u8 {
+            let q = System.realloc(p, layout, new);
+            if !q.is_null() {
+                add(new);
+                sub(layout.size());
+            }
+            q
+        }
+    }
+
+    #[global_allocator]
+    static COUNTING: Counting = Counting;
+
+    /// What f returns, and the most bytes this thread held during it, over
+    /// what it held before.
+    pub(crate) fn peak<T>(f: impl FnOnce() -> T) -> (T, usize) {
+        let start = NOW.with(Cell::get);
+        PEAK.with(|p| p.set(start));
+        let out = f();
+        (out, (PEAK.with(Cell::get) - start).max(0) as usize)
+    }
+}

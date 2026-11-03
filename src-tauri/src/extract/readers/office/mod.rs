@@ -50,6 +50,10 @@ pub struct Caps {
     pub cells: usize,
     /// Characters of a workbook's shared strings kept.
     pub shared_chars: usize,
+    /// Shared strings kept: past it, the rest of the list is not read.
+    pub shared_strings: usize,
+    /// Sheets or slides read: past it, the rest are left out.
+    pub listed: usize,
 }
 
 impl Default for Caps {
@@ -62,6 +66,8 @@ impl Default for Caps {
             inflated: 128 * MB,
             cells: 1_000_000,
             shared_chars: 4_000_000,
+            shared_strings: 1_000_000,
+            listed: 10_000,
         }
     }
 }
@@ -155,6 +161,11 @@ pub(crate) struct Rel {
     pub target: String,
 }
 
+/// Relationship ids to their targets, for looking up many.
+pub(crate) fn targets(rels: &[Rel]) -> HashMap<&str, &str> {
+    rels.iter().map(|r| (r.id.as_str(), r.target.as_str())).collect()
+}
+
 /// An open Office file.
 pub(crate) struct Package {
     zip: ZipArchive<Budgeted>,
@@ -163,6 +174,9 @@ pub(crate) struct Package {
     caps: Caps,
     inflated: Cell<u64>,
     stop: Cell<Option<Stop>>,
+    /// XML events read, over every part: the sink is asked about the time
+    /// every CHECK_EVERY of them, however small the parts.
+    events: Cell<u32>,
     kind: Kind,
 }
 
@@ -201,7 +215,15 @@ impl Package {
             return Err(ReadError::Unsupported(format!("more than {} parts", caps.entries)));
         }
         let names = zip.file_names().filter_map(|n| n.ok()).map(|n| (n.to_lowercase(), n.into_owned())).collect();
-        Ok(Package { zip, names, caps, inflated: Cell::new(0), stop: Cell::new(None), kind })
+        Ok(Package {
+            zip,
+            names,
+            caps,
+            inflated: Cell::new(0),
+            stop: Cell::new(None),
+            events: Cell::new(0),
+            kind,
+        })
     }
 
     pub(crate) fn has(&self, name: &str) -> bool {
@@ -241,7 +263,7 @@ impl Package {
             stop: &self.stop,
             caps: &self.caps,
         };
-        match walk(BufReader::new(counted), handler, sink) {
+        match walk(BufReader::new(counted), handler, sink, &self.events) {
             Ok(flow) => Ok(Some(flow)),
             Err(Walked::Read(e)) => Err(e),
             Err(Walked::Xml(e)) => match self.stop.get() {
@@ -369,14 +391,13 @@ const CHECK_EVERY: u32 = 4096;
 /// elements come as an open and a close. Of entity references only XML's
 /// own five and character references are decoded; others (declared in a
 /// DTD, which is never read) are dropped.
-fn walk(xml: impl BufRead, handler: &mut dyn Handler, sink: &mut Sink) -> Result<Flow, Walked> {
+fn walk(xml: impl BufRead, handler: &mut dyn Handler, sink: &mut Sink, events: &Cell<u32>) -> Result<Flow, Walked> {
     let mut reader = quick_xml::Reader::from_reader(xml);
     reader.config_mut().expand_empty_elements = true;
     let mut buf = Vec::new();
-    let mut events = 0u32;
     loop {
-        events = events.wrapping_add(1);
-        if events % CHECK_EVERY == 0 {
+        events.set(events.get().wrapping_add(1));
+        if events.get() % CHECK_EVERY == 0 {
             sink.check().map_err(Walked::Read)?;
         }
         buf.clear();
@@ -501,14 +522,19 @@ impl Handler for Props {
 
 /// Text in paragraphs, runs and tables, as Word (w:) and DrawingML (a:,
 /// for slides) both write it: text is inside t, a paragraph (p) ends a
-/// line, br is a new line, tab in a run a tab. In a table a cell's
-/// paragraphs are joined by spaces, its cells by tabs, its rows by lines.
-/// Of an mc:AlternateContent only the Choice is read: the Fallback repeats
-/// it. Pages are kept for a Word document's body when paged is set.
+/// line, br is a new line, tab in a run a tab. A text box's paragraphs
+/// start on a line of their own. In a table a cell's paragraphs are joined
+/// by spaces, its cells by tabs, its rows by lines; each cell is written as
+/// it ends (or as it comes, when long), so no row is held whole. Of an
+/// mc:AlternateContent only the Choice is read: the Fallback repeats it.
+/// Pages are kept for a Word document's body when paged is set.
 pub(crate) struct Prose {
     line: String,
     cell: String,
-    row: Vec<String>,
+    /// The current cell has been written in part already (it was long).
+    cell_started: bool,
+    /// Cells of the current row written.
+    row_cells: usize,
     /// Tables, cells and runs open around the current position.
     tables: u32,
     cells: u32,
@@ -520,19 +546,26 @@ pub(crate) struct Prose {
     skipped: &'static [&'static [u8]],
     paged: bool,
     page: u32,
-    /// Text since the current page began, so a break with nothing before
-    /// it (Word writes a rendered break after a typed one) counts once.
+    /// Text since the current page began, so a rendered break right after
+    /// another break (Word writes one after a typed break) counts once.
     text_on_page: bool,
+    /// A break inside a table row already under way: the next page begins
+    /// with the next row.
+    pending_break: bool,
     /// Whether anything was found at all.
     pub(crate) any: bool,
 }
+
+/// A line, or a table cell, this long is written before it ends.
+const LONG_LINE: usize = 64 * 1024;
 
 impl Prose {
     pub(crate) fn new(skipped: &'static [&'static [u8]], paged: bool) -> Prose {
         Prose {
             line: String::new(),
             cell: String::new(),
-            row: Vec::new(),
+            cell_started: false,
+            row_cells: 0,
             tables: 0,
             cells: 0,
             runs: 0,
@@ -542,6 +575,7 @@ impl Prose {
             paged,
             page: 1,
             text_on_page: false,
+            pending_break: false,
             any: false,
         }
     }
@@ -558,10 +592,54 @@ impl Prose {
         Ok(flow)
     }
 
-    fn page_break(&mut self, sink: &mut Sink) -> Result<Flow, ReadError> {
-        if !self.paged || self.tables > 0 || !(self.text_on_page || !self.line.trim().is_empty()) {
+    /// Writes the cell so far: all of it when it ends (last), else what has
+    /// come of a long one. Cells are joined by tabs.
+    fn write_cell(&mut self, sink: &mut Sink, last: bool) -> Result<Flow, ReadError> {
+        let cell = std::mem::take(&mut self.cell);
+        let text = match (self.cell_started, last) {
+            (false, true) => cell.trim(),
+            (false, false) => cell.trim_start(),
+            (true, true) => cell.trim_end(),
+            (true, false) => cell.as_str(),
+        };
+        if text.is_empty() {
+            if last {
+                self.cell_started = false;
+            }
             return Ok(Flow::More);
         }
+        if !self.cell_started && self.row_cells > 0 && sink.text("\t")? == Flow::Full {
+            return Ok(Flow::Full);
+        }
+        let flow = sink.text(text)?;
+        if !self.cell_started {
+            self.row_cells += 1;
+        }
+        self.cell_started = !last;
+        Ok(flow)
+    }
+
+    fn page_break(&mut self, sink: &mut Sink, typed: bool) -> Result<Flow, ReadError> {
+        if !self.paged {
+            return Ok(Flow::More);
+        }
+        let nothing_since = !self.text_on_page && self.line.trim().is_empty() && self.cell.trim().is_empty();
+        if !typed && nothing_since {
+            return Ok(Flow::More);
+        }
+        if self.tables > 0 {
+            // At a row's start (where Word marks a row that begins a page)
+            // the row goes on the new page; else the next row does.
+            if self.row_cells == 0 && !self.cell_started && self.cell.trim().is_empty() {
+                return self.new_page(sink);
+            }
+            self.pending_break = true;
+            return Ok(Flow::More);
+        }
+        self.new_page(sink)
+    }
+
+    fn new_page(&mut self, sink: &mut Sink) -> Result<Flow, ReadError> {
         // The line goes on: its first half ends this page.
         if !self.line.trim().is_empty() {
             let line = std::mem::take(&mut self.line);
@@ -569,12 +647,14 @@ impl Prose {
                 return Ok(Flow::Full);
             }
         }
+        self.line.clear();
         if self.page == 1 {
             sink.relabel("page 1");
         }
         self.page += 1;
         sink.part(format!("page {}", self.page));
         self.text_on_page = false;
+        self.pending_break = false;
         Ok(Flow::More)
     }
 
@@ -582,6 +662,38 @@ impl Prose {
     pub(crate) fn finish(&mut self, sink: &mut Sink) -> Result<Flow, ReadError> {
         self.end_line(sink)
     }
+
+    fn push(&mut self, s: &str) {
+        if !s.trim().is_empty() {
+            self.any = true;
+            self.text_on_page = true;
+        }
+        if self.cells > 0 {
+            self.cell.push_str(s);
+        } else {
+            self.line.push_str(s);
+        }
+    }
+
+    /// A line or cell grown long is written as it comes.
+    fn flush_long(&mut self, sink: &mut Sink) -> Result<Flow, ReadError> {
+        if self.line.len() >= LONG_LINE {
+            let line = std::mem::take(&mut self.line);
+            return sink.text(&line);
+        }
+        if self.cell.len() >= LONG_LINE && self.tables == 1 {
+            return self.write_cell(sink, false);
+        }
+        Ok(Flow::More)
+    }
+}
+
+/// The character of a w:sym, when it is a plain Unicode character, not one
+/// of a symbol font's private-use code points.
+fn symbol(e: &BytesStart) -> Option<char> {
+    let code = u32::from_str_radix(attr(e, b"char")?.trim(), 16).ok()?;
+    let c = char::from_u32(code)?;
+    (!c.is_control() && !(0xE000..=0xF8FF).contains(&code)).then_some(c)
 }
 
 impl Handler for Prose {
@@ -604,17 +716,31 @@ impl Handler for Prose {
                 self.tables += 1;
             }
             b"tc" => self.cells += 1,
-            b"tab" if self.runs > 0 => self.push("\t"),
+            b"tab" if self.runs > 0 => self.push(if self.cells > 0 { " " } else { "\t" }),
+            b"noBreakHyphen" if self.runs > 0 => self.push("-"),
+            b"sym" if self.runs > 0 => {
+                if let Some(c) = symbol(e) {
+                    self.push(c.encode_utf8(&mut [0u8; 4]));
+                }
+            }
             b"br" | b"cr" => {
                 if self.paged && name == b"br" && attr(e, b"type").as_deref() == Some("page") {
-                    return self.page_break(sink);
+                    return self.page_break(sink, true);
                 }
-                if self.tables == 0 {
+                if self.cells > 0 {
+                    self.push(" ");
+                } else {
                     return self.end_line(sink);
                 }
-                self.push(" ");
             }
-            b"lastRenderedPageBreak" => return self.page_break(sink),
+            b"txbxContent" => {
+                if self.cells > 0 {
+                    self.push(" ");
+                } else {
+                    return self.end_line(sink);
+                }
+            }
+            b"lastRenderedPageBreak" => return self.page_break(sink, false),
             _ => {}
         }
         Ok(Flow::More)
@@ -633,16 +759,20 @@ impl Handler for Prose {
             b"tc" => {
                 self.cells = self.cells.saturating_sub(1);
                 if self.tables == 1 {
-                    let cell = std::mem::take(&mut self.cell);
-                    self.row.push(cell.split_whitespace().collect::<Vec<_>>().join(" "));
-                } else {
-                    self.push(" ");
+                    return self.write_cell(sink, true);
                 }
+                self.push(" ");
             }
             b"tr" if self.tables == 1 => {
-                let row = std::mem::take(&mut self.row);
-                self.line = row.into_iter().filter(|c| !c.is_empty()).collect::<Vec<_>>().join("\t");
-                return self.end_line(sink);
+                if self.row_cells > 0 {
+                    self.row_cells = 0;
+                    if sink.text("\n")? == Flow::Full {
+                        return Ok(Flow::Full);
+                    }
+                }
+                if self.pending_break {
+                    return self.new_page(sink);
+                }
             }
             b"tbl" => self.tables = self.tables.saturating_sub(1),
             _ => {}
@@ -653,30 +783,9 @@ impl Handler for Prose {
     fn text(&mut self, text: &str, sink: &mut Sink) -> Result<Flow, ReadError> {
         if self.skip == 0 && self.in_text > 0 {
             self.push(text);
-            // A paragraph can be as long as the part: write it as it comes.
-            if self.line.len() >= LONG_LINE {
-                let line = std::mem::take(&mut self.line);
-                return sink.text(&line);
-            }
+            return self.flush_long(sink);
         }
         Ok(Flow::More)
-    }
-}
-
-/// A line this long is written before it ends.
-const LONG_LINE: usize = 64 * 1024;
-
-impl Prose {
-    fn push(&mut self, s: &str) {
-        if !s.trim().is_empty() {
-            self.any = true;
-            self.text_on_page = true;
-        }
-        if self.cells > 0 {
-            self.cell.push_str(s);
-        } else {
-            self.line.push_str(s);
-        }
     }
 }
 
