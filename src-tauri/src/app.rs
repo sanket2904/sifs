@@ -20,6 +20,9 @@ struct AppState {
     /// The connection searches and settings use. The crawler and the
     /// watcher open their own.
     reader: Mutex<Index>,
+    /// The connection searches over contents use, so a slow one never
+    /// holds up names or settings.
+    contents_reader: Mutex<Index>,
     rules: Arc<Mutex<Rules>>,
     watch: Mutex<Option<Watch>>,
     /// Scans and removals of folders, in the background.
@@ -62,6 +65,20 @@ fn err(e: impl std::fmt::Display) -> String {
 fn search_files(state: State<AppState>, query: String, limit: Option<usize>) -> Result<Vec<Hit>, String> {
     let index = state.reader.lock().unwrap();
     search::search(&index, &query, limit.unwrap_or(60).min(500), now()).map_err(err)
+}
+
+/// Names and contents ranked together, off the main thread; a content
+/// query over its time limit returns names only, marked.
+#[tauri::command]
+async fn search_all(app: AppHandle, query: String, limit: Option<usize>) -> Result<extract::find::Results, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let index = state.contents_reader.lock().unwrap();
+        extract::find::search_all(&index, &query, limit.unwrap_or(60).min(500), now(), extract::find::CONTENT_TIME)
+            .map_err(err)
+    })
+    .await
+    .map_err(err)?
 }
 
 #[tauri::command]
@@ -228,9 +245,11 @@ pub fn run() {
             // Catch up on what changed while the app was closed, and finish
             // removing folders it was removing when it stopped.
             folders.resume(&mut index)?;
+            let contents_reader = Mutex::new(Index::open(&db_path)?);
             let state = AppState {
                 home,
                 reader: Mutex::new(index),
+                contents_reader,
                 rules,
                 watch: Mutex::new(watch),
                 folders,
@@ -266,6 +285,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             search_files,
+            search_all,
             settings,
             add_folder,
             remove_folder,

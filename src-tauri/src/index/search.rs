@@ -183,7 +183,7 @@ fn fuzzy_rank(file: &FileRecord, shared: usize, now: i64) -> f64 {
     10.0 + shared as f64 * 2.0 + recency(file.modified, now) * 0.5 - (file.name.chars().count() as f64) * 0.05
 }
 
-fn recency(modified: i64, now: i64) -> f64 {
+pub(crate) fn recency(modified: i64, now: i64) -> f64 {
     let days = (now - modified).max(0) as f64 / 86_400.0;
     if days < 7.0 {
         15.0

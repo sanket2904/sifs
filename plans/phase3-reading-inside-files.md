@@ -287,13 +287,12 @@ Two commands:
 
 ### Ranking (owner's decision 5)
 
-A name match ranks above a content match only when kind and place are equal. So both are scored on one scale, with the same priors:
-- **name match:** as now, a base of 25 to 100 by match quality, plus the kind prior (documents +40, code −30, build products −50), the place prior (SDKs, dependencies, build folders −40), recency (up to +15), and less for long names and deep paths;
-- **content match:** a base of **20**, plus up to **10** by bm25 position among the content results, plus the same kind, place and recency priors.
+A name match ranks above a content match only when kind and place are equal. Added-up scores can't give that both ways: an exact name match scores 25 to 100 by quality, while kind priors differ by up to 90 (documents +40, code −30, build products −50). So results are ordered in turn by:
+1. **kind and place:** the kind prior plus the place prior (SDKs, dependencies and build folders −40);
+2. **then, with those equal:** name matches, then content matches, then typo-tolerant name matches (a guess ranks below words that are really there);
+3. **then score:** for names, match quality, recency and shorter names and paths, as now; for contents, the bm25 position among the content results (up to 10) and recency.
 
-So a document whose text matches outranks a source file whose name matches, and a document whose name matches outranks one whose text does.
-
-A file that matches by both name and contents is shown once, with the name match's score plus 5 and the snippet.
+So a document whose text matches ranks above a source file whose name matches, and a document whose name matches ranks above one whose text does. A file matching by both name and contents is shown once, as a name match (score plus 5), with its snippet.
 
 ### Snippets
 

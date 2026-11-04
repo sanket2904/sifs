@@ -7,6 +7,7 @@
 	let query = $state('');
 	let results = $state([]);
 	let selected = $state(0);
+	/** @type {number | null} */
 	let searchMs = $state(null);
 	let settings = $state(null);
 	let showSettings = $state(false);
@@ -17,8 +18,11 @@
 	/** @type {{ path: string, status: string, error: string }[] | null} */
 	let failures = $state(null);
 	let error = $state('');
+	let contentsSlow = $state(false);
 	let input;
 	let timer;
+	/** @type {ReturnType<typeof setTimeout> | undefined} */
+	let contentTimer;
 	let latest = 0;
 
 	async function search() {
@@ -35,6 +39,32 @@
 			if (id !== latest) return; // a newer search has started
 			results = hits;
 			selected = 0;
+			contentsSlow = false;
+			searchMs = Math.round(performance.now() - started);
+		} catch (e) {
+			error = String(e);
+		}
+		// Names show at once; names and contents together replace them once
+		// typing pauses.
+		clearTimeout(contentTimer);
+		contentTimer = setTimeout(() => searchAll(id, q, started), 120);
+	}
+
+	/**
+	 * @param {number} id
+	 * @param {string} q
+	 * @param {number} started
+	 */
+	async function searchAll(id, q, started) {
+		if (id !== latest) return;
+		try {
+			const found = await invoke('search_all', { query: q, limit: 60 });
+			if (id !== latest) return;
+			const keep = results[selected]?.path;
+			results = found.hits;
+			const at = results.findIndex((hit) => hit.path === keep);
+			selected = at >= 0 ? at : 0;
+			contentsSlow = found.contents_timed_out;
 			searchMs = Math.round(performance.now() - started);
 		} catch (e) {
 			error = String(e);
@@ -246,6 +276,13 @@
 				<span class="name">{hit.name}{#if hit.fuzzy}<span class="muted"> · close match</span>{/if}</span>
 				<span class="where">{folderOf(hit)}</span>
 				<span class="meta">{hit.is_dir ? '' : size(hit.size)} · {when(hit.modified)}</span>
+				{#if hit.found}
+					<span class="found"
+						>{#if hit.found.label}<span class="label">{hit.found.label}</span> · {/if}{#each hit.found.snippet as piece}{#if piece.hit}<b
+								>{piece.text}</b
+							>{:else}{piece.text}{/if}{/each}</span
+					>
+				{/if}
 			</li>
 		{/each}
 	</ul>
@@ -253,7 +290,7 @@
 		<p class="muted center">Nothing found for “{query}”.</p>
 	{/if}
 	<footer class="muted">
-		{#if searchMs !== null}{results.length} results in {searchMs} ms · {/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
+		{#if searchMs !== null}{results.length} results in {searchMs} ms · {/if}{#if contentsSlow}contents took too long · {/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
 	</footer>
 </main>
 
@@ -399,6 +436,20 @@
 		background: var(--bg);
 		border: 1px solid var(--border);
 		border-radius: 6px;
+	}
+	.found {
+		grid-column: 2 / -1;
+		font-size: 0.85em;
+		opacity: 0.75;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.found b {
+		font-weight: 600;
+	}
+	.found .label {
+		font-style: italic;
 	}
 	.results {
 		list-style: none;

@@ -2283,3 +2283,141 @@ fn rows_given_to_a_folder_during_its_scan_are_not_removed_as_unseen() {
     eventually("the scan to end", || folders.idle());
     assert_eq!(index.get(&late).unwrap().map(|r| r.root), Some(docs.clone()));
 }
+
+// --- search over contents (phase 3 step 3) ---
+
+/// A home of these files, scanned and read.
+fn read_home(files: &[(&str, &[u8])]) -> (Home, Index) {
+    let home = Home::new();
+    for (rel, body) in files {
+        home.write(rel, body);
+    }
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    (home, index)
+}
+
+fn all(index: &Index, query: &str) -> super::find::Results {
+    super::find::search_all(index, query, 60, now(), Duration::from_secs(30)).unwrap()
+}
+
+fn names_of(results: &super::find::Results) -> Vec<String> {
+    results.hits.iter().map(|h| h.file.name.clone()).collect()
+}
+
+#[test]
+fn a_documents_contents_rank_above_a_code_files_name_and_its_name_above_its_contents() {
+    let (_home, index) = read_home(&[
+        ("code/tapir.py", b"print(1)"),
+        ("Documents/notes.txt", b"we saw a tapir at the zoo"),
+        ("Documents/tapir.txt", b"nothing here"),
+    ]);
+    let results = all(&index, "tapir");
+    assert_eq!(names_of(&results), ["tapir.txt", "notes.txt", "tapir.py"]);
+    assert!(results.hits[0].found.is_none() && results.hits[2].found.is_none());
+    let found = results.hits[1].found.as_ref().unwrap();
+    assert!(found.snippet.iter().any(|s| s.hit && s.text.eq_ignore_ascii_case("tapir")), "{:?}", found.snippet);
+    assert!(!results.contents_timed_out);
+}
+
+#[test]
+fn a_file_matching_by_name_and_contents_is_shown_once_first_with_its_snippet() {
+    let (_home, index) = read_home(&[("Documents/okapi.txt", b"an okapi is not a zebra"), ("Documents/zoo.txt", b"okapi")]);
+    let results = all(&index, "okapi");
+    assert_eq!(names_of(&results), ["okapi.txt", "zoo.txt"]);
+    assert!(results.hits[0].found.is_some(), "the name match carries its snippet");
+}
+
+#[test]
+fn every_word_must_be_in_one_part_and_the_last_matches_as_a_prefix_from_three_letters() {
+    let (_home, index) = read_home(&[
+        ("Documents/a.txt", b"monthly invoice for rent"),
+        ("Documents/b.txt", b"invoice"),
+        ("Documents/c.txt", b"in voice"),
+    ]);
+    assert_eq!(names_of(&all(&index, "rent invoice")), ["a.txt"]);
+    let mut prefix = names_of(&all(&index, "invo"));
+    prefix.sort();
+    assert_eq!(prefix, ["a.txt", "b.txt"]);
+    // One or two letters match whole words only.
+    assert_eq!(names_of(&all(&index, "in")), ["c.txt"]);
+}
+
+#[test]
+fn query_syntax_is_never_interpreted() {
+    let (_home, index) = read_home(&[("Documents/a.txt", b"tapir and okapi near the river: yes")]);
+    for query in ["\"tapir", "tapir*", "tapir AND", "NEAR(tapir okapi)", "river:", "-tapir", "(okapi", "\"", "*", "a\"b", "^tapir", "tapir OR zebra"] {
+        let results = super::find::search_all(&index, query, 60, now(), Duration::from_secs(30));
+        assert!(results.is_ok(), "{query}: {results:?}");
+    }
+    assert_eq!(names_of(&all(&index, "tapir AND")), ["a.txt"], "AND is a word here, and in the text");
+    assert!(all(&index, "tapir OR zebra").hits.is_empty(), "OR is a word, and isn't in the text");
+}
+
+#[test]
+fn accents_and_scripts_are_matched_as_words() {
+    let (_home, index) = read_home(&[
+        ("Documents/cv.txt", "my résumé and re\u{301}sume\u{301}".as_bytes()),
+        ("Documents/rent.txt", "मासिक किराया देय है".as_bytes()),
+        ("Documents/jp.txt", "東京 本社".as_bytes()),
+    ]);
+    assert_eq!(names_of(&all(&index, "resume")), ["cv.txt"]);
+    assert_eq!(names_of(&all(&index, "résumé")), ["cv.txt"]);
+    assert_eq!(names_of(&all(&index, "किराया")), ["rent.txt"]);
+    assert_eq!(names_of(&all(&index, "東京")), ["jp.txt"]);
+}
+
+#[test]
+fn a_content_result_says_where_its_words_are() {
+    let docx = crate::extract::readers::office::sample::docx(&format!(
+        "{}<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>{}",
+        crate::extract::readers::office::sample::paras(&["first page"]),
+        crate::extract::readers::office::sample::paras(&["the capybara is here"])
+    ));
+    let (_home, index) = read_home(&[("Documents/report.docx", &docx)]);
+    let results = all(&index, "capybara");
+    let found = results.hits[0].found.as_ref().unwrap();
+    assert_eq!(found.label, "page 2");
+    let text: String = found.snippet.iter().map(|s| s.text.as_str()).collect();
+    assert!(text.contains("the capybara is here"), "{text}");
+    assert_eq!(found.snippet.iter().filter(|s| s.hit).map(|s| s.text.as_str()).collect::<Vec<_>>(), ["capybara"]);
+}
+
+#[test]
+fn a_removed_folder_and_old_words_are_never_found() {
+    let (home, mut index) = read_home(&[("Docs/a.txt", b"the old tenant okafor")]);
+    assert_eq!(names_of(&all(&index, "okafor")), ["a.txt"]);
+    home.write("Docs/a.txt", b"the new tenant sato");
+    home.refresh(&mut index, "Docs/a.txt");
+    run(&mut index, &Registry::platform());
+    assert!(all(&index, "okafor").hits.is_empty());
+    assert_eq!(names_of(&all(&index, "sato")), ["a.txt"]);
+    // A folder being removed is left out at once.
+    index.conn.execute("INSERT INTO meta (key, value) VALUES (?1, '')", [format!("removing:{}", home.root)]).unwrap();
+    index.conn.execute("UPDATE files SET root = ?1", [home.root.clone()]).unwrap();
+    assert!(all(&index, "sato").hits.is_empty());
+}
+
+#[test]
+fn a_content_query_past_its_time_returns_names_only() {
+    // Enough matches that the query runs past SQLite's first check.
+    let many: Vec<(String, &[u8])> = (0..300).map(|i| (format!("Documents/n{i}.txt"), b"a tapir" as &[u8])).collect();
+    let mut files: Vec<(&str, &[u8])> = many.iter().map(|(p, b)| (p.as_str(), *b)).collect();
+    files.push(("Documents/tapir.txt", b"x"));
+    let (_home, index) = read_home(&files);
+    let results = super::find::search_all(&index, "tapir", 60, now(), Duration::ZERO).unwrap();
+    assert!(results.contents_timed_out);
+    assert_eq!(names_of(&results), ["tapir.txt"]);
+    // And the connection is fine afterwards.
+    assert!(!all(&index, "tapir").contents_timed_out);
+}
+
+#[test]
+fn snippets_become_segments() {
+    let (_home, index) = read_home(&[("Documents/a.txt", b"line one\nhas the word wombat\tin it")]);
+    let found = all(&index, "wombat").hits[0].found.clone().unwrap();
+    let text: String = found.snippet.iter().map(|s| s.text.as_str()).collect();
+    assert!(!text.contains('\n') && !text.contains('\t') && !text.contains('\u{2}'), "{text:?}");
+    assert_eq!(found.snippet.iter().filter(|s| s.hit).count(), 1);
+}

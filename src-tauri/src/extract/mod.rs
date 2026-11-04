@@ -7,6 +7,7 @@
 //! some reader on this machine can read.
 
 pub mod decode;
+pub mod find;
 pub mod platform;
 pub mod readers;
 pub mod store;
