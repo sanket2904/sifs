@@ -274,12 +274,12 @@ fn the_sink_stops_a_reader_past_its_time_limit() {
 // --- the migration ---
 
 #[test]
-fn a_new_index_reaches_version_1_with_every_table() {
+fn a_new_index_reaches_version_2_with_every_table() {
     let home = Home::new();
     let index = home.open();
-    assert_eq!(count(&index, "PRAGMA user_version"), 1);
-    assert_eq!(crate::index::migrate::VERSION, 1);
-    for table in ["extracts", "contents", "contents_fts", "facts", "extract_queue", "extract_kinds"] {
+    assert_eq!(count(&index, "PRAGMA user_version"), 2);
+    assert_eq!(crate::index::migrate::VERSION, 2);
+    for table in ["extracts", "contents", "contents_fts", "facts", "extract_queue", "extract_kinds", "contents_owner"] {
         let n = count(&index, &format!("SELECT COUNT(*) FROM sqlite_master WHERE name = '{table}'"));
         assert_eq!(n, 1, "{table}");
     }
@@ -292,7 +292,7 @@ fn a_new_index_reaches_version_1_with_every_table() {
     }
     drop(index);
     // Opening again changes nothing.
-    assert_eq!(count(&home.open(), "PRAGMA user_version"), 1);
+    assert_eq!(count(&home.open(), "PRAGMA user_version"), 2);
 }
 
 #[test]
@@ -316,7 +316,7 @@ fn a_phase_1_index_is_migrated_and_its_files_are_queued() {
         assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
     }
     let mut index = home.open();
-    assert_eq!(count(&index, "PRAGMA user_version"), 1);
+    assert_eq!(count(&index, "PRAGMA user_version"), 2);
     assert_eq!(index.count().unwrap(), 5, "the files are kept");
     assert_eq!(queued(&index), 0, "nothing is queued by the migration itself");
     let registry = Registry::platform();
@@ -1107,7 +1107,7 @@ fn the_migration_keeps_every_phase_1_row() {
     assert_eq!(dump(&home.open().conn), before);
     let index = home.open();
     assert_eq!(dump(&index.conn), before, "a second open changes nothing");
-    assert_eq!(count(&index, "PRAGMA user_version"), 1);
+    assert_eq!(count(&index, "PRAGMA user_version"), 2);
 }
 
 #[test]

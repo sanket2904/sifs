@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use rusqlite::{Connection, TransactionBehavior};
 
 /// Migration n + 1 is MIGRATIONS[n].
-const MIGRATIONS: &[&str] = &[CONTENTS];
+const MIGRATIONS: &[&str] = &[CONTENTS, CONTENT_OWNERS];
 
 /// Version 1: reading inside files. What was read from each file, its text
 /// by page or part with a full-text index over it, the facts read alongside,
@@ -124,6 +124,11 @@ CREATE TRIGGER files_ad_extract AFTER DELETE ON files BEGIN
 END;
 "#
 );
+
+/// Version 2: which file each part is from, without its text. A part's row
+/// holds its text, so most rows fill a page: search finds the files of
+/// thousands of matching parts through this index, reading far fewer pages.
+const CONTENT_OWNERS: &str = "CREATE INDEX contents_owner ON contents(id, file_id);";
 
 /// The schema version this build knows.
 pub const VERSION: i64 = MIGRATIONS.len() as i64;

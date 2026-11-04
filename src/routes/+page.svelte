@@ -19,34 +19,53 @@
 	let failures = $state(null);
 	let error = $state('');
 	let contentsSlow = $state(false);
+	let ignoredWords = $state(0);
 	let input;
 	let timer;
 	/** @type {ReturnType<typeof setTimeout> | undefined} */
 	let contentTimer;
+	/** @type {ReturnType<typeof setTimeout> | undefined} */
+	let refreshTimer;
 	let latest = 0;
+	/** What the last search was for. */
+	let searched = '';
+	/**
+	 * The file the user moved the selection to, followed while the query
+	 * stays the same; until then the first row is selected.
+	 * @type {string | null}
+	 */
+	let chosen = null;
+
+	/** Drops every pending search: its timers, and its replies still to come. */
+	function cancel() {
+		latest++;
+		clearTimeout(timer);
+		clearTimeout(contentTimer);
+	}
 
 	async function search() {
-		const id = ++latest;
+		cancel();
+		const id = latest;
 		const q = query.trim();
+		searched = q;
 		if (!q) {
-			results = [];
-			searchMs = null;
+			clear();
 			return;
 		}
 		const started = performance.now();
 		try {
 			const hits = await invoke('search_files', { query: q, limit: 60 });
-			if (id !== latest) return; // a newer search has started
-			results = hits;
-			selected = 0;
+			if (id !== latest) return;
+			show(hits);
 			contentsSlow = false;
+			ignoredWords = 0;
 			searchMs = Math.round(performance.now() - started);
 		} catch (e) {
+			if (id !== latest) return;
 			error = String(e);
 		}
 		// Names show at once; names and contents together replace them once
 		// typing pauses.
-		clearTimeout(contentTimer);
 		contentTimer = setTimeout(() => searchAll(id, q, started), 120);
 	}
 
@@ -60,19 +79,57 @@
 		try {
 			const found = await invoke('search_all', { query: q, limit: 60 });
 			if (id !== latest) return;
-			const keep = results[selected]?.path;
-			results = found.hits;
-			const at = results.findIndex((hit) => hit.path === keep);
-			selected = at >= 0 ? at : 0;
+			show(found.hits);
 			contentsSlow = found.contents_timed_out;
+			ignoredWords = found.ignored_words ?? 0;
 			searchMs = Math.round(performance.now() - started);
 		} catch (e) {
+			if (id !== latest) return;
 			error = String(e);
 		}
 	}
 
+	/** Searches names and contents again, for files read inside since: at most every 2 s. */
+	function refreshSoon() {
+		if (refreshTimer !== undefined) return;
+		refreshTimer = setTimeout(() => {
+			refreshTimer = undefined;
+			// Not while the user is typing: that search will see them.
+			if (!searched || searched !== query.trim()) return;
+			clearTimeout(contentTimer);
+			searchAll(++latest, searched, performance.now());
+		}, 2000);
+	}
+
+	function clear() {
+		results = [];
+		searchMs = null;
+		contentsSlow = false;
+		ignoredWords = 0;
+	}
+
+	/** @param {any[]} hits */
+	function show(hits) {
+		results = hits;
+		const at = chosen === null ? -1 : hits.findIndex((hit) => hit.path === chosen);
+		selected = Math.max(at, 0);
+		reveal();
+	}
+
+	/** @param {number} to */
+	function move(to) {
+		selected = Math.max(0, Math.min(to, results.length - 1));
+		chosen = results[selected]?.path ?? null;
+	}
+
+	async function reveal() {
+		await tick();
+		document.getElementById(`hit-${selected}`)?.scrollIntoView({ block: 'nearest' });
+	}
+
 	function onInput() {
-		clearTimeout(timer);
+		cancel();
+		chosen = null;
 		timer = setTimeout(search, 60);
 	}
 
@@ -86,19 +143,20 @@
 
 	async function onKey(e) {
 		if (e.key === 'ArrowDown') {
-			selected = Math.min(selected + 1, results.length - 1);
+			move(selected + 1);
 			e.preventDefault();
 		} else if (e.key === 'ArrowUp') {
-			selected = Math.max(selected - 1, 0);
+			move(selected - 1);
 			e.preventDefault();
 		} else if (e.key === 'Enter' && results[selected]) {
 			openHit(results[selected], e.metaKey);
 		} else if (e.key === 'Escape') {
+			cancel();
+			chosen = null;
 			query = '';
-			results = [];
+			clear();
 		}
-		await tick();
-		document.getElementById(`hit-${selected}`)?.scrollIntoView({ block: 'nearest' });
+		await reveal();
 	}
 
 	async function loadSettings() {
@@ -185,7 +243,10 @@
 				search();
 			}),
 			listen('scan-error', (e) => (error = e.payload)),
-			listen('extract-progress', (e) => (contents = e.payload)),
+			listen('extract-progress', (e) => {
+				contents = e.payload;
+				refreshSoon();
+			}),
 			listen('index-changed', () => query && search())
 		];
 		return () => unlisten.forEach((p) => p.then((f) => f()));
@@ -267,7 +328,7 @@
 			<li
 				id="hit-{i}"
 				class:selected={i === selected}
-				onclick={() => (selected = i)}
+				onclick={() => move(i)}
 				ondblclick={() => openHit(hit)}
 				role="option"
 				aria-selected={i === selected}
@@ -278,7 +339,7 @@
 				<span class="meta">{hit.is_dir ? '' : size(hit.size)} · {when(hit.modified)}</span>
 				{#if hit.found}
 					<span class="found"
-						>{#if hit.found.label}<span class="label">{hit.found.label}</span> · {/if}{#each hit.found.snippet as piece}{#if piece.hit}<b
+						>{#if hit.found.label}<span class="label">{hit.found.label}</span>{' · '}{/if}{#each hit.found.snippet as piece}{#if piece.hit}<b
 								>{piece.text}</b
 							>{:else}{piece.text}{/if}{/each}</span
 					>
@@ -290,7 +351,7 @@
 		<p class="muted center">Nothing found for “{query}”.</p>
 	{/if}
 	<footer class="muted">
-		{#if searchMs !== null}{results.length} results in {searchMs} ms · {/if}{#if contentsSlow}contents took too long · {/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
+		{#if searchMs !== null}{results.length} results in {searchMs} ms{' · '}{/if}{#if contentsSlow}contents took too long{' · '}{/if}{#if ignoredWords}too many words, some not searched{' · '}{/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
 	</footer>
 </main>
 

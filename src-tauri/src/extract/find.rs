@@ -2,21 +2,26 @@
 //! step 3 in plans/phase3-reading-inside-files.md).
 
 use crate::index::db::{row_to_record, FileRecord, Index, NOT_REMOVING};
-use crate::index::search::{self, kind_prior, place_prior, recency, Hit};
+use crate::index::query::{fold_into, Query, WORD};
+use crate::index::search::{self, kind_prior, place_prior, recency};
 use anyhow::Result;
+use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// Files content results come from, at most.
-pub const CONTENT_FILES: usize = 200;
-/// Parts looked at to find them (a file may match in many).
-const CONTENT_PARTS: usize = 2000;
-/// How long the content query may take before it is stopped.
+/// How long a search over names and contents may take: past it, the
+/// content query stops and snippets are left empty.
 pub const CONTENT_TIME: Duration = Duration::from_millis(400);
-/// The last word matches as a prefix from this many characters.
-const PREFIX_FROM: usize = 3;
+/// Matching parts looked at, at most (a file may match in many). Past it
+/// the results are marked incomplete.
+pub const CONTENT_PARTS: usize = 10_000;
+/// A snippet's length in characters, at most, and how many of them come
+/// before its first word.
+const SNIPPET_CHARS: usize = 200;
+const SNIPPET_BEFORE: usize = 40;
+/// The deadline is checked every this many words while looking for the
+/// first one in a part.
+const CHECK_EVERY: usize = 1024;
 /// A content match's base score (shown with results; ranking is by tier
 /// first, see search_all).
 const CONTENT_BASE: f64 = 20.0;
@@ -38,6 +43,7 @@ pub struct Found {
     /// The part's label: "page 3", a sheet's name, "slide 2 notes", or
     /// empty for a file of one part.
     pub label: String,
+    /// Empty if the time ran out before it was made.
     pub snippet: Vec<Segment>,
 }
 
@@ -55,155 +61,251 @@ pub struct Ranked {
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct Results {
     pub hits: Vec<Ranked>,
-    /// The content query was stopped at its time limit: only names were
-    /// searched.
+    /// The content search stopped short, at its time limit or its cap on
+    /// parts: files matching by contents may be missing, or lack a snippet.
     pub contents_timed_out: bool,
+    /// Words typed past the ones searched (index::query::MAX_WORDS).
+    pub ignored_words: usize,
 }
 
-/// The FTS5 query for what was typed: each word quoted (so nothing in it
-/// is query syntax), all of them required, the last as a prefix when it
-/// is long enough. None if there are no words.
-pub fn fts_query(query: &str) -> Option<String> {
-    let words: Vec<&str> = query.split_whitespace().collect();
-    let last = words.len().checked_sub(1)?;
-    let terms: Vec<String> = words
-        .iter()
+/// How a file matched. With kind and place equal, a name match ranks
+/// first, then contents, then a typo-tolerant name (a guess ranks below
+/// words that are really there).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum By {
+    Name,
+    Contents,
+    CloseName,
+}
+
+/// A part's id in contents.
+type PartId = i64;
+
+/// The files whose contents match, best first, each once with its best part
+/// (by bm25).
+#[derive(Default)]
+struct ContentMatches {
+    files: Vec<(FileRecord, PartId)>,
+    /// The search stopped before it saw every matching part.
+    incomplete: bool,
+}
+
+struct Candidate {
+    file: FileRecord,
+    prior: f64,
+    by: By,
+    score: f64,
+    part: Option<PartId>,
+}
+
+/// Names and contents ranked together (owner's decision 5: a name match
+/// ranks above a content match only when kind and place are equal). Every
+/// candidate is ranked before the limit applies: by kind and place priors,
+/// then By, then score (match quality or content rank, and recency). Only
+/// the results kept get snippets.
+pub fn search_all(index: &Index, typed: &str, limit: usize, now: i64, time_limit: Duration) -> Result<Results> {
+    let deadline = Instant::now() + time_limit;
+    let query = Query::parse(typed);
+    let names = search::matches(index, &query, limit, now)?;
+    let contents = match query.fts() {
+        None => ContentMatches::default(),
+        Some(fts) => matching_parts(&index.conn, &fts, deadline)?
+            .unwrap_or(ContentMatches { files: Vec::new(), incomplete: true }),
+    };
+    let mut incomplete = contents.incomplete;
+    let total = contents.files.len().max(1) as f64;
+    let mut by_contents: HashMap<String, (FileRecord, f64, PartId)> = contents
+        .files
+        .into_iter()
         .enumerate()
-        .map(|(i, w)| {
-            let quoted = format!("\"{}\"", w.replace('"', "\"\""));
-            if i == last && w.chars().count() >= PREFIX_FROM {
-                quoted + "*"
-            } else {
-                quoted
-            }
+        .map(|(position, (file, part))| {
+            let score = CONTENT_BASE + CONTENT_RANK * (1.0 - position as f64 / total) + recency(file.modified, now);
+            (file.path.clone(), (file, score, part))
         })
         .collect();
-    Some(terms.join(" "))
+    let prior = |file: &FileRecord| kind_prior(file) + place_prior(&file.path);
+    let mut candidates: Vec<Candidate> = Vec::with_capacity(names.len() + by_contents.len());
+    for hit in names {
+        let (by, score, part) = match (by_contents.remove(&hit.file.path), hit.fuzzy) {
+            (Some((_, score, part)), true) => (By::Contents, score, Some(part)),
+            (Some((_, _, part)), false) => (By::Name, hit.score + BOTH, Some(part)),
+            (None, true) => (By::CloseName, hit.score, None),
+            (None, false) => (By::Name, hit.score, None),
+        };
+        candidates.push(Candidate { prior: prior(&hit.file), file: hit.file, by, score, part });
+    }
+    for (file, score, part) in by_contents.into_values() {
+        candidates.push(Candidate { prior: prior(&file), file, by: By::Contents, score, part: Some(part) });
+    }
+    candidates.sort_by(|a, b| {
+        b.prior
+            .total_cmp(&a.prior)
+            .then(a.by.cmp(&b.by))
+            .then(b.score.total_cmp(&a.score))
+            .then_with(|| a.file.path.cmp(&b.file.path))
+    });
+    candidates.truncate(limit);
+    let mut hits = Vec::with_capacity(candidates.len());
+    for c in candidates {
+        let found = match c.part {
+            None => None,
+            Some(part) => {
+                let found = found_in(index, part, &query, deadline)?;
+                incomplete |= found.snippet.is_empty();
+                Some(found)
+            }
+        };
+        hits.push(Ranked { file: c.file, score: c.score, fuzzy: c.by == By::CloseName, found });
+    }
+    Ok(Results { hits, contents_timed_out: incomplete, ignored_words: query.ignored })
 }
 
-/// The files whose contents match, best first, each with its best part and
-/// a snippet. Stopped after time_limit (Ok(None)).
-pub fn search_contents(index: &Index, query: &str, time_limit: Duration) -> Result<Option<Vec<(FileRecord, Found)>>> {
-    let Some(fts) = fts_query(query) else { return Ok(Some(Vec::new())) };
+/// The files whose contents match, incomplete past CONTENT_PARTS. Only
+/// contents read from the file as it is now count (an edited file's old
+/// words are not found), and not under a folder being removed. None if the
+/// deadline passed first.
+fn matching_parts(conn: &Connection, fts: &str, deadline: Instant) -> Result<Option<ContentMatches>> {
+    // Parts are found through contents_owner, never their rows: a part's
+    // row holds its text, so reading thousands of them is thousands of
+    // pages read from disk.
     let sql = format!(
-        "SELECT f.path, f.root, f.name, f.ext, f.is_dir, f.size, f.modified, f.inode, c.label,
-                snippet(contents_fts, 1, char(2), char(3), '…', 12)
-         FROM contents_fts JOIN contents c ON c.id = contents_fts.rowid JOIN files f ON f.id = c.file_id
-         WHERE contents_fts MATCH ?1 AND {NOT_REMOVING} ORDER BY rank LIMIT {CONTENT_PARTS}"
+        "SELECT f.path, f.root, f.name, f.ext, f.is_dir, f.size, f.modified, f.inode, g.part, g.parts,
+                e.modified IS f.modified AND e.size IS f.size AND {NOT_REMOVING}
+         FROM (SELECT c.file_id, c.id AS part, MIN(m.rank) AS rank, COUNT(*) AS parts
+               FROM (SELECT rowid, rank FROM contents_fts WHERE contents_fts MATCH ?1 LIMIT {CONTENT_PARTS}) m
+               JOIN contents c INDEXED BY contents_owner ON c.id = m.rowid GROUP BY c.file_id) g
+         JOIN files f ON f.id = g.file_id LEFT JOIN extracts e ON e.file_id = f.id
+         ORDER BY g.rank, f.path"
     );
-    // SQLite asks every 64 steps whether to stop: past the deadline, the
-    // query ends with SQLITE_INTERRUPT. (A query too small to reach a check
-    // can't run long either.)
-    let deadline = Instant::now() + time_limit;
-    let stopped = Arc::new(AtomicBool::new(false));
-    let flag = stopped.clone();
-    index.conn.progress_handler(
-        64,
-        Some(move || {
-            let stop = Instant::now() >= deadline;
-            if stop {
-                flag.store(true, Ordering::Relaxed);
-            }
-            stop
-        }),
-    );
-    let found = (|| -> rusqlite::Result<Vec<(FileRecord, Found)>> {
-        let mut stmt = index.conn.prepare_cached(&sql)?;
-        let mut rows = stmt.query([&fts])?;
-        let mut out: Vec<(FileRecord, Found)> = Vec::new();
-        let mut seen: HashMap<String, ()> = HashMap::new();
+    let _stop = Stop::at(conn, deadline);
+    let found = (|| -> rusqlite::Result<_> {
+        let mut stmt = conn.prepare_cached(&sql)?;
+        let mut rows = stmt.query([fts])?;
+        let mut files = Vec::new();
+        let mut scanned = 0;
         while let Some(row) = rows.next()? {
-            let file = row_to_record(row)?;
-            if seen.insert(file.path.clone(), ()).is_some() {
-                continue;
-            }
-            let found = Found { label: row.get(8)?, snippet: segments(&row.get::<_, String>(9)?) };
-            out.push((file, found));
-            if out.len() >= CONTENT_FILES {
-                break;
+            scanned += row.get::<_, usize>(9)?;
+            if row.get::<_, bool>(10)? {
+                files.push((row_to_record(row)?, row.get(8)?));
             }
         }
-        Ok(out)
+        Ok(ContentMatches { files, incomplete: scanned >= CONTENT_PARTS })
     })();
-    index.conn.progress_handler(0, None::<fn() -> bool>);
-    let interrupted = stopped.load(Ordering::Relaxed);
     match found {
         Ok(found) => Ok(Some(found)),
-        Err(rusqlite::Error::SqliteFailure(e, _)) if e.code == rusqlite::ErrorCode::OperationInterrupted || interrupted => {
-            Ok(None)
-        }
+        Err(rusqlite::Error::SqliteFailure(e, _)) if e.code == rusqlite::ErrorCode::OperationInterrupted => Ok(None),
         Err(e) => Err(e.into()),
     }
 }
 
-/// A snippet with char(2) and char(3) around each matched word, as pieces.
-fn segments(snippet: &str) -> Vec<Segment> {
-    let mut out: Vec<Segment> = Vec::new();
-    let mut hit = false;
-    let mut text = String::new();
-    let flush = |text: &mut String, hit: bool, out: &mut Vec<Segment>| {
-        if !text.is_empty() {
-            out.push(Segment { text: std::mem::take(text), hit });
-        }
-    };
-    for c in snippet.chars() {
-        match c {
-            '\u{2}' => {
-                flush(&mut text, hit, &mut out);
-                hit = true;
-            }
-            '\u{3}' => {
-                flush(&mut text, hit, &mut out);
-                hit = false;
-            }
-            // Line breaks inside a snippet read as spaces.
-            '\n' | '\r' | '\t' => text.push(' '),
-            c => text.push(c),
-        }
+/// Stops the connection's statements once the deadline has passed (SQLite
+/// asks every 64 steps), until dropped.
+struct Stop<'a>(&'a Connection);
+
+impl<'a> Stop<'a> {
+    fn at(conn: &'a Connection, deadline: Instant) -> Self {
+        conn.progress_handler(64, Some(move || Instant::now() >= deadline));
+        Stop(conn)
     }
-    flush(&mut text, hit, &mut out);
-    out
 }
 
-/// Names and contents ranked together (owner's decision 5: a name match
-/// ranks above a content match only when kind and place are equal). Files
-/// are ordered by their kind and place priors first; within equal priors,
-/// name matches, then content matches, then typo-tolerant name matches;
-/// then by score (match quality or content rank, and recency).
-pub fn search_all(index: &Index, query: &str, limit: usize, now: i64, time_limit: Duration) -> Result<Results> {
-    let names: Vec<Hit> = search::search(index, query, limit, now)?;
-    let contents = search_contents(index, query, time_limit)?;
-    let contents_timed_out = contents.is_none();
-    let contents = contents.unwrap_or_default();
-    let total = contents.len().max(1) as f64;
-    let mut by_path: HashMap<String, (Found, f64)> = HashMap::new();
-    let mut order: Vec<String> = Vec::new();
-    let mut files: HashMap<String, FileRecord> = HashMap::new();
-    for (position, (file, found)) in contents.into_iter().enumerate() {
-        let score = CONTENT_RANK * (1.0 - position as f64 / total) + recency(file.modified, now);
-        order.push(file.path.clone());
-        by_path.insert(file.path.clone(), (found, score));
-        files.insert(file.path.clone(), file);
+impl Drop for Stop<'_> {
+    fn drop(&mut self) {
+        self.0.progress_handler(0, None::<fn() -> bool>);
     }
-    let mut ranked: Vec<(f64, u8, Ranked)> = Vec::new();
-    let prior = |file: &FileRecord| kind_prior(file) + place_prior(&file.path);
-    for hit in names {
-        let found = by_path.remove(&hit.file.path).map(|(found, _)| found);
-        let tier = if hit.fuzzy { 2 } else { 0 };
-        let score = if found.is_some() { hit.score + BOTH } else { hit.score };
-        ranked.push((prior(&hit.file), tier, Ranked { file: hit.file, score, fuzzy: hit.fuzzy, found }));
-    }
-    for path in order {
-        if let (Some((found, score)), Some(file)) = (by_path.remove(&path), files.remove(&path)) {
-            ranked.push((prior(&file), 1, Ranked { file, score: CONTENT_BASE + score, fuzzy: false, found: Some(found) }));
+}
+
+/// A shown part's label and snippet. The snippet is left empty if the
+/// deadline passed first, or the part was deleted since it matched.
+fn found_in(index: &Index, part: PartId, query: &Query, deadline: Instant) -> Result<Found> {
+    let column = |name: &str| -> Result<Option<String>> {
+        let sql = format!("SELECT {name} FROM contents WHERE id = ?1");
+        Ok(index.conn.prepare_cached(&sql)?.query_row([part], |r| r.get(0)).optional()?)
+    };
+    let label = column("label")?.unwrap_or_default();
+    let mut snippet = Vec::new();
+    if Instant::now() < deadline {
+        if let Some(text) = column("text")? {
+            snippet = self::snippet(&text, query, deadline).unwrap_or_default();
         }
     }
-    ranked.sort_by(|a, b| {
-        b.0.total_cmp(&a.0)
-            .then(a.1.cmp(&b.1))
-            .then(b.2.score.total_cmp(&a.2.score))
-            .then_with(|| a.2.file.path.cmp(&b.2.file.path))
-    });
-    let hits = ranked.into_iter().take(limit).map(|(_, _, hit)| hit).collect();
-    Ok(Results { hits, contents_timed_out })
+    Ok(Found { label, snippet })
 }
+
+/// At most SNIPPET_CHARS characters of text around the first word the query
+/// looks for, from a whole word at most SNIPPET_BEFORE characters before it
+/// to a whole word (or into the word found, if it is that long), with each
+/// such word marked and an ellipsis where text is left out. Hits are
+/// positions found here, never marks inside the text, so the file's own
+/// characters can't pose as one. None if the deadline passed while looking.
+fn snippet(text: &str, query: &Query, deadline: Instant) -> Option<Vec<Segment>> {
+    let mut folded = String::new();
+    let mut is_hit = |word: &str| {
+        fold_into(word, &mut folded);
+        query.matches(&folded)
+    };
+    let mut first = None;
+    for (n, word) in WORD.find_iter(text).enumerate() {
+        if n % CHECK_EVERY == 0 && Instant::now() >= deadline {
+            return None;
+        }
+        if is_hit(word.as_str()) {
+            first = Some(word.range());
+            break;
+        }
+    }
+    let first = first.unwrap_or(0..0);
+    let mut start = text[..first.start].char_indices().rev().nth(SNIPPET_BEFORE - 1).map_or(0, |(i, _)| i);
+    if start > 0 {
+        if in_word(text, start) {
+            start = WORD.find_at(text, start).map_or(start, |w| w.end());
+        }
+        start = WORD.find_at(text, start).map_or(first.start, |w| w.start().min(first.start));
+    }
+    let mut end = text[start..].char_indices().nth(SNIPPET_CHARS).map_or(text.len(), |(i, _)| start + i);
+    if end < text.len() && in_word(text, end) {
+        let cut = text[..end].char_indices().rev().take_while(|&(_, c)| is_word_char(c)).last().map_or(end, |(i, _)| i);
+        if cut >= first.end {
+            end = text[..cut].trim_end().len().max(first.end);
+        }
+    }
+    let mut segments = Vec::new();
+    let mut plain = String::from(if start > 0 { "…" } else { "" });
+    let mut at = start;
+    for word in WORD.find_iter(&text[start..end]) {
+        if is_hit(word.as_str()) {
+            plain.push_str(&text[at..start + word.start()]);
+            if !plain.is_empty() {
+                segments.push(Segment { text: spaced(&std::mem::take(&mut plain)), hit: false });
+            }
+            segments.push(Segment { text: word.as_str().to_string(), hit: true });
+            at = start + word.end();
+        }
+    }
+    plain.push_str(&text[at..end]);
+    if end < text.len() {
+        plain.push('…');
+    }
+    if !plain.is_empty() {
+        segments.push(Segment { text: spaced(&plain), hit: false });
+    }
+    Some(segments)
+}
+
+/// Line breaks and tabs in a snippet read as spaces.
+fn spaced(text: &str) -> String {
+    text.replace(['\n', '\r', '\t'], " ")
+}
+
+fn is_word_char(c: char) -> bool {
+    WORD.is_match(c.encode_utf8(&mut [0; 4]))
+}
+
+/// Whether byte offset at is inside a word: word characters on both sides.
+fn in_word(text: &str, at: usize) -> bool {
+    text[at..].chars().next().is_some_and(is_word_char) && text[..at].chars().next_back().is_some_and(is_word_char)
+}
+
+#[cfg(test)]
+#[path = "find_tests.rs"]
+mod tests;

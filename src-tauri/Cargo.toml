@@ -36,6 +36,9 @@ zip = { version = "=9.3.0", default-features = false, features = ["deflate-flate
 # zip's deflate needs flate2 to have a backend: the pure-Rust miniz_oxide.
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 quick-xml = "=0.42.0"
+# Words split as the contents index splits them, by Unicode category
+# (already built for Tauri).
+regex = "1.10"
 
 [features]
 default = ["app"]
