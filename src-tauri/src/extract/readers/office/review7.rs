@@ -1,4 +1,4 @@
-//! The step 2 reviewer's seventh-round tests, kept (handover/step2-review-r7/REPORT.txt).
+//! The step 2 reviewer's seventh-round tests, kept (see "Reviews" in plans/phase3-reading-inside-files.md).
 use super::*;
 use crate::extract::Reader;
 use std::time::Duration;

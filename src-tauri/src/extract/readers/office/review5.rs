@@ -1,4 +1,4 @@
-//! The step 2 reviewer's fifth-round tests, kept (handover/step2-review-r5/REPORT.txt).
+//! The step 2 reviewer's fifth-round tests, kept (see "Reviews" in plans/phase3-reading-inside-files.md).
 use super::sample;
 use super::*;
 use crate::extract::{Part, Reader, MAX_PARTS};

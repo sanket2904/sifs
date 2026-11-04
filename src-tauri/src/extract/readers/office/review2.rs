@@ -1,5 +1,5 @@
 //! The step 2 reviewer's second-round tests, kept: each pins a finding of
-//! handover/step2-review-r2/REPORT.txt, or a cap's edge it checked.
+//! see "Reviews" in plans/phase3-reading-inside-files.md, or a cap's edge it checked.
 use super::*;
 use super::sample::{self, paras, shape, W};
 use crate::extract::{Part, Reader};

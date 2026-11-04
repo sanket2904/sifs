@@ -246,6 +246,21 @@ The `.docx`, `.xlsx` and `.pptx` samples are built in the tests with the `zip` c
 - **Safety:** a zip bomb (skipped, and its cap's test fails when the ratio check is removed); the total unpacked cap (truncated); too many parts; an oversized list of parts; a billion-laughs DOCTYPE; a password-protected file (a compound file built in the test) and a renamed old one; a truncated zip; a non-Office zip named `.docx`; a file over 100 MB never opened; the cell cap and the shared-strings cap; the time limit. Each cap's test is checked to fail with the cap removed.
 - **Search:** `store::match_contents` finds a word from each kind, with its label (a page, a sheet's name, a slide, its notes).
 
+### Reviews (2026-11-04)
+
+Step 2 had seven review rounds. Each finding was fixed with a test that fails without its fix (60 fixes, each checked by undoing it). Rounds 1 to 6 found 2, 4, 5, 3, 1 and 1 blocking problems; round 7 said RIGHT, with two minor findings, both fixed.
+- **Round 1:** an Excel row naming one long shared string held a copy per cell (571 MB from a 650 KB file); slide and sheet lists were matched to relationships one by one (43 s).
+- **Round 2:** blank pages, a 20 MB relationship path and an 80 MB text node each held 290 to 440 MB; one long number format named by many styles took 24 s.
+- **Round 3:** deep nesting, repeated properties and nested tables (the round's report was lost to a dropped connection; its tests survived).
+- **Round 4:** repeated attribute names (quadratic in quick-xml's check), relationship paths joined to long folders, long element names.
+- **Round 5:** a blank shared string re-trimmed per cell between time checks; a zip64 entry count reserved before reading.
+- **Round 6:** empty deflate blocks, which no cap counted, decoded inside one read.
+- **Round 7:** two zip64 edge cases of the entry-count check; a test of the XML loop's own time check.
+
+The reviewers' tests are kept as `office/review.rs` to `review7.rs`. The reports were in `handover/`, removed when the step merged: `git show <the commit before "Remove the handover folder">:handover/step2-review-r7/REPORT.txt` brings one back. Rounds 1 to 3 were reviewed by gpt-6-astra, rounds 4 to 6 by claude-opus-5-5 (astra was stopped by its provider's content filter), round 7 by gpt-6.1-sol.
+
+**Checked on a Mac (2026-11-04):** the three readers over the 706 Word, Excel and PowerPoint files on the owner's Mac: no crash and no timeout; 669 read (at most 131 ms each, median under 1 ms), 2 skipped as password-protected. The other 35 were iCloud placeholders: opening one asks macOS to download it, and the read blocked about 4.6 s before failing. Skipping placeholders (step 1) has to come before step 1 is used on the Mac.
+
 ### Left for a Mac session
 
 PDF through PDFKit, page by page (labels `page 1`…, from the PDF's page index), and its tests; real Office sample files saved by Word, Excel, PowerPoint, Pages and LibreOffice, to check the page marks and the facts against what the apps write.

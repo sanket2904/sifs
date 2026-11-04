@@ -1,5 +1,6 @@
-//! The step 2 reviewer's sixth-round tests, kept (handover/step2-review-r6/REPORT.txt). Its two
-//! release-only timing measurements are in the saved copy, review6.rs.txt.
+//! The step 2 reviewer's sixth-round tests, kept (see "Reviews" in plans/phase3-reading-inside-files.md). Its two
+//! release-only timing measurements were left out (the review copy in the
+//! git history before "Remove the handover folder" has them).
 use super::sample;
 use super::*;
 use crate::extract::{Part, Reader};

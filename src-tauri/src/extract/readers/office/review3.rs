@@ -1,6 +1,6 @@
 //! The step 2 reviewer's third-round tests, kept. The review's connection
 //! dropped before its report was written; these are its tests as it left
-//! them (see handover/step2-review-r3/NOTE.txt).
+//! them (see see "Reviews" in plans/phase3-reading-inside-files.md).
 use super::*;
 use super::sample::{self, paras, shape, W};
 use crate::extract::{Part, Reader};

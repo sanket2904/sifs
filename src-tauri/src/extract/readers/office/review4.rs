@@ -1,4 +1,4 @@
-//! The step 2 reviewer's fourth-round tests, kept (handover/step2-review-r4/REPORT.txt).
+//! The step 2 reviewer's fourth-round tests, kept (see "Reviews" in plans/phase3-reading-inside-files.md).
 use super::*;
 use super::sample;
 use crate::extract::{Part, Reader};

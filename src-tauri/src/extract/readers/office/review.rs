@@ -1,5 +1,5 @@
 //! The step 2 reviewer's tests, kept: each pins a finding of the review
-//! (handover/step2-review/REPORT.txt), or something it checked. Time
+//! (see "Reviews" in plans/phase3-reading-inside-files.md), or something it checked. Time
 //! bounds have room for a loaded machine: a reader past its limit stops
 //! within a moment of it, where the defects found took 30 to 40 s.
 
