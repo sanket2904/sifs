@@ -27,6 +27,8 @@ mod review5;
 #[cfg(test)]
 mod review6;
 #[cfg(test)]
+mod review7;
+#[cfg(test)]
 mod tests;
 
 pub use excel::Excel;
@@ -381,34 +383,62 @@ impl Package {
 
 /// The most entries any end record the zip crate could use declares: it
 /// tries every end-record signature in the file's last 22 + 4 + 65,536
-/// bytes, and a zip64 record where a locator before one points. None if
-/// there is no end record. A locator that doesn't point exactly at a zip64
-/// record is refused (the zip crate would search for one): no real file
-/// has one.
+/// bytes, and where a zip64 locator comes before one, the zip64 records from
+/// where the locator points up to the locator (the crate moves on past one
+/// it rejects). None if there is no end record. Each locator's records are
+/// looked for in at most 4 MB (the crate reads them through its 4 MB budget
+/// for opening), and in 8 MB over all locators: a file needing more is
+/// refused, as is a locator pointing at no zip64 record.
 fn declared_entries(file: &mut File) -> io::Result<Option<u64>> {
     const END: &[u8] = b"PK\x05\x06";
     const LOCATOR: &[u8] = b"PK\x06\x07";
     const END64: &[u8] = b"PK\x06\x06";
+    const PER_LOCATOR: u64 = 4 * MB + 56;
+    const IN_ALL: u64 = 8 * MB;
     let len = file.seek(SeekFrom::End(0))?;
-    let tail_len = len.min(22 + 4 + 65_536);
-    let mut tail = vec![0u8; tail_len as usize];
-    file.seek(SeekFrom::Start(len - tail_len))?;
+    let window = len.min(22 + 4 + 65_536);
+    // A locator sits 20 bytes before its end record: read those too, for an
+    // end record at the window's start.
+    let before = (len - window).min(20) as usize;
+    let mut tail = vec![0u8; window as usize + before];
+    let base = len - window - before as u64;
+    file.seek(SeekFrom::Start(base))?;
     file.read_exact(&mut tail)?;
     let mut most: Option<u64> = None;
-    for at in (0..tail.len().saturating_sub(21)).filter(|&at| &tail[at..at + 4] == END) {
+    // Each locator's offset, and the most entries its records declare.
+    let mut scanned: HashMap<u64, Option<u64>> = HashMap::new();
+    let mut looked_at = 0u64;
+    for at in (before..tail.len().saturating_sub(21)).filter(|&at| &tail[at..at + 4] == END) {
         let mut entries = u64::from(u16::from_le_bytes([tail[at + 10], tail[at + 11]]));
         if at >= 20 && &tail[at - 20..at - 16] == LOCATOR {
             let offset = u64::from_le_bytes(tail[at - 12..at - 4].try_into().unwrap());
-            let mut record = [0u8; 56];
-            let found = offset.checked_add(56).is_some_and(|end| end <= len) && {
-                file.seek(SeekFrom::Start(offset))?;
-                file.read_exact(&mut record)?;
-                &record[..4] == END64
-            };
-            if !found {
-                return Err(io::Error::other("its zip64 end record isn't where its locator says"));
+            let locator = base + (at - 20) as u64;
+            if offset >= locator {
+                return Err(io::Error::other("its zip64 locator points past itself"));
             }
-            entries = entries.max(u64::from_le_bytes(record[32..40].try_into().unwrap()));
+            let found = match scanned.get(&offset) {
+                Some(&found) => found,
+                None => {
+                    let end = locator.min(offset.saturating_add(PER_LOCATOR));
+                    looked_at += end - offset;
+                    if looked_at > IN_ALL {
+                        return Err(io::Error::other("too many zip64 records to look at"));
+                    }
+                    let mut records = vec![0u8; (end - offset) as usize];
+                    file.seek(SeekFrom::Start(offset))?;
+                    file.read_exact(&mut records)?;
+                    let found = (0..records.len().saturating_sub(39))
+                        .filter(|&p| &records[p..p + 4] == END64)
+                        .map(|p| u64::from_le_bytes(records[p + 32..p + 40].try_into().unwrap()))
+                        .max();
+                    scanned.insert(offset, found);
+                    found
+                }
+            };
+            let Some(found) = found else {
+                return Err(io::Error::other("its zip64 end record isn't where its locator says"));
+            };
+            entries = entries.max(found);
         }
         most = Some(most.map_or(entries, |m| m.max(entries)));
     }

@@ -263,8 +263,11 @@ fn removing_a_folder_removes_its_files_only() {
 
 /// Waits until check passes or fails after a deadline: the watcher reports
 /// asynchronously, so the test waits for the outcome, not for a set time.
+/// macOS's FSEvents promises no delivery time, and was once seen to take
+/// over 20 s for both watcher tests in a full run, right after heavy disk
+/// use: hence a minute.
 pub(crate) fn eventually(what: &str, mut check: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(20);
+    let deadline = Instant::now() + Duration::from_secs(60);
     while Instant::now() < deadline {
         if check() {
             return;

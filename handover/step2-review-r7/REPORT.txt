@@ -1,0 +1,89 @@
+SIFS step 2, round 7 — 2eeb360. macOS arm64, Rust 1.99.1; --no-default-features --lib.
+Source repository untouched. Builds used scratch/target. Baseline: 206/206 passed.
+With six review7 tests: 211 passed, one failed (FINDING 1). No BLOCKING finding.
+
+FINDING 1: Two ZIP64 paths still bypass the entry-count pre-check
+SEVERITY: MINOR
+WHERE: src-tauri/src/extract/readers/office/mod.rs:395-413 (review-copy lines; declared_entries)
+EVIDENCE: review7::r7_zip64_precheck_covers_locator_boundary_and_invalid_first_candidate printed:
+  locator outside tail:                       precheck=Ok(Some(0)), peak=373 MiB
+  invalid exact record before real one:       precheck=Ok(Some(0)), peak=373 MiB
+  Both then returned damaged/incomplete; the reservation had already happened.
+  Each file is 99 MB. First: EOCD is exactly at the scan window's beginning; its locator is
+  20 bytes earlier, so `at >= 20` misses it. Second: the locator points exactly at a ZIP64
+  signature with count zero, but its record length is invalid. zip rejects that candidate
+  and scans forward to the real, large-count record. Checking only the signature permits this.
+  The existing trailing-window test uses ZIP32 count 65535, which alone triggers refusal
+  and masks the missed locator. These variants use count zero and defer the offset to ZIP64.
+  MINOR as in rounds 5/6: this needs a large file and measures allocated/reserved bytes,
+  not 373 MiB of resident memory; it is not a few-MB blocking case.
+SUGGESTED CHANGE: Read 20 bytes of locator context before the EOCD scan window. Ensure the
+  exact ZIP64 candidate passes zip's length, disk/count and offset consistency checks, or
+  pre-check all ZIP64 candidates it can fall forward to. A matching signature is insufficient.
+
+FINDING 2: Compressed-side checks now hide removal of the XML-loop time check
+SEVERITY: MINOR
+WHERE: src-tauri/src/extract/readers/office/review2.rs:57-74; office/mod.rs:557-560
+EVIDENCE: Removing only walk's sink.check left ALL 206 existing tests passing
+  (scratch/mutation-M4-existing.log). r2_events_span_small_parts now times out through
+  Budgeted before testing cumulative XML events; its weakened assertion still passes.
+  My r7_xml_deadline_interval_accumulates_without_compressed_io failed under that mutation:
+    "XML-only: no timeout after 258 events".
+  Restored: it prints "part=86 cumulative events=256". It also checks Package's retained
+  counter separately, using a handler that expires the sink after compressed IO starts:
+    "Package XML-only check: part=171 cumulative events=512".
+SUGGESTED CHANGE: Keep an independent XML-loop/cumulative-counter regression test like this
+  one, rather than relying solely on expired-deadline package reads.
+
+CHECKED WITHOUT FINDING
+- Round 6 compressed reads: Budgeted checks before every read, including buffered bytes.
+  Cold local-header errors and cached-header/XML errors both become Timeout. The existing
+  mid-decode deadline test passes. The four original ZIP64 regression cases now reserve
+  under 1 MiB each; remaining exceptions are FINDING 1.
+- Event storage: Bounded limits consumption to event cap + 1; exact caps, 257/8192-byte
+  buffers, BOM, text, tags, comments, CDATA, PI, DOCTYPE and references pass. Event buffer,
+  normalized text and handler copies stay a small multiple of 4 MB. Open-name storage is
+  bounded by depth 10,000 and name length 256.
+- Attributes/relationships: unchecked duplicate-name iteration is linear; 4 KB values and
+  ids, 4 KB resolved paths, 50,000 relationships and 4 MB aggregate bytes are enforced.
+- Excel: formats classified once; both style/format collections bounded at 65,536. Shared
+  strings trimmed once, borrowed by cells, bounded by characters/count; cell values bounded
+  at 32,767 characters. Unicode/run-boundary and truncation tests pass.
+- Word/PowerPoint: long and nested cells stream; break flags avoid rescans; typed/rendered
+  breaks, blank-page takeover, labels, notes-only slides and blank sheets pass. Sink's
+  25,000-part cap and full-part early return preserve the last kept text. Properties keep
+  their first value; facts are capped at 1,000.
+- Whole-file allocation inventory checked: ZIP metadata/names and ZIP64 extension; Rels
+  vector, target maps and dedup sets; Workbook sheets/names/ids and fact join; Presentation
+  ids; Shared vector/current/string capacities; Styles maps/vectors; Sheet cell/value and
+  replacement text; Prose line/cell/separators; Props keys/value/found; Root; quick-xml
+  event/open-name stacks; Sink parts/labels/text/facts; CFB sector/FAT/name vectors.
+  Combined Excel pools (10,000 4 KB labels, 1M shared strings, nearly 4M Unicode characters):
+    file=1,195,912 bytes, peak=129 MiB, 4.60 s, Ok, 10,000 correctly labelled parts.
+- Work between checks: handlers scan bounded input or consume/clear buffered state;
+  relationship resolution/maps and Word sorting are bounded; sheet/slide/Word-part loops
+  check time; compressed re-reads check time; CFB follows at most 1,000 sectors.
+- Three round-6 mutations, separately undone and restored, caught by EXISTING tests:
+  M1 remove Budgeted clock check: r6_empty_blocks_ask_the_sink FAILED (18.15 s, Ok(0)).
+  M2 remove timeout mapping: empty_blocks_stop_near_the_deadline FAILED (damage, not Timeout).
+  M3 examine only last EOCD: r6_declared_entries_can_be_got_round FAILED (373 MiB).
+  New deterministic review7 tests also catch each mutation. Production source was restored
+  byte-for-byte; only review7 registration remains.
+- Both step-1 wait rewrites pass and wait for observable progress. Still timing-sensitive:
+  reset-after-errors' gap <2.5 s; backoff's 1.5 s observation; review6's <1 s / <5 s checks;
+  review5's <1 s baseline difference and <15 s deadline check; review4 duplicate attributes
+  (<15 s, regression caught only in debug); fuzz timing checks and large tests requiring
+  success within 10 s (including my combined-pools test). No timing failure observed.
+
+FILES
+- fixed/src-tauri/src/extract/readers/office/review7.rs (registered only in fixed):
+  r7_budgeted_checks_each_read_even_with_buffered_bytes
+  r7_parse_maps_expired_header_and_xml_io_to_timeout
+  r7_xml_deadline_interval_accumulates_without_compressed_io
+  r7_declared_counts_scan_every_record
+  r7_combined_excel_pools_stay_bounded
+  r7_zip64_precheck_covers_locator_boundary_and_invalid_first_candidate
+- Logs: scratch/baseline.log, final.log, review7-first.log, combined.log,
+  round6-fixed.log, xml-clock-fixed.log, mutation-M{1,2,3,4}-{new,existing}.log.
+
+VERDICT: RIGHT

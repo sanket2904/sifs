@@ -1,0 +1,221 @@
+//! Round 7 adversarial checks; registered only in the review copy.
+use super::*;
+use crate::extract::Reader;
+use std::time::Duration;
+
+fn saved(bytes: &[u8]) -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("r7.docx");
+    std::fs::write(&path, bytes).unwrap();
+    (dir, path)
+}
+
+#[test]
+fn r7_budgeted_checks_each_read_even_with_buffered_bytes() {
+    let (_dir, path) = saved(b"abcdef");
+    let deadline = Rc::new(Cell::new(None));
+    let mut r = Budgeted {
+        file: BufReader::new(File::open(path).unwrap()),
+        left: Rc::new(Cell::new(u64::MAX)),
+        deadline: deadline.clone(),
+    };
+    let mut out = [0; 1];
+    assert_eq!(r.read(&mut out).unwrap(), 1);
+    deadline.set(Some(Instant::now() - Duration::from_secs(1)));
+    let got = r.read(&mut out);
+    eprintln!("budgeted second read with cached bytes: {got:?}");
+    assert!(got.is_err(), "every read must ask, not just refills");
+}
+
+#[test]
+fn r7_parse_maps_expired_header_and_xml_io_to_timeout() {
+    let bytes = sample::zip(&[("x.xml", b"<x/>")]);
+    let (_dir, path) = saved(&bytes);
+    for warm in [false, true] {
+        let mut package = Package::open(&path, Kind::Word, Caps::default()).unwrap();
+        if warm {
+            let mut sink = Sink::new(100, Instant::now() + Duration::from_secs(10));
+            package.parse("x.xml", &mut Props::new(&[]), &mut sink).unwrap();
+        }
+        let mut sink = Sink::new(100, Instant::now() - Duration::from_secs(1));
+        let got = package.parse("x.xml", &mut Props::new(&[]), &mut sink);
+        eprintln!("expired parse (cached local header={warm}): {got:?}");
+        assert!(matches!(got, Err(ReadError::Timeout)), "{got:?}");
+    }
+}
+
+#[test]
+fn r7_xml_deadline_interval_accumulates_without_compressed_io() {
+    let events = Cell::new(0);
+    let mut sink = Sink::new(100, Instant::now() - Duration::from_secs(1));
+    // No Budgeted here: its check must not hide a missing XML-loop check.
+    let mut timed_out = false;
+    for part in 1..=86 {
+        let xml = Bounded {
+            inner: BufReader::new(&b"<x/>"[..]), consumed: 0, start: 0,
+            max: 100, over: false,
+        };
+        let got = walk(xml, &mut Props::new(&[]), &mut sink, &events);
+        if matches!(got, Err(Walked::Read(ReadError::Timeout))) {
+            eprintln!("XML-only time check: part={part} cumulative events={}", events.get());
+            assert_eq!(events.get(), 256);
+            timed_out = true;
+            break;
+        }
+        assert!(matches!(got, Ok(Flow::More)));
+    }
+    assert!(timed_out, "XML-only: no timeout after {} events", events.get());
+
+    // Also cover Package retaining the counter, not just callers of walk.
+    // Budgeted snapshots a future deadline before the handler expires the
+    // sink. This separates the two checks without sleeping or disabling code.
+    struct Expire;
+    impl Handler for Expire {
+        fn open(&mut self, _: &[u8], _: &BytesStart, sink: &mut Sink) -> Result<Flow, ReadError> {
+            sink.deadline = Instant::now() - Duration::from_secs(1);
+            Ok(Flow::More)
+        }
+        fn close(&mut self, _: &[u8], _: &mut Sink) -> Result<Flow, ReadError> { Ok(Flow::More) }
+        fn text(&mut self, _: &str, _: &mut Sink) -> Result<Flow, ReadError> { Ok(Flow::More) }
+    }
+    let (_dir, path) = saved(&sample::zip(&[("x.xml", b"<x/>")]));
+    let mut package = Package::open(&path, Kind::Word, Caps::default()).unwrap();
+    for part in 1..=172 {
+        sink.deadline = Instant::now() + Duration::from_secs(60);
+        let got = package.parse("x.xml", &mut Expire, &mut sink);
+        if matches!(got, Err(ReadError::Timeout)) {
+            eprintln!("Package XML-only check: part={part} cumulative events={}", package.events.get());
+            assert_eq!(package.events.get(), 512);
+            return;
+        }
+        assert!(matches!(got, Ok(Some(Flow::More))), "{got:?}");
+    }
+    panic!("Package reset the cumulative XML event counter");
+}
+
+fn end64(out: &mut Vec<u8>, count: u64, directory_size: u64, directory_offset: u64) {
+    out.extend_from_slice(b"PK\x06\x06");
+    out.extend_from_slice(&44u64.to_le_bytes());
+    out.extend_from_slice(&[45, 0, 45, 0]);
+    out.extend_from_slice(&[0; 8]);
+    out.extend_from_slice(&count.to_le_bytes());
+    out.extend_from_slice(&count.to_le_bytes());
+    out.extend_from_slice(&directory_size.to_le_bytes());
+    out.extend_from_slice(&directory_offset.to_le_bytes());
+}
+
+/// `false_record`: locator points exactly at a ZIP64 signature, but that
+/// record's size doesn't reach the locator. zip falls forward to the real one.
+/// `trailing`: EOCD lies in zip's window, its locator just outside our tail.
+fn zip64_claim(len: usize, false_record: bool, trailing: usize) -> Vec<u8> {
+    let mut out = vec![0u8; len];
+    out[..4].copy_from_slice(b"PK\x03\x04");
+    let locator_target = out.len() as u64;
+    if false_record {
+        end64(&mut out, 0, 0, 0);
+    }
+    let count = len as u64 / 47;
+    end64(&mut out, count, count * 46, count);
+    out.extend_from_slice(b"PK\x06\x07");
+    out.extend_from_slice(&0u32.to_le_bytes());
+    out.extend_from_slice(&locator_target.to_le_bytes());
+    out.extend_from_slice(&1u32.to_le_bytes());
+    out.extend_from_slice(b"PK\x05\x06");
+    out.extend_from_slice(&[0; 8]); // disk fields and both zip32 counts = 0
+    out.extend_from_slice(&u32::MAX.to_le_bytes());
+    out.extend_from_slice(&u32::MAX.to_le_bytes()); // use zip64 even with count 0
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.resize(out.len() + trailing, 0);
+    out
+}
+
+#[test]
+fn r7_declared_counts_scan_every_record() {
+    let mut bytes = zip64_claim(1024, false, 0);
+    bytes.extend_from_slice(b"PK\x05\x06");
+    bytes.extend_from_slice(&[0; 18]); // a later EOCD claiming no entries
+    let (_dir, path) = saved(&bytes);
+    let got = declared_entries(&mut File::open(path).unwrap()).unwrap();
+    eprintln!("max declared count across two end records: {got:?}");
+    assert_eq!(got, Some(1024 / 47));
+}
+
+/// Several retained pools coexist, not just one memory probe at a time.
+#[test]
+fn r7_combined_excel_pools_stay_bounded() {
+    fn letters(n: usize) -> String {
+        let mut x = 71u64;
+        (0..n).map(|_| {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1);
+            (b'a' + ((x >> 32) % 26) as u8) as char
+        }).collect()
+    }
+    let folder_name = "abcdefghijklmn.xml";
+    let mut workbook = format!("<workbook {}><!--{}--><sheets>", sample::S, letters(750_000));
+    let mut rels = String::from("<Relationships><Relationship Id=\"shared\" Type=\"a/sharedStrings\" Target=\"shared.xml\"/>");
+    for i in 0..10_000usize {
+        let name = format!("{}{:04}", "n".repeat(4092), i);
+        workbook.push_str(&format!("<sheet name=\"{name}\" r:id=\"r{i}\"/>"));
+        let alias: String = folder_name.chars().enumerate().map(|(j,c)| {
+            if j < 14 && i & (1 << j) != 0 { c.to_ascii_uppercase() } else { c }
+        }).collect();
+        rels.push_str(&format!("<Relationship Id=\"r{i}\" Type=\"a/worksheet\" Target=\"{alias}\"/>"));
+    }
+    workbook.push_str("</sheets></workbook>");
+    rels.push_str("</Relationships>");
+    let mut shared = format!("<sst><!--{}--><si>", letters(750_000));
+    for _ in 0..3 {
+        shared.push_str("<t>");
+        shared.push_str(&"🦀".repeat(1_000_000));
+        shared.push_str("</t>");
+    }
+    shared.push_str("</si>");
+    shared.push_str(&"<si><t>🦀</t></si>".repeat(999_999));
+    shared.push_str("</sst>");
+    let bytes = sample::zip(&[
+        ("xl/workbook.xml", workbook.as_bytes()),
+        ("xl/_rels/workbook.xml.rels", rels.as_bytes()),
+        ("xl/shared.xml", shared.as_bytes()),
+        ("xl/abcdefghijklmn.xml", b"<worksheet><row><c><v>7</v></c></row></worksheet>"),
+    ]);
+    drop(workbook);
+    drop(rels);
+    drop(shared);
+    let size = bytes.len();
+    let (_dir, path) = saved(&bytes);
+    drop(bytes);
+    let start = Instant::now();
+    let ((got, sink), peak) = sample::held::peak(|| {
+        let mut sink = Sink::new(1_000_000, start + Duration::from_secs(10));
+        let got = Excel::default().read(&path, &mut sink);
+        (got, sink)
+    });
+    eprintln!("combined Excel: file={size} peak={} MiB elapsed={:?} result={got:?} parts={}", peak / MB as usize, start.elapsed(), sink.parts.len());
+    got.unwrap();
+    assert_eq!(sink.parts.len(), 10_000);
+    assert!(sink.parts.iter().all(|p| p.label.len() == 4096 && p.text == "7\n"));
+    assert!(peak < 256 * MB as usize);
+}
+
+#[test]
+fn r7_zip64_precheck_covers_locator_boundary_and_invalid_first_candidate() {
+    let mut failures = Vec::new();
+    for (name, false_record, trailing) in [
+        ("locator outside tail", false, 65_540),
+        ("invalid exact record before real one", true, 0),
+    ] {
+        let bytes = zip64_claim(99 * MB as usize, false_record, trailing);
+        let (_dir, path) = saved(&bytes);
+        drop(bytes);
+        let declared = declared_entries(&mut File::open(&path).unwrap());
+        let (got, peak) = sample::held::peak(|| {
+            let mut sink = Sink::new(1_000_000, Instant::now() + Duration::from_secs(10));
+            Word::default().read(&path, &mut sink)
+        });
+        eprintln!("{name}: precheck={declared:?}, peak={} MiB result={got:?}", peak / MB as usize);
+        if peak >= 256 * MB as usize {
+            failures.push(name);
+        }
+    }
+    assert!(failures.is_empty(), "precheck bypass reserves over 256 MiB: {failures:?}");
+}

@@ -948,3 +948,71 @@ fn shared_strings_are_kept_trimmed_and_the_check_interval_is_short() {
     assert_eq!(parts(read(&Excel::default(), "t.xlsx", &bytes)), [("S".to_string(), "padded\n".to_string())]);
     assert_eq!(super::CHECK_EVERY, 256);
 }
+
+// --- From the seventh review ---
+
+/// A zip64 end record declaring entries, its locator pointing at offset,
+/// and a plain end record after it.
+fn zip64_tail(offset: u64, entries_in_plain: u16) -> Vec<u8> {
+    let mut out = b"PK\x06\x07".to_vec();
+    out.extend_from_slice(&0u32.to_le_bytes());
+    out.extend_from_slice(&offset.to_le_bytes());
+    out.extend_from_slice(&1u32.to_le_bytes());
+    out.extend_from_slice(b"PK\x05\x06");
+    out.extend_from_slice(&[0, 0, 0, 0]);
+    out.extend_from_slice(&entries_in_plain.to_le_bytes());
+    out.extend_from_slice(&entries_in_plain.to_le_bytes());
+    out.extend_from_slice(&[0; 10]);
+    out
+}
+
+/// n bytes that start as a zip does.
+fn zip_start(n: usize) -> Vec<u8> {
+    let mut out = vec![0u8; n];
+    out[..4].copy_from_slice(b"PK\x03\x04");
+    out
+}
+
+fn end64(entries: u64) -> Vec<u8> {
+    let mut out = b"PK\x06\x06".to_vec();
+    out.extend_from_slice(&44u64.to_le_bytes());
+    out.extend_from_slice(&[45, 0, 45, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    out.extend_from_slice(&entries.to_le_bytes());
+    out.extend_from_slice(&entries.to_le_bytes());
+    out.extend_from_slice(&[0; 16]);
+    out
+}
+
+#[test]
+fn zip64_records_are_looked_for_within_4_mb_of_a_locator_and_8_mb_in_all() {
+    let looked_for = |bytes: &[u8]| failed(read(&Word::default(), "z.docx", bytes));
+    // A record 5 MB past where the locator points is out of the zip crate's
+    // reach (and of ours): the locator points at nothing.
+    let mut bytes = zip_start(5 * MB as usize);
+    bytes.extend_from_slice(&end64(1_000_000));
+    let tail = zip64_tail(0, 0);
+    bytes.extend_from_slice(&tail);
+    assert!(looked_for(&bytes).contains("isn't where its locator says"));
+    // A locator pointing past itself is damage (and nothing is read).
+    let mut bytes = zip_start(1024);
+    let past = bytes.len() as u64 + 100;
+    bytes.extend_from_slice(&zip64_tail(past, 0));
+    assert!(looked_for(&bytes).contains("points past itself"), "{}", looked_for(&bytes));
+    // Within 4 MB it is found, and counted.
+    let mut bytes = zip_start(3 * MB as usize);
+    bytes.extend_from_slice(&end64(1_000_000));
+    bytes.extend_from_slice(&zip64_tail(0, 0));
+    assert_eq!(skipped(read(&Word::default(), "z.docx", &bytes)), "more than 10000 parts");
+    // Three end records whose locators point at three zip64 records, each
+    // far enough back that 4 MB is looked through for it: 12 MB in all,
+    // past the 8 MB allowed.
+    let mut bytes = zip_start(13 * MB as usize);
+    for i in 1..=3usize {
+        let at = i * MB as usize;
+        bytes[at..at + 56].copy_from_slice(&end64(0));
+    }
+    for i in 1..=3u64 {
+        bytes.extend_from_slice(&zip64_tail(i * MB, 0));
+    }
+    assert!(looked_for(&bytes).contains("too many zip64 records"), "{}", looked_for(&bytes));
+}
