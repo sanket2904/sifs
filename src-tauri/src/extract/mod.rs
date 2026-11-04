@@ -277,6 +277,11 @@ impl Sink {
         }
     }
 
+    /// When the time limit passes.
+    pub fn deadline(&self) -> Instant {
+        self.deadline
+    }
+
     pub fn chars(&self) -> usize {
         self.chars
     }

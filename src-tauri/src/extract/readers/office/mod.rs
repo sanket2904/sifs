@@ -25,6 +25,8 @@ mod review4;
 #[cfg(test)]
 mod review5;
 #[cfg(test)]
+mod review6;
+#[cfg(test)]
 mod tests;
 
 pub use excel::Excel;
@@ -39,6 +41,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 use std::rc::Rc;
+use std::time::Instant;
 use zip::ZipArchive;
 
 /// What an Office reader may take on, on top of the worker's limits.
@@ -144,13 +147,21 @@ enum Stop {
 }
 
 /// The file, counting what the zip crate reads of it while budget lasts.
+/// Every compressed byte of every part passes through here, so it asks the
+/// time too: a part of empty deflate blocks unpacks to nothing (no cap
+/// counts it, and no XML event comes) yet takes its time to decode.
 struct Budgeted {
     file: BufReader<File>,
     left: Rc<Cell<u64>>,
+    /// The read's deadline, once a part is being read.
+    deadline: Rc<Cell<Option<Instant>>>,
 }
 
 impl Read for Budgeted {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.deadline.get().is_some_and(|d| Instant::now() > d) {
+            return Err(io::Error::other("past the time limit"));
+        }
         let left = self.left.get();
         if left == 0 {
             return Err(io::Error::other("over the budget for opening"));
@@ -185,6 +196,7 @@ pub(crate) fn targets(rels: &[Rel]) -> HashMap<&str, &str> {
 /// An open Office file.
 pub(crate) struct Package {
     zip: ZipArchive<Budgeted>,
+    deadline: Rc<Cell<Option<Instant>>>,
     /// Part names are case-insensitive: lowercase name to name.
     names: HashMap<String, String>,
     caps: Caps,
@@ -215,12 +227,15 @@ impl Package {
         }
         // The zip crate reserves room for every entry the end record
         // declares before reading one: refuse a count past the cap first.
-        if declared_entries(&mut file)?.is_some_and(|n| n > caps.entries as u64) {
+        let declared = declared_entries(&mut file).map_err(|e| ReadError::Other(format!("damaged or incomplete: {e}")))?;
+        if declared.is_some_and(|n| n > caps.entries as u64) {
             return Err(ReadError::Unsupported(format!("more than {} parts", caps.entries)));
         }
         file.seek(SeekFrom::Start(0))?;
         let left = Rc::new(Cell::new(caps.directory_bytes));
-        let zip = match ZipArchive::new(Budgeted { file: BufReader::new(file), left: left.clone() }) {
+        let deadline = Rc::new(Cell::new(None));
+        let budgeted = Budgeted { file: BufReader::new(file), left: left.clone(), deadline: deadline.clone() };
+        let zip = match ZipArchive::new(budgeted) {
             Ok(zip) => zip,
             Err(_) if left.get() == 0 => {
                 let why = format!(
@@ -238,6 +253,7 @@ impl Package {
         let names = zip.file_names().filter_map(|n| n.ok()).map(|n| (n.to_lowercase(), n.into_owned())).collect();
         Ok(Package {
             zip,
+            deadline,
             names,
             caps,
             inflated: Cell::new(0),
@@ -270,12 +286,19 @@ impl Package {
         let Some(index) = self.zip.index_for_name(&real) else {
             return Ok(None);
         };
-        let entry = self.zip.by_index_data(index).map_err(|e| damaged(name, e))?;
+        self.deadline.set(Some(sink.deadline()));
+        // Past the deadline, the file refuses to be read: that is a
+        // timeout, not damage.
+        let damaged = |name: &str, e: &dyn std::fmt::Display, sink: &Sink| match sink.check() {
+            Err(timeout) => timeout,
+            Ok(()) => damaged(name, e),
+        };
+        let entry = self.zip.by_index_data(index).map_err(|e| damaged(name, &e, sink))?;
         if entry.encrypted() {
             return Err(ReadError::Unsupported(PASSWORD.into()));
         }
         let compressed = entry.compressed_size();
-        let file = self.zip.by_index(index).map_err(|e| damaged(name, e))?;
+        let file = self.zip.by_index(index).map_err(|e| damaged(name, &e, sink))?;
         let counted = Inflate {
             file,
             compressed,
@@ -296,7 +319,7 @@ impl Package {
             Err(Walked::Xml(e)) => match self.stop.get() {
                 Some(Stop::Bomb) => Err(ReadError::Unsupported(BOMB.into())),
                 Some(Stop::Inflated | Stop::Event) => Ok(Some(sink.cut())),
-                None => Err(damaged(name, e)),
+                None => Err(damaged(name, &e, sink)),
             },
         }
     }
@@ -356,35 +379,40 @@ impl Package {
     }
 }
 
-/// How many entries the zip's end record declares (its zip64 record's
-/// count, when there is one and it is larger), or None if no end record is
-/// found. Read from at most the last 64 KB and the 56 bytes of a zip64
-/// record.
+/// The most entries any end record the zip crate could use declares: it
+/// tries every end-record signature in the file's last 22 + 4 + 65,536
+/// bytes, and a zip64 record where a locator before one points. None if
+/// there is no end record. A locator that doesn't point exactly at a zip64
+/// record is refused (the zip crate would search for one): no real file
+/// has one.
 fn declared_entries(file: &mut File) -> io::Result<Option<u64>> {
     const END: &[u8] = b"PK\x05\x06";
     const LOCATOR: &[u8] = b"PK\x06\x07";
     const END64: &[u8] = b"PK\x06\x06";
     let len = file.seek(SeekFrom::End(0))?;
-    let tail_len = len.min(22 + 65_535);
+    let tail_len = len.min(22 + 4 + 65_536);
     let mut tail = vec![0u8; tail_len as usize];
     file.seek(SeekFrom::Start(len - tail_len))?;
     file.read_exact(&mut tail)?;
-    let Some(at) = tail.windows(4).rposition(|w| w == END).filter(|at| at + 22 <= tail.len()) else {
-        return Ok(None);
-    };
-    let mut entries = u64::from(u16::from_le_bytes([tail[at + 10], tail[at + 11]]));
-    if at >= 20 && &tail[at - 20..at - 16] == LOCATOR {
-        let offset = u64::from_le_bytes(tail[at - 12..at - 4].try_into().unwrap());
-        if offset.checked_add(56).is_some_and(|end| end <= len) {
+    let mut most: Option<u64> = None;
+    for at in (0..tail.len().saturating_sub(21)).filter(|&at| &tail[at..at + 4] == END) {
+        let mut entries = u64::from(u16::from_le_bytes([tail[at + 10], tail[at + 11]]));
+        if at >= 20 && &tail[at - 20..at - 16] == LOCATOR {
+            let offset = u64::from_le_bytes(tail[at - 12..at - 4].try_into().unwrap());
             let mut record = [0u8; 56];
-            file.seek(SeekFrom::Start(offset))?;
-            file.read_exact(&mut record)?;
-            if &record[..4] == END64 {
-                entries = entries.max(u64::from_le_bytes(record[32..40].try_into().unwrap()));
+            let found = offset.checked_add(56).is_some_and(|end| end <= len) && {
+                file.seek(SeekFrom::Start(offset))?;
+                file.read_exact(&mut record)?;
+                &record[..4] == END64
+            };
+            if !found {
+                return Err(io::Error::other("its zip64 end record isn't where its locator says"));
             }
+            entries = entries.max(u64::from_le_bytes(record[32..40].try_into().unwrap()));
         }
+        most = Some(most.map_or(entries, |m| m.max(entries)));
     }
-    Ok(Some(entries))
+    Ok(most)
 }
 
 fn read_up_to(file: &mut File, buf: &mut [u8]) -> io::Result<usize> {

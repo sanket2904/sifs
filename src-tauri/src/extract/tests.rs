@@ -1701,12 +1701,21 @@ fn errors_in_a_row_are_waited_out_longer_each_time() {
         .conn
         .execute_batch("CREATE TRIGGER fail BEFORE INSERT ON extracts BEGIN SELECT RAISE(ABORT, 'disk full'); END")
         .unwrap();
+    let started = Instant::now();
     let worker = Worker::start(home.db.clone(), registry, options()).unwrap();
-    // 20 ms, then 40, 80, 160, 320: five tries in 700 ms, not thirty.
-    std::thread::sleep(Duration::from_millis(700));
+    // Two tries at least, however long a loaded machine takes to make them,
+    // then a while longer to see how often it tries.
+    eventually("two tries", || fake.total() > 3);
+    std::thread::sleep(Duration::from_millis(1500));
     let stats = worker.stop();
-    assert!((2..=7).contains(&stats.errors.len()), "{} tries", stats.errors.len());
-    assert!(fake.total() <= 3 * 7);
+    // Waits of 20 ms, then 40, 80, 160 ...: n tries take at least
+    // 20 * (2^(n-1) - 1) ms, so in t ms there are at most this many (one
+    // more for a try under way). Without the doubling, a try every 20 ms.
+    let t = started.elapsed().as_millis() as f64;
+    let most = (t / 20.0 + 1.0).log2().floor() as usize + 2;
+    let tries = stats.errors.len();
+    assert!((2..=most).contains(&tries), "{tries} tries in {t} ms, at most {most}");
+    assert!(fake.total() <= 3 * most);
 }
 
 /// Reads still running when writing a batch fails count as abandoned, so

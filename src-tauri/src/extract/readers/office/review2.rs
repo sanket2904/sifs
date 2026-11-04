@@ -64,7 +64,9 @@ fn r2_events_span_small_parts() {
         let got = package.parse("x.xml", &mut Props::new(&[]), &mut sink);
         if matches!(got, Err(ReadError::Timeout)) {
             eprintln!("cumulative events: timeout after {n} tiny parts, events={}", package.events.get());
-            assert_eq!(package.events.get(), CHECK_EVERY);
+            // At the latest once CHECK_EVERY events have gone by (each part's
+            // compressed bytes now ask the time too).
+            assert!(package.events.get() <= CHECK_EVERY);
             return;
         }
         assert!(got.is_ok());
