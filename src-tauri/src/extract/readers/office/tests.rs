@@ -675,7 +675,7 @@ fn word_hyphens_and_symbols_come_through_as_shown() {
 #[test]
 fn the_time_limit_is_asked_between_sheets_slides_and_parts() {
     // Parts with no text (writing text asks the sink itself), far from the
-    // XML loop's every-4,096-events check, with the time already up.
+    // XML loop's every-256-events check, with the time already up.
     let past = |reader: &dyn Reader, name: &str, bytes: &[u8]| read_at(reader, name, bytes, Instant::now());
     let xlsx = sample::xlsx(&[("A", ""), ("B", "")], &[], "", false);
     assert!(matches!(past(&Excel::default(), "t.xlsx", &xlsx), Err(ReadError::Timeout)));
@@ -901,4 +901,50 @@ fn an_element_name_past_256_bytes_stops_reading() {
         assert_eq!(text, if cut { "kept\n" } else { "kept\nlater\n" }, "{len}");
         assert_eq!(fact(&facts, "truncated").is_some(), cut, "{len}");
     }
+}
+
+// --- From the fifth review ---
+
+#[test]
+fn a_zip_declaring_more_parts_than_the_cap_is_skipped_before_it_is_read() {
+    let caps = Caps { entries: 3, ..Caps::default() };
+    // A real zip of 3 parts, then the same with its end record's count
+    // raised to 4: refused by what it declares, not what it holds.
+    let bytes = sample::docx(&paras(&["x"]));
+    let mut few = sample::zip(&[("a", b"1"), ("b", b"2"), ("c", b"3")]);
+    assert!(!matches!(read(&Word { caps }, "z.docx", &few), Err(ReadError::Unsupported(ref why)) if why.starts_with("more than")));
+    let end = few.windows(4).rposition(|w| w == b"PK\x05\x06").unwrap();
+    few[end + 8..end + 12].copy_from_slice(&[4, 0, 4, 0]);
+    assert_eq!(skipped(read(&Word { caps }, "z.docx", &few)), "more than 3 parts");
+    // A zip64 end record declaring a million entries, ahead of the plain
+    // one: refused the same way.
+    let mut big = bytes.clone();
+    let end = big.windows(4).rposition(|w| w == b"PK\x05\x06").unwrap();
+    let plain = big.split_off(end);
+    let offset = big.len() as u64;
+    let mut end64 = b"PK\x06\x06".to_vec();
+    end64.extend_from_slice(&44u64.to_le_bytes()); // size of the rest
+    end64.extend_from_slice(&[45, 0, 45, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    end64.extend_from_slice(&1_000_000u64.to_le_bytes()); // entries here
+    end64.extend_from_slice(&1_000_000u64.to_le_bytes()); // entries in all
+    end64.extend_from_slice(&[0; 16]); // directory size and offset
+    let mut locator = b"PK\x06\x07".to_vec();
+    locator.extend_from_slice(&0u32.to_le_bytes());
+    locator.extend_from_slice(&offset.to_le_bytes());
+    locator.extend_from_slice(&1u32.to_le_bytes());
+    big.extend_from_slice(&end64);
+    big.extend_from_slice(&locator);
+    big.extend_from_slice(&plain);
+    assert_eq!(skipped(read(&Word::default(), "z64.docx", &big)), "more than 10000 parts");
+}
+
+#[test]
+fn shared_strings_are_kept_trimmed_and_the_check_interval_is_short() {
+    // A blank string reads as empty, a padded one as its text: as a cell
+    // shows them, stored so (a cell naming a long blank string costs
+    // nothing).
+    let sheet = r#"<row><c t="s"><v>0</v></c><c t="s"><v>1</v></c></row>"#;
+    let bytes = sample::xlsx(&[("S", sheet)], &[&format!("<t>{}</t>", " ".repeat(1000)), "<t>  padded  </t>"], "", false);
+    assert_eq!(parts(read(&Excel::default(), "t.xlsx", &bytes)), [("S".to_string(), "padded\n".to_string())]);
+    assert_eq!(super::CHECK_EVERY, 256);
 }

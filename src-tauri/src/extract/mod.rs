@@ -186,6 +186,10 @@ impl Sink {
     /// pages, say) cost nothing. Past MAX_PARTS parts, no more text is
     /// taken, as at the character cap.
     pub fn part(&mut self, label: impl Into<String>) {
+        // Full, the last part has text and keeps it: nothing to look at.
+        if self.parts_full {
+            return;
+        }
         if let Some(last) = self.parts.last_mut() {
             if last.text.trim().is_empty() {
                 last.label = label.into();

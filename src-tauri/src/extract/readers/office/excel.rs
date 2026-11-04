@@ -188,7 +188,13 @@ impl Handler for Shared {
                     self.cut = true;
                     return Ok(Flow::Full);
                 }
-                let s = std::mem::take(&mut self.current);
+                // Kept as every cell shows it, trimmed: a blank string is
+                // empty, so a cell naming it costs nothing to show.
+                let mut s = std::mem::take(&mut self.current);
+                let trimmed = s.trim();
+                if trimmed.len() < s.len() {
+                    s = trimmed.to_string();
+                }
                 if self.current_over {
                     self.cut = true;
                     self.chars = self.max_chars;
@@ -510,5 +516,26 @@ impl Handler for Sheet {
             }
         }
         Ok(Flow::More)
+    }
+}
+
+#[cfg(test)]
+mod shared_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn shared_strings_are_stored_trimmed() {
+        let mut sink = Sink::new(100, Instant::now() + Duration::from_secs(10));
+        let mut shared = Shared { max_chars: 1_000_000, max_strings: 10, ..Shared::default() };
+        let e = BytesStart::new("x");
+        for text in ["  padded  ", "    ", "plain"] {
+            shared.open(b"si", &e, &mut sink).unwrap();
+            shared.open(b"t", &e, &mut sink).unwrap();
+            shared.text(text, &mut sink).unwrap();
+            shared.close(b"t", &mut sink).unwrap();
+            shared.close(b"si", &mut sink).unwrap();
+        }
+        assert_eq!(shared.strings, ["padded", "", "plain"]);
     }
 }

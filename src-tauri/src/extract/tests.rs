@@ -2027,9 +2027,11 @@ fn a_step_that_works_resets_the_wait_after_errors() {
         reads.lock().unwrap().iter().filter(|(n, _)| n == name).map(|(_, t)| *t).collect()
     };
     fail(true);
-    let idle_poll = Duration::from_millis(300);
+    // Waits long enough that a loaded machine's delays don't blur them:
+    // reset, the next wait is 1 s; not reset, it would be 4 s.
+    let idle_poll = Duration::from_millis(1000);
     let worker = Worker::start(home.db.clone(), registry, WorkerOptions { idle_poll, ..options() }).unwrap();
-    // Two errors: the wait is now 600 ms, and would be 1200 after a third.
+    // Two errors: the wait is now 2 s, and would be 4 s after a third.
     eventually("two failed tries", || reads_of("a.txt").len() >= 2);
     fail(false);
     eventually("a.txt read", || count(&index, "SELECT COUNT(*) FROM extracts WHERE status = 'done'") == 1);
@@ -2042,7 +2044,7 @@ fn a_step_that_works_resets_the_wait_after_errors() {
     let b = reads_of("b.txt");
     let gap = b[1] - b[0];
     drop(worker);
-    assert!(gap < Duration::from_millis(800), "waited {gap:?} after the first error since a success, not {idle_poll:?}");
+    assert!(gap < Duration::from_millis(2500), "waited {gap:?} after the first error since a success, not {idle_poll:?}");
 }
 
 // --- a row's root comes from the folders when it is written (reviewer's round 4) ---

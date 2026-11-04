@@ -23,6 +23,8 @@ mod review3;
 #[cfg(test)]
 mod review4;
 #[cfg(test)]
+mod review5;
+#[cfg(test)]
 mod tests;
 
 pub use excel::Excel;
@@ -211,6 +213,11 @@ impl Package {
         } else {
             return Err(ReadError::Unsupported(kind.not_one().into()));
         }
+        // The zip crate reserves room for every entry the end record
+        // declares before reading one: refuse a count past the cap first.
+        if declared_entries(&mut file)?.is_some_and(|n| n > caps.entries as u64) {
+            return Err(ReadError::Unsupported(format!("more than {} parts", caps.entries)));
+        }
         file.seek(SeekFrom::Start(0))?;
         let left = Rc::new(Cell::new(caps.directory_bytes));
         let zip = match ZipArchive::new(Budgeted { file: BufReader::new(file), left: left.clone() }) {
@@ -349,6 +356,37 @@ impl Package {
     }
 }
 
+/// How many entries the zip's end record declares (its zip64 record's
+/// count, when there is one and it is larger), or None if no end record is
+/// found. Read from at most the last 64 KB and the 56 bytes of a zip64
+/// record.
+fn declared_entries(file: &mut File) -> io::Result<Option<u64>> {
+    const END: &[u8] = b"PK\x05\x06";
+    const LOCATOR: &[u8] = b"PK\x06\x07";
+    const END64: &[u8] = b"PK\x06\x06";
+    let len = file.seek(SeekFrom::End(0))?;
+    let tail_len = len.min(22 + 65_535);
+    let mut tail = vec![0u8; tail_len as usize];
+    file.seek(SeekFrom::Start(len - tail_len))?;
+    file.read_exact(&mut tail)?;
+    let Some(at) = tail.windows(4).rposition(|w| w == END).filter(|at| at + 22 <= tail.len()) else {
+        return Ok(None);
+    };
+    let mut entries = u64::from(u16::from_le_bytes([tail[at + 10], tail[at + 11]]));
+    if at >= 20 && &tail[at - 20..at - 16] == LOCATOR {
+        let offset = u64::from_le_bytes(tail[at - 12..at - 4].try_into().unwrap());
+        if offset.checked_add(56).is_some_and(|end| end <= len) {
+            let mut record = [0u8; 56];
+            file.seek(SeekFrom::Start(offset))?;
+            file.read_exact(&mut record)?;
+            if &record[..4] == END64 {
+                entries = entries.max(u64::from_le_bytes(record[32..40].try_into().unwrap()));
+            }
+        }
+    }
+    Ok(Some(entries))
+}
+
 fn read_up_to(file: &mut File, buf: &mut [u8]) -> io::Result<usize> {
     let mut n = 0;
     while n < buf.len() {
@@ -466,8 +504,10 @@ const MAX_DEPTH: usize = 10_000;
 /// bounds the open names the XML reader keeps (2.5 MB).
 const MAX_NAME: usize = 256;
 
-/// The sink is asked about the time limit every this many events.
-const CHECK_EVERY: u32 = 4096;
+/// The sink is asked about the time limit every this many events: often
+/// enough that events made costly by what earlier parts left behind can't
+/// run on long (a clock read is some tens of nanoseconds).
+pub(crate) const CHECK_EVERY: u32 = 256;
 
 /// Feeds the XML's events to handler until its end, or a Full. Empty
 /// elements come as an open and a close. Of entity references only XML's
