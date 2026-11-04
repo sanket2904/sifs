@@ -3,7 +3,7 @@ name = "sifs"
 version = "0.2.0"
 description = "Search your files by name, content and meaning"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.90"
 default-run = "sifs"
 
 [lib]
@@ -29,6 +29,13 @@ encoding_rs = "0.8"
 chardetng = "0.1"
 html-escape = "0.2"
 libc = "0.2"
+# Office files: zips of XML. Only stored and deflated parts (all Office
+# writes); 9.0 fixes every RustSec advisory against zip (all in extraction,
+# which SIFS never does). quick-xml 0.41 fixed its two.
+zip = { version = "=9.3.0", default-features = false, features = ["deflate-flate2"] }
+# zip's deflate needs flate2 to have a backend: the pure-Rust miniz_oxide.
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+quick-xml = "=0.42.0"
 
 [features]
 default = ["app"]

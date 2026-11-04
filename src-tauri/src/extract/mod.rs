@@ -46,6 +46,13 @@ pub const MB: u64 = 1024 * 1024;
 /// Characters kept of one fact's value.
 pub const MAX_FACT_CHARS: usize = 1000;
 
+/// Parts (pages, sheets, slides) kept per file: 10,000 slides, each with
+/// its notes, fit.
+pub const MAX_PARTS: usize = 25_000;
+
+/// Facts kept per file: a reader's few, with room to spare.
+pub const MAX_FACTS: usize = 1000;
+
 /// How much a reader may take on.
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
@@ -77,6 +84,15 @@ pub mod fact {
     pub const COLUMNS: &str = "columns";
     /// The number of lines; for a table, its rows below the header.
     pub const LINES: &str = "lines";
+    /// When the file says it was created and last changed, as it writes them.
+    pub const CREATED: &str = "created";
+    pub const MODIFIED: &str = "modified";
+    /// A document's page count, as its app last counted them.
+    pub const PAGES: &str = "pages";
+    /// A workbook's sheet names, in order, joined by ", ".
+    pub const SHEETS: &str = "sheets";
+    /// A presentation's number of slides.
+    pub const SLIDES: &str = "slides";
 }
 
 pub trait Reader: Send + Sync + 'static {
@@ -144,24 +160,83 @@ pub struct Sink {
     max_chars: usize,
     deadline: Instant,
     truncated: bool,
+    left_out: bool,
+    /// MAX_PARTS parts are kept and another was started: its text, if
+    /// any comes, is dropped.
+    parts_full: bool,
 }
 
 impl Sink {
     pub fn new(max_chars: usize, deadline: Instant) -> Sink {
-        Sink { parts: Vec::new(), facts: Vec::new(), chars: 0, max_chars, deadline, truncated: false }
+        Sink {
+            parts: Vec::new(),
+            facts: Vec::new(),
+            chars: 0,
+            max_chars,
+            deadline,
+            truncated: false,
+            left_out: false,
+            parts_full: false,
+        }
     }
 
     /// Starts a page, sheet, slide or part. Text before the first part goes
-    /// in an unlabelled one.
+    /// in an unlabelled one. A part with no text yet is taken over rather
+    /// than kept (it would be dropped anyway), so parts without text (blank
+    /// pages, say) cost nothing. Past MAX_PARTS parts, no more text is
+    /// taken, as at the character cap.
     pub fn part(&mut self, label: impl Into<String>) {
+        // Full, the last part has text and keeps it: nothing to look at.
+        if self.parts_full {
+            return;
+        }
+        if let Some(last) = self.parts.last_mut() {
+            if last.text.trim().is_empty() {
+                last.label = label.into();
+                last.text.clear();
+                return;
+            }
+        }
+        if self.parts.len() >= MAX_PARTS {
+            self.parts_full = true;
+            return;
+        }
         let part = self.parts.len() as u32;
         self.parts.push(Part { part, label: label.into(), text: String::new() });
+    }
+
+    /// Renames the current part: a part found to be the first of several
+    /// pages only once the second begins.
+    pub fn relabel(&mut self, label: impl Into<String>) {
+        match self.parts.last_mut() {
+            Some(part) => part.label = label.into(),
+            None => self.part(label),
+        }
+    }
+
+    /// Stops taking text, as at the character cap, and records it cut: for
+    /// readers with caps of their own.
+    pub fn cut(&mut self) -> Flow {
+        self.truncated = true;
+        Flow::Full
+    }
+
+    /// Records that something was left out, while still taking text.
+    pub fn note_truncated(&mut self) {
+        self.left_out = true;
     }
 
     /// Adds text to the current part, cut on a character boundary at the cap.
     pub fn text(&mut self, s: &str) -> Result<Flow, ReadError> {
         self.check()?;
         if self.truncated {
+            return Ok(Flow::Full);
+        }
+        if self.parts_full {
+            if s.trim().is_empty() {
+                return Ok(Flow::More);
+            }
+            self.truncated = true;
             return Ok(Flow::Full);
         }
         if self.parts.is_empty() {
@@ -188,7 +263,7 @@ impl Sink {
             Some((cut, _)) => &value[..cut],
             None => value,
         };
-        if !value.is_empty() {
+        if !value.is_empty() && self.facts.len() < MAX_FACTS {
             self.facts.push((key.to_string(), value.to_string()));
         }
     }
@@ -202,13 +277,18 @@ impl Sink {
         }
     }
 
+    /// When the time limit passes.
+    pub fn deadline(&self) -> Instant {
+        self.deadline
+    }
+
     pub fn chars(&self) -> usize {
         self.chars
     }
 
     /// The parts with text, and the facts.
     pub fn finish(mut self) -> (Vec<Part>, Vec<(String, String)>) {
-        if self.truncated {
+        if self.truncated || self.left_out {
             self.facts.push((fact::TRUNCATED.to_string(), "1".to_string()));
         }
         let parts = self.parts.into_iter().filter(|p| !p.text.trim().is_empty()).collect();
@@ -271,7 +351,7 @@ impl Registry {
 
 /// "4 MB", "512 KB": for reasons shown to the user.
 pub(crate) fn describe_size(bytes: u64) -> String {
-    if bytes >= MB && bytes % MB == 0 {
+    if bytes >= MB && bytes.is_multiple_of(MB) {
         format!("{} MB", bytes / MB)
     } else if bytes >= 1024 {
         format!("{} KB", bytes / 1024)
@@ -282,7 +362,7 @@ pub(crate) fn describe_size(bytes: u64) -> String {
 
 /// "10 s", "200 ms".
 pub(crate) fn describe_time(time: Duration) -> String {
-    if time.as_millis() % 1000 == 0 {
+    if time.as_millis().is_multiple_of(1000) {
         format!("{} s", time.as_secs())
     } else {
         format!("{} ms", time.as_millis())

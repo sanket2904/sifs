@@ -1,0 +1,211 @@
+//! The step 2 reviewer's third-round tests, kept. The review's connection
+//! dropped before its report was written; these are its tests as it left
+//! them (see see "Reviews" in plans/phase3-reading-inside-files.md).
+use super::*;
+use super::sample::{self, paras, shape, W};
+use crate::extract::{Part, Reader};
+use std::time::{Duration, Instant};
+
+type Output = (Vec<Part>, Vec<(String, String)>);
+fn read(reader: &dyn Reader, bytes: &[u8]) -> Result<Output, ReadError> {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("review.office");
+    std::fs::write(&path, bytes).unwrap();
+    let mut sink = Sink::new(1_000_000, Instant::now() + Duration::from_secs(10));
+    reader.read(&path, &mut sink)?;
+    Ok(sink.finish())
+}
+fn truncated(out: &Output) -> bool { out.1.iter().any(|(k,v)| k == "truncated" && v == "1") }
+fn text(out: &Output) -> String { out.0.iter().map(|p| p.text.as_str()).collect() }
+fn letters(n: usize) -> String {
+    let mut seed = 99u64;
+    (0..n).map(|_| {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        (b'a' + ((seed >> 33) % 26) as u8) as char
+    }).collect()
+}
+
+#[test]
+fn r3_repeated_facts_have_a_memory_bound() {
+    let n = 4_200_000;
+    // Random padding keeps the honest per-part compression ratio below 100.
+    let core = format!("<core><!--{}-->{}</core>", letters(1_500_000), "<title>x</title>".repeat(n));
+    let doc = format!("<w:document {W}><w:body/></w:document>");
+    let bytes = sample::zip(&[("docProps/core.xml", core.as_bytes()), ("word/document.xml", doc.as_bytes())]);
+    drop(core);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("facts.docx");
+    std::fs::write(&path, &bytes).unwrap();
+    let mut sink = Sink::new(1_000_000, Instant::now() + Duration::from_secs(10));
+    let start = Instant::now();
+    let (got, peak) = sample::held::peak(|| Word::default().read(&path, &mut sink));
+    let live = sink.facts.capacity() * std::mem::size_of::<(String, String)>()
+        + sink.facts.iter().map(|(k,v)| k.capacity() + v.capacity()).sum::<usize>();
+    eprintln!("facts: zip={} count={} retained={} MiB peak={} MiB elapsed={:?} result={got:?}", bytes.len(), sink.facts.len(), live / MB as usize, peak / MB as usize, start.elapsed());
+    assert!(live < 256 * MB as usize, "repeated properties retained over 256 MiB");
+}
+
+#[test]
+fn r3_deep_xml_has_a_memory_bound() {
+    let depth = 16_800_000;
+    // Each event is only 3/4 bytes, but quick-xml keeps every open name/index.
+    let document = format!("<document><!--{}-->{}{}</document>", letters(2_000_000), "<x>".repeat(depth), "</x>".repeat(depth));
+    let bytes = sample::zip(&[("word/document.xml", document.as_bytes())]);
+    drop(document);
+    let start = Instant::now();
+    let (got, peak) = sample::held::peak(|| read(&Word::default(), &bytes));
+    eprintln!("deep XML: zip={} depth={depth} peak={} MiB elapsed={:?} result={:?}", bytes.len(), peak / MB as usize, start.elapsed(), got.as_ref().map(|o| o.0.len()));
+    assert!(peak < 256 * MB as usize, "XML nesting retained over 256 MiB (also recheck net realloc accounting)");
+}
+
+#[test]
+fn r3_nested_whitespace_cell_obeys_deadline() {
+    // Nested-table text is never flushed by flush_long (tables == 1).
+    // Every blank page then re-trims the entire retained cell twice.
+    let body = format!("<!--{}--><w:tbl><w:tr><w:tc><w:tbl><w:tr><w:tc><w:p><w:r><w:t>{}</w:t>{}</w:r></w:p></w:tc></w:tr></w:tbl></w:tc></w:tr></w:tbl>", letters(300_000), " ".repeat(4 * MB as usize), "<w:br w:type=\"page\"/>".repeat(200));
+    let bytes = sample::docx(&body);
+    let start = Instant::now();
+    let got = read(&Word::default(), &bytes);
+    eprintln!("nested whitespace: zip={} elapsed={:?} result={:?}", bytes.len(), start.elapsed(), got.as_ref().map(|o| o.0.len()));
+    assert!(start.elapsed() < Duration::from_secs(15), "nested cell ignored the 10s deadline (5s grace)");
+}
+
+#[test]
+fn r3_relationship_ids_obey_the_attribute_limit() {
+    for n in [4096, 4097] {
+        let mut e = BytesStart::new("sheet");
+        let id = "x".repeat(n);
+        e.push_attribute(("r:id", id.as_str()));
+        eprintln!("r:id input={n} returned={:?}", rel_id(&e).as_ref().map(String::len));
+        assert_eq!(rel_id(&e).is_some(), n <= MAX_ATTR, "r:id must use the same attribute limit");
+    }
+}
+
+#[test]
+fn r3_table_typed_then_rendered_break_counts_once() {
+    let body = concat!("<w:tbl><w:tr><w:tc><w:p><w:r><w:t>one</w:t>",
+        "<w:br w:type=\"page\"/><w:lastRenderedPageBreak/>",
+        "</w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>two</w:t></w:r></w:p></w:tc></w:tr></w:tbl>");
+    let out = read(&Word::default(), &sample::docx(body)).unwrap();
+    eprintln!("table typed+rendered: {:?}", out.0);
+    assert_eq!(out.0[1].label, "page 2");
+}
+
+#[test]
+fn r3_blank_parts_preserve_locations_in_all_readers() {
+    let body = format!("<w:p><w:r><w:br w:type=\"page\"/><w:br w:type=\"page\"/></w:r></w:p>{}", paras(&["third"]));
+    let header = format!("<w:hdr {W}>{}</w:hdr>", paras(&["head"]));
+    let out = read(&Word::default(), &sample::docx_with(&body, &[("word/header.xml", header)], &[("h", "header", "header.xml")])).unwrap();
+    assert_eq!(out.0.iter().map(|p| (p.label.as_str(), p.text.as_str())).collect::<Vec<_>>(), [("page 3", "third\n"), ("headers and footers", "head\n")]);
+    let out = read(&Excel::default(), &sample::xlsx(&[("Blank", ""), ("Data", "<row><c><v>42</v></c></row>"), ("Blank2", "")], &[], "", false)).unwrap();
+    assert_eq!(out.0.iter().map(|p| (p.label.as_str(), p.text.as_str())).collect::<Vec<_>>(), [("Data", "42\n")]);
+    let visible = shape(&["third"]);
+    let out = read(&PowerPoint::default(), &sample::pptx(&[("", Some("first notes")), ("", Some("")), (&visible, None)])).unwrap();
+    assert_eq!(out.0.iter().map(|p| (p.label.as_str(), p.text.as_str())).collect::<Vec<_>>(), [("slide 1 notes", "first notes\n"), ("slide 3", "third\n")]);
+    eprintln!("blank body/pages, headers, sheets, slides and notes: labels and text preserved");
+}
+
+#[test]
+fn r3_formats_keep_classifications_not_codes() {
+    let code = format!("yyyy{}", "-".repeat(3996));
+    let formats: String = (0..20_000).map(|i| format!("<numFmt numFmtId=\"{}\" formatCode=\"{code}\"/>", i + 164)).collect();
+    let styles = format!("<!--{}--><numFmts>{formats}</numFmts><cellXfs>{}</cellXfs>", letters(1_500_000), "<xf numFmtId=\"164\"/>".repeat(1500));
+    let bytes = sample::xlsx(&[("S", "<row><c s=\"0\"><v>46329</v></c></row>")], &[], &styles, false);
+    drop(formats);
+    drop(styles);
+    let (got, peak) = sample::held::peak(|| read(&Excel::default(), &bytes));
+    eprintln!("format classifications: zip={} peak={} MiB result={:?}", bytes.len(), peak / MB as usize, got.as_ref().map(text));
+    assert_eq!(text(&got.unwrap()), "2026-11-03\n");
+    assert!(peak < 16 * MB as usize, "format codes retained instead of their classifications");
+}
+
+#[test]
+fn r3_shared_and_cells_unicode_edges() {
+    for s in ["é", "🦀"] {
+        for n in [3, 4] {
+            let shared = format!("<r><t>{}</t></r><r><t>{s}</t></r>", s.repeat(n-1));
+            let bytes = sample::xlsx(&[("S", "<row><c t=\"s\"><v>0</v></c></row>")], &[&shared], "", false);
+            let out = read(&Excel { caps: Caps { shared_chars: 3, ..Caps::default() } }, &bytes).unwrap();
+            assert_eq!(text(&out), if n == 3 { format!("{}\n", s.repeat(3)) } else { String::new() });
+            assert_eq!(truncated(&out), n > 3);
+        }
+        for n in [32767, 32768] {
+            let row = format!("<row><c t=\"inlineStr\"><is><r><t>{}</t></r><r><t>{s}</t></r></is></c></row>", s.repeat(n-1));
+            let out = read(&Excel::default(), &sample::xlsx(&[("S", &row)], &[], "", false)).unwrap();
+            assert_eq!(text(&out).trim_end().chars().count(), 32767);
+            assert_eq!(truncated(&out), n > 32767);
+        }
+    }
+    eprintln!("shared whole-string overflow and 32767-character cell limits: 2/4-byte Unicode and split runs passed");
+}
+
+// Exercise the actual Bounded + quick-xml pair, including synthetic End
+// events and many placements across the underlying 8 KiB buffer.
+fn scan(xml: &[u8], max: usize, capacity: usize) -> (Result<(), String>, usize, usize) {
+    let bounded = Bounded { inner: BufReader::with_capacity(capacity, xml), consumed: 0, start: 0, max: max as u64, over: false };
+    let mut reader = quick_xml::Reader::from_reader(bounded);
+    reader.config_mut().expand_empty_elements = true;
+    let mut buf = Vec::new();
+    let mut largest = 0;
+    let mut consumed = 0;
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Eof) => return (Ok(()), largest, consumed),
+            Ok(_) => {},
+            Err(e) => return (Err(if reader.get_ref().over { "over".into() } else { e.to_string() }), largest.max(buf.len()), consumed),
+        }
+        let b = reader.get_mut();
+        largest = largest.max(buf.len());
+        consumed = consumed.max((b.consumed - b.start) as usize);
+        b.start = b.consumed;
+    }
+}
+fn event_shapes(n: usize) -> Vec<(&'static str, String)> {
+    vec![
+        ("text", "x".repeat(n)),
+        ("tag", format!("<x a=\"{}\"/>", "x".repeat(n - 9))),
+        ("comment", format!("<!--{}-->", "x".repeat(n - 7))),
+        ("cdata", format!("<![CDATA[{}]]>", "x".repeat(n - 12))),
+        ("pi", format!("<?p {}?>", "x".repeat(n - 6))),
+        ("doctype", format!("<!DOCTYPE x [<!--{}-->]>", "x".repeat(n - 22))),
+        ("reference", format!("&{};", "x".repeat(n - 2))),
+    ]
+}
+
+#[test]
+fn r3_event_bounds_and_buffer_splits() {
+    for max in [1000, 8192, 4 * MB as usize] {
+        for n in [max - 1, max, max + 2, max * 2] {
+            for (kind, event) in event_shapes(n) {
+                assert_eq!(event.len(), n, "{kind}");
+                // A small prior event ensures this isn't a BOM boundary case.
+                let xml = format!("<root>{event}<z/></root>");
+                for capacity in [8192, 257] {
+                    let (got, held, consumed) = scan(xml.as_bytes(), max, capacity);
+                    assert!(held <= max + 1 && consumed <= max + 1, "{kind}: held={held}, consumed={consumed}");
+                    if n <= max {
+                        assert!(got.is_ok(), "{kind} n={n} cap={max} buf={capacity}: {got:?}");
+                    } else {
+                        assert_eq!(got, Err("over".into()), "{kind} n={n} cap={max}");
+                    }
+                }
+            }
+        }
+    }
+    // Standard BOM + XML declaration and ordinary events.
+    assert!(scan(b"\xef\xbb\xbf<?xml version=\"1.0\"?><root>hello &amp; world</root>", 1000, 8192).0.is_ok());
+    eprintln!("all seven event types: exact cap, overflow, 257/8192-byte buffers, ordinary BOM passed");
+}
+
+#[test]
+fn r3_bom_does_not_reduce_the_first_event_budget() {
+    let max = 8192;
+    let first = format!("<r a=\"{}\"/>", "x".repeat(max - 9));
+    let mut bytes = vec![0xef, 0xbb, 0xbf];
+    bytes.extend_from_slice(first.as_bytes());
+    let without = scan(first.as_bytes(), max, 8192).0;
+    let with = scan(&bytes, max, 8192).0;
+    eprintln!("first event={max} bytes: without BOM={without:?}, with BOM={with:?}");
+    assert!(without.is_ok() && with.is_ok(), "BOM is not part of the event");
+}

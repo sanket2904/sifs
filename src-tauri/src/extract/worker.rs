@@ -264,7 +264,7 @@ fn run(index: &mut Index, registry: &Registry, options: &WorkerOptions, shared: 
             }
             Ok(_) => {
                 unreported = true;
-                if last_progress.map_or(true, |t| t.elapsed() >= Duration::from_secs(1)) {
+                if last_progress.is_none_or(|t| t.elapsed() >= Duration::from_secs(1)) {
                     runner.report(index);
                     last_progress = Some(Instant::now());
                     unreported = false;

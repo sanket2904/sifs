@@ -242,7 +242,7 @@ fn a_file_refreshed_during_a_scan_stays_indexed() {
     let running = scanner.next_scan().unwrap();
     let created = format!("{home}/Documents/created-during-scan.txt");
     touch(Path::new(&created));
-    refresh(&mut index, Path::new(&created), &[home.clone()], &rules).unwrap();
+    refresh(&mut index, Path::new(&created), std::slice::from_ref(&home), &rules).unwrap();
     scanner.remove_unseen(&home, running).unwrap();
     assert!(index.get(&created).unwrap().is_some(), "a refreshed row is not unseen by a scan running when it was refreshed");
 }
@@ -263,8 +263,11 @@ fn removing_a_folder_removes_its_files_only() {
 
 /// Waits until check passes or fails after a deadline: the watcher reports
 /// asynchronously, so the test waits for the outcome, not for a set time.
+/// macOS's FSEvents promises no delivery time, and was once seen to take
+/// over 20 s for both watcher tests in a full run, right after heavy disk
+/// use: hence a minute.
 pub(crate) fn eventually(what: &str, mut check: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(20);
+    let deadline = Instant::now() + Duration::from_secs(60);
     while Instant::now() < deadline {
         if check() {
             return;
@@ -272,6 +275,25 @@ pub(crate) fn eventually(what: &str, mut check: impl FnMut() -> bool) {
         std::thread::sleep(Duration::from_millis(50));
     }
     panic!("timed out waiting for {what}");
+}
+
+/// Waits until left() reaches 0, failing only if it stops going down for
+/// 20 s: a long queue on a loaded machine takes as long as it takes, but a
+/// stuck one fails.
+pub(crate) fn drains(what: &str, mut left: impl FnMut() -> usize) {
+    let mut last = left();
+    let mut moved = Instant::now();
+    while last > 0 {
+        if moved.elapsed() > Duration::from_secs(20) {
+            panic!("{what}: stuck at {last} for 20 s");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        let now = left();
+        if now < last {
+            moved = Instant::now();
+        }
+        last = now;
+    }
 }
 
 #[test]
@@ -350,7 +372,7 @@ fn concurrent_writers_never_see_a_locked_database() {
     let index = Index::open(&db).unwrap();
     assert_eq!(index.count().unwrap(), 4 * (1 + 40 + 40 * 60));
     worker.wake();
-    eventually("every file read", || crate::extract::store::progress(&index).unwrap().waiting == 0);
+    drains("every file read", || crate::extract::store::progress(&index).unwrap().waiting as usize);
     let stats = worker.stop();
     assert!(stats.errors.is_empty(), "{:#?}", stats.errors);
     assert_eq!(crate::extract::store::progress(&index).unwrap().read, 4 * 40 * 60);

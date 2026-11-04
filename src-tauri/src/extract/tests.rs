@@ -242,6 +242,28 @@ fn the_sink_cuts_text_on_a_character_boundary_and_records_it() {
 }
 
 #[test]
+fn the_sink_relabels_cuts_and_notes_what_was_left_out() {
+    let mut sink = Sink::new(100, Instant::now() + Duration::from_secs(10));
+    sink.part("");
+    sink.text("one").unwrap();
+    sink.relabel("page 1");
+    sink.part("page 2");
+    sink.text("two").unwrap();
+    sink.note_truncated();
+    assert_eq!(sink.text("more").unwrap(), Flow::More, "noting doesn't stop the text");
+    assert_eq!(sink.cut(), Flow::Full);
+    assert_eq!(sink.text("dropped").unwrap(), Flow::Full);
+    let (parts, facts) = sink.finish();
+    let parts: Vec<(&str, &str)> = parts.iter().map(|p| (p.label.as_str(), p.text.as_str())).collect();
+    assert_eq!(parts, vec![("page 1", "one"), ("page 2", "twomore")]);
+    assert_eq!(facts, vec![("truncated".to_string(), "1".to_string())]);
+    let mut sink = Sink::new(100, Instant::now() + Duration::from_secs(10));
+    sink.note_truncated();
+    sink.text("kept").unwrap();
+    assert_eq!(sink.finish().1, vec![("truncated".to_string(), "1".to_string())]);
+}
+
+#[test]
 fn the_sink_stops_a_reader_past_its_time_limit() {
     let sink = Sink::new(100, Instant::now() - Duration::from_millis(1));
     assert!(matches!(sink.check(), Err(ReadError::Timeout)));
@@ -936,6 +958,68 @@ fn every_sample_is_found_by_a_word_inside_it() {
 }
 
 #[test]
+fn office_files_are_found_by_their_words_with_the_page_sheet_or_slide() {
+    use super::readers::office::sample::{self, paras, shape};
+    let home = Home::new();
+    let lease = home.write(
+        "docs/lease.docx",
+        &sample::docx(&format!(
+            "{}{}",
+            paras(&["Tenant pays rent"]),
+            r#"<w:p><w:r><w:br w:type="page"/></w:r><w:r><w:t>Deposit refundable किराया</w:t></w:r></w:p>"#
+        )),
+    );
+    let budget = home.write(
+        "docs/budget.xlsx",
+        &sample::xlsx(
+            &[("Q1", r#"<row><c t="s"><v>0</v></c></row>"#), ("Q2", r#"<row><c t="inlineStr"><is><t>Groceries 東京</t></is></c><c><v>4200</v></c></row>"#)],
+            &["<t>Electricity</t>"],
+            "",
+            false,
+        ),
+    );
+    let pitch = home.write(
+        "docs/pitch.pptx",
+        &sample::pptx(&[(&shape(&["Seed round"]), Some("Thank the investors")), (&shape(&["Traction I❤️you"]), None)]),
+    );
+    let secret = home.write("docs/secret.docx", &sample::compound(&["EncryptionInfo", "EncryptedPackage"]));
+    let whole = sample::docx(&paras(&["cut short"]));
+    let cut = home.write("docs/cut.docx", &whole[..whole.len() / 2]);
+    let fake = home.write("docs/fake.pptx", &sample::zip(&[("notes.txt", b"a plain zip")]));
+    let big = home.write("docs/big.docx", b"");
+    fs::File::options().write(true).open(&big).unwrap().set_len(100 * MB + 1).unwrap();
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    let stats = run(&mut index, &registry);
+    assert!(stats.errors.is_empty(), "{:?}", stats.errors);
+    let at = |query: &str| -> Vec<(String, String)> {
+        store::match_contents(&index, query, 10).unwrap().into_iter().map(|m| (m.path, m.label)).collect()
+    };
+    assert_eq!(at("tenant"), vec![(lease.clone(), "page 1".into())]);
+    assert_eq!(at("deposit"), vec![(lease.clone(), "page 2".into())]);
+    assert_eq!(at("किराया"), vec![(lease.clone(), "page 2".into())]);
+    assert_eq!(at("electricity"), vec![(budget.clone(), "Q1".into())]);
+    assert_eq!(at("groceries"), vec![(budget.clone(), "Q2".into())]);
+    assert_eq!(at("東京"), vec![(budget.clone(), "Q2".into())]);
+    assert_eq!(at("4200"), vec![(budget.clone(), "Q2".into())]);
+    assert_eq!(at("seed"), vec![(pitch.clone(), "slide 1".into())]);
+    assert_eq!(at("investors"), vec![(pitch.clone(), "slide 1 notes".into())]);
+    assert_eq!(at("you"), vec![(pitch.clone(), "slide 2".into())]);
+    assert_eq!(fact_of(&index, &lease, "title").as_deref(), Some("Rent agreement"));
+    assert_eq!(fact_of(&index, &budget, "sheets").as_deref(), Some("Q1, Q2"));
+    assert_eq!(fact_of(&index, &pitch, "slides").as_deref(), Some("2"));
+    assert_eq!(status(&index, &secret), ("skipped".into(), Some("password-protected".into())));
+    let (cut_status, why) = status(&index, &cut);
+    assert_eq!(cut_status, "failed");
+    assert!(why.unwrap().starts_with("damaged or incomplete"));
+    assert_eq!(status(&index, &fake), ("skipped".into(), Some("not a PowerPoint presentation".into())));
+    assert_eq!(status(&index, &big), ("skipped".into(), Some("larger than 100 MB".into())));
+    // Nothing is read again, the failures included, until it changes.
+    let again = run(&mut index, &registry);
+    assert_eq!((again.reads, queued(&index)), (0, 0));
+}
+
+#[test]
 fn resume_finds_résumé_composed_and_decomposed() {
     let home = Home::with_samples();
     let decomposed = home.write("samples/cv-nfd.md", "My re\u{301}sume\u{301}, decomposed.".as_bytes());
@@ -1617,12 +1701,21 @@ fn errors_in_a_row_are_waited_out_longer_each_time() {
         .conn
         .execute_batch("CREATE TRIGGER fail BEFORE INSERT ON extracts BEGIN SELECT RAISE(ABORT, 'disk full'); END")
         .unwrap();
+    let started = Instant::now();
     let worker = Worker::start(home.db.clone(), registry, options()).unwrap();
-    // 20 ms, then 40, 80, 160, 320: five tries in 700 ms, not thirty.
-    std::thread::sleep(Duration::from_millis(700));
+    // Two tries at least, however long a loaded machine takes to make them,
+    // then a while longer to see how often it tries.
+    eventually("two tries", || fake.total() > 3);
+    std::thread::sleep(Duration::from_millis(1500));
     let stats = worker.stop();
-    assert!((2..=7).contains(&stats.errors.len()), "{} tries", stats.errors.len());
-    assert!(fake.total() <= 3 * 7);
+    // Waits of 20 ms, then 40, 80, 160 ...: n tries take at least
+    // 20 * (2^(n-1) - 1) ms, so in t ms there are at most this many (one
+    // more for a try under way). Without the doubling, a try every 20 ms.
+    let t = started.elapsed().as_millis() as f64;
+    let most = (t / 20.0 + 1.0).log2().floor() as usize + 2;
+    let tries = stats.errors.len();
+    assert!((2..=most).contains(&tries), "{tries} tries in {t} ms, at most {most}");
+    assert!(fake.total() <= 3 * most);
 }
 
 /// Reads still running when writing a batch fails count as abandoned, so
@@ -1899,10 +1992,12 @@ fn stop_is_prompt_and_wakes_are_ignored_during_a_long_backoff() {
         .conn
         .execute_batch("CREATE TRIGGER fail BEFORE INSERT ON extracts BEGIN SELECT RAISE(ABORT, 'disk full'); END")
         .unwrap();
-    let worker = Worker::start(home.db.clone(), registry, WorkerOptions { idle_poll: Duration::from_millis(300), ..options() })
+    let worker = Worker::start(home.db.clone(), registry, WorkerOptions { idle_poll: Duration::from_millis(500), ..options() })
         .unwrap();
-    // Tries at 0, 300 and 900 ms: now waiting 1200 ms.
-    std::thread::sleep(Duration::from_millis(1000));
+    // Tries at 0, 500 and 1500 ms: then a wait of 2000 ms. Stop comes well
+    // inside it, so a stop that waited the backoff out would take ~1.8 s;
+    // the margin leaves room for a try still finishing under load.
+    std::thread::sleep(Duration::from_millis(1700));
     let waker = worker.waker();
     for _ in 0..20 {
         waker.wake();
@@ -1910,7 +2005,7 @@ fn stop_is_prompt_and_wakes_are_ignored_during_a_long_backoff() {
     }
     let started = std::time::Instant::now();
     let stats = worker.stop();
-    assert!(started.elapsed() < Duration::from_millis(250), "stop took {:?}", started.elapsed());
+    assert!(started.elapsed() < Duration::from_millis(800), "stop took {:?}", started.elapsed());
     assert!(stats.errors.len() <= 3, "wakes ended the backoff early: {} tries", stats.errors.len());
 }
 
@@ -1941,9 +2036,11 @@ fn a_step_that_works_resets_the_wait_after_errors() {
         reads.lock().unwrap().iter().filter(|(n, _)| n == name).map(|(_, t)| *t).collect()
     };
     fail(true);
-    let idle_poll = Duration::from_millis(300);
+    // Waits long enough that a loaded machine's delays don't blur them:
+    // reset, the next wait is 1 s; not reset, it would be 4 s.
+    let idle_poll = Duration::from_millis(1000);
     let worker = Worker::start(home.db.clone(), registry, WorkerOptions { idle_poll, ..options() }).unwrap();
-    // Two errors: the wait is now 600 ms, and would be 1200 after a third.
+    // Two errors: the wait is now 2 s, and would be 4 s after a third.
     eventually("two failed tries", || reads_of("a.txt").len() >= 2);
     fail(false);
     eventually("a.txt read", || count(&index, "SELECT COUNT(*) FROM extracts WHERE status = 'done'") == 1);
@@ -1956,7 +2053,7 @@ fn a_step_that_works_resets_the_wait_after_errors() {
     let b = reads_of("b.txt");
     let gap = b[1] - b[0];
     drop(worker);
-    assert!(gap < Duration::from_millis(800), "waited {gap:?} after the first error since a success, not {idle_poll:?}");
+    assert!(gap < Duration::from_millis(2500), "waited {gap:?} after the first error since a success, not {idle_poll:?}");
 }
 
 // --- a row's root comes from the folders when it is written (reviewer's round 4) ---

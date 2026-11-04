@@ -3,6 +3,7 @@
 
 pub mod html;
 pub mod json;
+pub mod office;
 pub mod text;
 
 #[cfg(target_os = "macos")]
@@ -13,5 +14,14 @@ use std::sync::Arc;
 
 /// Every reader that runs on any platform.
 pub fn all() -> Vec<Arc<dyn Reader>> {
-    vec![Arc::new(text::Text), Arc::new(text::Code), Arc::new(text::Plain), Arc::new(json::Json), Arc::new(html::Html)]
+    vec![
+        Arc::new(text::Text),
+        Arc::new(text::Code),
+        Arc::new(text::Plain),
+        Arc::new(json::Json),
+        Arc::new(html::Html),
+        Arc::new(office::Word::default()),
+        Arc::new(office::Excel::default()),
+        Arc::new(office::PowerPoint::default()),
+    ]
 }
