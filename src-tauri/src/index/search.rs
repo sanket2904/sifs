@@ -3,6 +3,7 @@
 //! recency.
 
 use super::db::{row_to_record, FileRecord, Index, NOT_REMOVING};
+use super::query::Query;
 use anyhow::Result;
 use std::collections::HashSet;
 
@@ -21,29 +22,36 @@ const CANDIDATES: usize = 5000;
 
 /// Searches names. now is the current time in Unix seconds, for recency.
 pub fn search(index: &Index, query: &str, limit: usize, now: i64) -> Result<Vec<Hit>> {
-    let query = query.trim();
-    if query.is_empty() {
+    let mut hits = matches(index, &Query::parse(query), limit, now)?;
+    hits.sort_by(|a, b| b.score.total_cmp(&a.score).then_with(|| a.file.path.cmp(&b.file.path)));
+    hits.truncate(limit);
+    Ok(hits)
+}
+
+/// Every file whose name matches, unordered: those containing every term,
+/// and when fewer than limit do, those whose names are close.
+pub(crate) fn matches(index: &Index, query: &Query, limit: usize, now: i64) -> Result<Vec<Hit>> {
+    let terms = &query.terms;
+    if terms.is_empty() {
         return Ok(Vec::new());
     }
-    let terms: Vec<String> = query.split_whitespace().map(|t| t.to_lowercase()).collect();
-    let mut hits: Vec<Hit> = candidates(index, &terms)?
+    let mut hits: Vec<Hit> = candidates(index, terms)?
         .into_iter()
         .map(|file| {
-            let score = rank(&file, &terms, now);
+            let score = rank(&file, terms, now);
             Hit { file, score, fuzzy: false }
         })
         .collect();
-    if hits.len() < limit && query.chars().count() >= 4 {
+    let whole = terms.join(" ");
+    if hits.len() < limit && whole.chars().count() >= 4 {
         let seen: HashSet<String> = hits.iter().map(|h| h.file.path.clone()).collect();
-        for (file, shared) in fuzzy_candidates(index, &query.to_lowercase())? {
+        for (file, shared) in fuzzy_candidates(index, &whole)? {
             if !seen.contains(&file.path) {
                 let score = fuzzy_rank(&file, shared, now);
                 hits.push(Hit { file, score, fuzzy: true });
             }
         }
     }
-    hits.sort_by(|a, b| b.score.total_cmp(&a.score).then_with(|| a.file.path.cmp(&b.file.path)));
-    hits.truncate(limit);
     Ok(hits)
 }
 
@@ -183,7 +191,7 @@ fn fuzzy_rank(file: &FileRecord, shared: usize, now: i64) -> f64 {
     10.0 + shared as f64 * 2.0 + recency(file.modified, now) * 0.5 - (file.name.chars().count() as f64) * 0.05
 }
 
-fn recency(modified: i64, now: i64) -> f64 {
+pub(crate) fn recency(modified: i64, now: i64) -> f64 {
     let days = (now - modified).max(0) as f64 / 86_400.0;
     if days < 7.0 {
         15.0
