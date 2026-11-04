@@ -259,8 +259,68 @@ Step 2 had seven review rounds. Each finding was fixed with a test that fails wi
 
 The reviewers' tests are kept as `office/review.rs` to `review7.rs`. The reports were in `handover/`, removed when the step merged: `git show <the commit before "Remove the handover folder">:handover/step2-review-r7/REPORT.txt` brings one back. Rounds 1 to 3 were reviewed by gpt-6-astra, rounds 4 to 6 by claude-opus-5-5 (astra was stopped by its provider's content filter), round 7 by gpt-6.1-sol.
 
-**Checked on a Mac (2026-11-04):** the three readers over the 706 Word, Excel and PowerPoint files on the owner's Mac: no crash and no timeout; 669 read (at most 131 ms each, median under 1 ms), 2 skipped as password-protected. The other 35 were iCloud placeholders: opening one asks macOS to download it, and the read blocked about 4.6 s before failing. Skipping placeholders (step 1) has to come before step 1 is used on the Mac.
+**Checked on a Mac (2026-11-04):** the three readers over the 706 Word, Excel and PowerPoint files on the owner's Mac: no crash and no timeout; 669 read (at most 131 ms each, median under 1 ms), 2 skipped as password-protected. The other 35 were iCloud placeholders: opening one asks macOS to download it, and the read blocked about 4.6 s before failing. Step 1 already skips placeholders before opening them (`platform::may_read`, the `SF_DATALESS` flag): checked against those files, it skips exactly the 35, agreeing with macOS's own flag on all 706.
 
 ### Left for a Mac session
 
 PDF through PDFKit, page by page (labels `page 1`…, from the PDF's page index), and its tests; real Office sample files saved by Word, Excel, PowerPoint, Pages and LibreOffice, to check the page marks and the facts against what the apps write.
+
+## Step 3 in detail: search over contents
+
+**Goal:** one search box finds files by their names and by the words inside them. Each content result shows where its words were found (`page 3`, a sheet's name, `slide 2 notes`) and a short snippet with the words marked. Typing stays instant.
+
+### How a query runs
+
+Two commands:
+- `search_files` (as now): names only, on every keystroke. It is shown at once.
+- `search_all`, new: names and contents, ranked together. The window asks for it about 120 ms after typing stops and replaces the list when it comes. A response to an older query is dropped.
+
+`search_all` runs off the main thread (`spawn_blocking`), on its own read connection. A content query taking over **400 ms** is stopped (SQLite's interrupt) and returns the name results alone, marked "contents took too long".
+
+### The content query
+
+- Each word is matched as a token through FTS5: `unicode61 remove_diacritics 2`, so "resume" finds "résumé" and Hindi words stay whole.
+- Each word is quoted, so the query language (`AND`, `NEAR(`, `*`, `"`, `:`) is never interpreted.
+- The **last word matches as a prefix** while typing ("invo" finds "invoice"), but only when it has at least 3 characters, so one or two letters don't expand to most of the index.
+- Every word must appear in the same part (page, sheet or slide).
+- Per file, its best part counts (FTS5's bm25 rank), with its label and snippet. At most **200 files** come from contents.
+
+### Ranking (owner's decision 5)
+
+A name match ranks above a content match only when kind and place are equal. So both are scored on one scale, with the same priors:
+- **name match:** as now, a base of 25 to 100 by match quality, plus the kind prior (documents +40, code −30, build products −50), the place prior (SDKs, dependencies, build folders −40), recency (up to +15), and less for long names and deep paths;
+- **content match:** a base of **20**, plus up to **10** by bm25 position among the content results, plus the same kind, place and recency priors.
+
+So a document whose text matches outranks a source file whose name matches, and a document whose name matches outranks one whose text does.
+
+A file that matches by both name and contents is shown once, with the name match's score plus 5 and the snippet.
+
+### Snippets
+
+FTS5's `snippet()` over the matched part, about 12 tokens around the words. The marks are control characters inside SQLite, never text from the file. They become segments, `[{text, hit}]`, so the window never puts file text into HTML.
+
+### The window
+
+- A content result shows its file as now, then a second line: the label, then the snippet with the matched words in bold.
+- The footer says how many were found, and whether contents were searched in full ("contents took too long", or "still reading N files" while the worker has a queue).
+
+### Tests (Linux, `cargo test --no-default-features --lib`)
+
+- **Ranking:**
+  - a document's contents rank above a code file's name;
+  - a document's name ranks above a document's contents;
+  - a file matching both is shown once, first, with its snippet;
+  - recency breaks ties.
+- **Query safety:** queries with `"`, `*`, `AND`, `NEAR(`, `:`, `-` and parentheses give results or nothing, never an error. Every word must be in one part.
+- **Prefix:** the last word at 3 or more characters matches a prefix; at 1 or 2 characters it matches only whole words.
+- **Text:** "resume" finds "résumé" (composed and decomposed), and Hindi and Japanese samples are found by their words.
+- **Snippets and labels:** the right label (page, sheet, slide, notes), and segments that rebuild the snippet with the hits marked.
+- **Lifecycle:** a removed folder's files are never returned (`NOT_REMOVING`), and a file changed since it was read is found by its new words only.
+- **Time:** a query stopped by the time limit returns names only, marked. Tested with a limit of 0 ms.
+- **The command:** `search_all` returns the same as the library call.
+
+The window has no tests; it is checked with `npm run check` and by hand on the Mac.
+
+### Measuring
+
+`sifs-bench --contents` gains query timings: common, rare and prefix words; the 95th percentile and the slowest; on the Linux fixtures here, and on the real home folder in step 6.
