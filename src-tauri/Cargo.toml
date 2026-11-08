@@ -40,6 +40,13 @@ quick-xml = "=0.42.0"
 # (already built for Tauri).
 regex = "1.10"
 
+# PDFs through PDFKit. Pinned to the objc2 and objc2-foundation versions
+# Tauri already brings in; no RustSec advisories against the family (2026-11-07).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "=0.6.5"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSDictionary", "NSString", "NSURL"] }
+objc2-pdf-kit = { version = "=0.3.2", default-features = false, features = ["std", "PDFDocument", "PDFPage"] }
+
 [features]
 default = ["app"]
 # The desktop app. The index builds and tests without it: cargo test --no-default-features
