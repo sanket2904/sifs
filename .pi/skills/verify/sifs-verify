@@ -1,0 +1,357 @@
+#!/bin/bash
+# Builds, launches, checks, drives and tears down isolated SIFS instances for
+# verification. Run with no arguments for usage. See SKILL.md.
+set -euo pipefail
+
+skill=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+repo=$(git -C "$skill" rev-parse --show-toplevel)
+mkdir -p "${SIFS_VERIFY_DIR:-/private/tmp/sifs-verify}"
+# Canonical (no symlinks): SIFS shows paths under $HOME as "~" only when the
+# folder it stored, which is canonical, starts with $HOME as given.
+root=$(cd "${SIFS_VERIFY_DIR:-/private/tmp/sifs-verify}" && pwd -P)
+evidence_root=${SIFS_VERIFY_EVIDENCE:-$repo/verify-evidence}
+real_data="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory | awk '{print $2}')/Library/Application Support/com.sanket2904.sifs"
+
+die() { echo "sifs-verify: $*" >&2; exit 1; }
+say() { echo "sifs-verify: $*" >&2; }
+
+ax() {
+	local bin=$root/bin/sifs-ax
+	if [[ ! -x $bin || $skill/ax.swift -nt $bin ]]; then
+		mkdir -p "$root/bin"
+		swiftc -O "$skill/ax.swift" -o "$bin" || die "compiling ax.swift failed"
+	fi
+	"$bin" "$@"
+}
+
+open_spy() {
+	local lib=$root/bin/open-spy.dylib
+	if [[ ! -f $lib || $skill/open-spy.m -nt $lib ]]; then
+		mkdir -p "$root/bin"
+		clang -dynamiclib -fobjc-arc -framework AppKit "$skill/open-spy.m" -o "$lib" || die "compiling open-spy.m failed"
+	fi
+	echo "$lib"
+}
+
+# --- builds -------------------------------------------------------------
+
+cmd_build() {
+	local src="" ref="" sha id dirty=no patched=no
+	while (($#)); do
+		case $1 in
+		--src) src=$(cd "$2" && pwd -P); shift 2 ;;
+		--ref) ref=$2; shift 2 ;;
+		*) die "build: unknown option $1" ;;
+		esac
+	done
+	if [[ -n $ref ]]; then
+		sha=$(git -C "$repo" rev-parse -q --verify "$ref^{commit}") ||
+			{ git -C "$repo" fetch -q origin && sha=$(git -C "$repo" rev-parse -q --verify "$ref^{commit}"); } || die "no commit $ref (fetch first?)"
+		src=$root/src/$sha
+		if [[ ! -d $src ]]; then
+			mkdir -p "$src"
+			git -C "$repo" archive "$sha" | tar -x -C "$src"
+		fi
+		id=${sha:0:7}
+	else
+		src=${src:-$repo}
+		sha=$(git -C "$src" rev-parse HEAD)
+		[[ -n $(git -C "$src" status --porcelain -- src src-tauri package.json package-lock.json) ]] && dirty=yes
+		id=${sha:0:7}$([[ $dirty == yes ]] && echo "-dirty")
+	fi
+	# Commits from before the background hook get it, so no test instance
+	# ever takes focus. The build records that it was added.
+	if ! grep -q SIFS_VERIFY_BACKGROUND "$src/src-tauri/src/app.rs"; then
+		[[ -n $ref ]] || die "$src has no SIFS_VERIFY_BACKGROUND hook; build it with --ref so the hook can be added to a copy"
+		(cd "$src" && patch -p1 --forward --silent <"$skill/verify-support.patch") || die "verify-support.patch doesn't apply to $sha"
+		patched=yes
+	fi
+	local out=$root/builds/$id
+	if [[ -x $out/sifs && $dirty == no ]]; then
+		say "reusing build $id"
+		echo "$id"
+		return
+	fi
+	mkdir -p "$out"
+	[[ -d $src/node_modules ]] || (cd "$src" && npm ci --no-audit --no-fund >"$out/npm.log" 2>&1) || die "npm ci failed, see $out/npm.log"
+	say "building $id from $src (log: $out/build.log)"
+	(cd "$src" && npx tauri build --debug --no-bundle --ci >"$out/build.log" 2>&1) || die "build failed, see $out/build.log"
+	cp "$src/src-tauri/target/debug/sifs" "$out/sifs"
+	cat >"$out/build.env" <<-EOF
+		BUILD_ID=$id
+		BUILD_SHA=$sha
+		BUILD_DIRTY=$dirty
+		BUILD_PATCHED=$patched
+		BUILD_SRC=$src
+		BUILD_AT=$(date -u +%FT%TZ)
+		BUILD_BINARY_SHA256=$(shasum -a 256 "$out/sifs" | cut -d' ' -f1)
+	EOF
+	echo "$id"
+}
+
+# --- runs ---------------------------------------------------------------
+
+run_dir() {
+	local name=${1:-}
+	if [[ -z $name ]]; then
+		[[ -L $root/current ]] || die "no current run; launch one or pass --run NAME"
+		readlink "$root/current"
+	else
+		echo "$root/runs/$name"
+	fi
+}
+
+load_run() {
+	RUN=$(run_dir "${1:-}")
+	[[ -f $RUN/run.env ]] || die "no run at $RUN"
+	# shellcheck disable=SC1091
+	source "$RUN/run.env"
+}
+
+# Whether $RUN_PID is still the process this run started: same binary, same
+# fake home. Every kill goes through this.
+is_ours() {
+	kill -0 "$RUN_PID" 2>/dev/null || return 1
+	[[ $(ps -o comm= -p "$RUN_PID") == "$RUN_BIN" ]] || return 1
+	ps eww -o command= -p "$RUN_PID" | tr ' ' '\n' | grep -qx "HOME=$RUN_HOME"
+}
+
+# Read-only: which app has the keyboard. Launch and doctor use it to prove
+# a test instance never took focus.
+front_pid() {
+	osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier' 2>/dev/null || echo "?"
+}
+
+other_sifs() {
+	pgrep -x sifs | while read -r pid; do
+		[[ -n ${RUN_PID:-} && $pid == "$RUN_PID" ]] && continue
+		echo "$pid $(ps -o comm= -p "$pid")"
+	done
+}
+
+log_step() {
+	mkdir -p "$RUN_EVIDENCE"
+	{ printf '\n## %s  %s\n' "$(date +%T)" "$*"; cat; } >>"$RUN_EVIDENCE/transcript.md"
+}
+
+cmd_launch() {
+	local build="" name=""
+	while (($#)); do
+		case $1 in
+		--build) build=$2; shift 2 ;;
+		--name) name=$2; shift 2 ;;
+		*) die "launch: unknown option $1" ;;
+		esac
+	done
+	build=${build:-$(ls -t "$root/builds" 2>/dev/null | head -1)}
+	[[ -n $build && -x $root/builds/$build/sifs ]] || die "no build ${build:-yet}; run: sifs-verify build"
+	name=${name:-run-$(date +%Y%m%d-%H%M%S)}
+	local run=$root/runs/$name
+	[[ -e $run ]] && die "run $name exists; clean it up or pick another --name"
+
+	local others
+	others=$(RUN_PID="" other_sifs)
+	[[ -n $others ]] && say "other SIFS processes, left alone: $(echo "$others" | tr '\n' ';')"
+
+	mkdir -p "$run"
+	"$skill/seed-home.sh" "$run/home" >/dev/null
+	cp "$root/builds/$build/sifs" "$run/sifs"
+	local front_before
+	front_before=$(front_pid)
+	local spy
+	spy=$(open_spy)
+	mkdir -p "$evidence_root/$name"
+	# Started directly, not through nohup or env: macOS drops DYLD_* variables
+	# when it runs a system binary, which would unload the open spy.
+	(cd "$run"
+		trap '' HUP
+		HOME="$run/home" CFFIXED_USER_HOME="$run/home" SIFS_VERIFY_BACKGROUND=1 \
+			DYLD_INSERT_LIBRARIES="$spy" SIFS_VERIFY_OPEN_LOG="$evidence_root/$name/open-requests.log" \
+			"$run/sifs" >"$run/app.log" 2>&1 </dev/null &
+		echo $! >"$run/pid")
+	cat >"$run/run.env" <<-EOF
+		RUN_NAME=$name
+		RUN_PID=$(cat "$run/pid")
+		RUN_BIN=$run/sifs
+		RUN_HOME=$run/home
+		RUN_BUILD=$build
+		RUN_EVIDENCE=$evidence_root/$name
+		RUN_STARTED=$(date -u +%FT%TZ)
+		RUN_FRONT_BEFORE=$front_before
+	EOF
+	cat "$root/builds/$build/build.env" >>"$run/run.env"
+	ln -sfn "$run" "$root/current"
+	load_run "$name"
+	mkdir -p "$RUN_EVIDENCE"
+	cp "$run/run.env" "$RUN_EVIDENCE/run.env"
+
+	for _ in $(seq 1 100); do ax wininfo "$RUN_PID" >/dev/null 2>&1 && break; sleep 0.2; done
+	ax wininfo "$RUN_PID" >/dev/null || die "no window after 20 s; see $run/app.log"
+	ax wait "$RUN_PID" 'No folders yet' 20 >/dev/null
+	ax press "$RUN_PID" "+ ~/Documents"
+	ax wait "$RUN_PID" '^~/Documents [0-9]+ items' 60 >/dev/null
+	ax press "$RUN_PID" "+ ~/Desktop"
+	ax wait "$RUN_PID" '^~/Desktop [0-9]+ items' 60 >/dev/null
+	ax wait "$RUN_PID" 'Reading inside files: [1-9][0-9]* read · 0 waiting' 120 >/dev/null
+	ax read "$RUN_PID" | log_step "launch: added ~/Documents and ~/Desktop, contents read"
+	ax press "$RUN_PID" "⚙︎"
+	local ready
+	ready=$(ax search "$RUN_PID" "quarterly-budget")
+	echo "$ready" | log_step "launch: readiness search \"quarterly-budget\""
+	echo "$ready" | jq -e '.rows[0].name == "quarterly-budget.xlsx"' >/dev/null || die "not ready: the search didn't return quarterly-budget.xlsx"
+	ax key "$RUN_PID" escape
+	say "ready: run $name, pid $RUN_PID, build $build ($BUILD_SHA$([[ $BUILD_PATCHED == yes ]] && echo ", hook added"))"
+	say "evidence: $RUN_EVIDENCE"
+	cmd_doctor
+}
+
+cmd_doctor() {
+	load_run "${1:-}"
+	local ok=0
+	check() { if eval "$2"; then echo "ok    $1"; else echo "FAIL  $1"; ok=1; fi; }
+	check "process $RUN_PID is alive and is this run's binary with this run's HOME" is_ours
+	check "build $RUN_BUILD: $BUILD_SHA (dirty=$BUILD_DIRTY, hook added=$BUILD_PATCHED), binary unchanged" \
+		'[[ $(shasum -a 256 "$RUN_BIN" | cut -d" " -f1) == "$BUILD_BINARY_SHA256" ]]'
+	check "binary is not an installed SIFS.app" '[[ $RUN_BIN != *.app/* && $RUN_BIN == "$root"/* ]]'
+	check "its index is in the fake home" \
+		'lsof -p "$RUN_PID" -Fn 2>/dev/null | grep -q "^n$RUN_HOME/Library/Application Support/com.sanket2904.sifs/sifs.db$"'
+	check "it has nothing open in the owner's data folder" \
+		'! lsof -p "$RUN_PID" -Fn 2>/dev/null | grep -qF "n$real_data"'
+	check "started in the background (SIFS_VERIFY_BACKGROUND=1)" \
+		'ps eww -o command= -p "$RUN_PID" | tr " " "\n" | grep -qx SIFS_VERIFY_BACKGROUND=1'
+	local folders
+	folders=$(/usr/bin/sqlite3 "file:$RUN_HOME/Library/Application Support/com.sanket2904.sifs/sifs.db?mode=ro" "SELECT path FROM folders" 2>/dev/null | tr '\n' ' ')
+	check "every folder it searches is inside the fake home (${folders:-none yet})" \
+		'! /usr/bin/sqlite3 "file:$RUN_HOME/Library/Application Support/com.sanket2904.sifs/sifs.db?mode=ro" "SELECT path FROM folders" | grep -vq "^$RUN_HOME/"'
+	check "it does not have the keyboard (front app pid $(front_pid))" '[[ $(front_pid) != "$RUN_PID" ]]'
+	check "open and show-in-Finder are captured, not performed (open-requests.log)" \
+		'grep -q "^spy loaded$" "$RUN_EVIDENCE/open-requests.log" 2>/dev/null'
+	check "its window is known to the window server ($(ax wininfo "$RUN_PID" 2>/dev/null || echo none))" 'ax wininfo "$RUN_PID" >/dev/null 2>&1'
+	local others
+	others=$(other_sifs)
+	echo "info  other SIFS processes (not ours, never touched): ${others:-none}" | tr '\n' ' '
+	echo
+	echo "info  evidence folder: $RUN_EVIDENCE"
+	return $ok
+}
+
+# --- driving ------------------------------------------------------------
+
+drive() {
+	load_run "${RUN_NAME_ARG:-}"
+	is_ours || die "process $RUN_PID is not this run's SIFS any more; run doctor"
+}
+
+cmd_search() {
+	drive
+	local out
+	out=$(ax search "$RUN_PID" "$@")
+	echo "$out" | log_step "search \"$1\""
+	echo "$out"
+}
+
+cmd_read() {
+	drive
+	local out
+	out=$(ax read "$RUN_PID")
+	echo "$out" | log_step "read"
+	echo "$out"
+}
+
+cmd_ax() {
+	drive
+	local sub=$1
+	shift
+	ax "$sub" "$RUN_PID" "$@" | tee >(log_step "$sub $*")
+}
+
+cmd_shot() {
+	drive
+	local label=${1:?shot needs a label} id n file
+	id=$(ax wininfo "$RUN_PID" | cut -d' ' -f1)
+	mkdir -p "$RUN_EVIDENCE"
+	n=$(find "$RUN_EVIDENCE" -name '*.png' | wc -l | tr -d ' ')
+	file=$RUN_EVIDENCE/$(printf '%02d' $((n + 1)))-$label
+	screencapture -x -o -l "$id" "$file.png"
+	ax read "$RUN_PID" >"$file.json"
+	echo "screenshot $file.png, read-back $file.json" | log_step "shot $label"
+	echo "$file.png"
+	echo "$file.json"
+}
+
+cmd_opened() {
+	load_run "${RUN_NAME_ARG:-}"
+	grep -v '^spy loaded$' "$RUN_EVIDENCE/open-requests.log" || true
+}
+
+cmd_cleanup() {
+	local all=no builds=no name=""
+	while (($#)); do
+		case $1 in
+		--run) name=$2; shift 2 ;;
+		--all) all=yes; shift ;;
+		--builds) builds=yes; shift ;;
+		*) die "cleanup: unknown option $1" ;;
+		esac
+	done
+	local runs=()
+	if [[ $all == yes ]]; then
+		for r in "$root"/runs/*/; do [[ -d $r ]] && runs+=("$(basename "$r")"); done
+	elif [[ -n $name || -L $root/current ]]; then
+		runs+=("$(basename "$(run_dir "$name")")")
+	fi
+	for r in ${runs[@]+"${runs[@]}"}; do
+		load_run "$r"
+		if is_ours; then
+			kill "$RUN_PID"
+			for _ in $(seq 1 25); do kill -0 "$RUN_PID" 2>/dev/null || break; sleep 0.2; done
+			kill -0 "$RUN_PID" 2>/dev/null && kill -9 "$RUN_PID"
+			say "stopped pid $RUN_PID ($r)"
+		else
+			say "pid $RUN_PID is not running as run $r; nothing to stop"
+		fi
+		rm -rf "$RUN"
+		[[ $(readlink "$root/current" 2>/dev/null) == "$RUN" ]] && rm -f "$root/current"
+		say "removed $RUN; evidence kept: $RUN_EVIDENCE ($(find "$RUN_EVIDENCE" -type f 2>/dev/null | wc -l | tr -d ' ') files)"
+	done
+	[[ $builds == yes ]] && rm -rf "$root/builds" "$root/src" && say "removed builds and source copies"
+	return 0
+}
+
+usage() {
+	cat <<-EOF
+		usage: sifs-verify <command> [options]
+		  build [--src DIR | --ref GITREF]     build a debug SIFS with its page inside; prints the build id
+		  launch [--build ID] [--name NAME]    seed a fake home, start SIFS in the background, add folders, wait until ready
+		  doctor [NAME]                        is the run's instance ours, isolated and the expected build?
+		  search "<query>" [settle-seconds]    type a query, wait for settled results, print and log the read-back
+		  read                                 print and log what the window shows
+		  shot <label>                         screenshot the window and its read-back into the evidence folder
+		  press "<button title>" [n | --after "<text>"]   press a page button (n-th of that title, or first after a text)
+		  dialog-tree | cancel-dialog          inspect and cancel the Add a folder… dialog (never press Open: it starts in the owner's real home)
+		  key <down|up|return|escape|...> [--cmd] [--shift]
+		  type "<text>"                        key events to SIFS only ("\\n" is Return)
+		  focus-search | focus-textarea        focus the search box or the skipped-patterns box
+		  wait "<regex>" [seconds]             wait until a line of the window matches
+		  opened                               open / show-in-Finder requests the window made (captured, never performed)
+		  tree                                 the raw accessibility tree, to find new handles
+		  cleanup [--run NAME | --all] [--builds]   stop what a run started, delete its home; never the evidence
+		Drive commands act on the current run; set SIFS_VERIFY_RUN=NAME for another.
+	EOF
+}
+
+RUN_NAME_ARG=${SIFS_VERIFY_RUN:-}
+command=${1:-}
+shift || true
+case $command in
+build) cmd_build "$@" ;;
+launch) cmd_launch "$@" ;;
+doctor) cmd_doctor "$@" ;;
+search) cmd_search "$@" ;;
+read) cmd_read ;;
+shot) cmd_shot "$@" ;;
+press | key | type | focus-search | focus-textarea | wait | tree | cancel-dialog | dialog-tree) cmd_ax "$command" "$@" ;;
+opened) cmd_opened ;;
+cleanup) cmd_cleanup "$@" ;;
+*) usage; [[ -z $command ]] || exit 1 ;;
+esac

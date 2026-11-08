@@ -1,0 +1,35 @@
+diff --git a/src-tauri/src/app.rs b/src-tauri/src/app.rs
+index f574755..ef81553 100644
+--- a/src-tauri/src/app.rs
++++ b/src-tauri/src/app.rs
+@@ -176,11 +176,29 @@ fn folder_event(app: &AppHandle, reading: &OnceLock<Waker>, event: Event) {
+     }
+ }
+ 
++/// Verification support (.pi/skills/verify): an instance started with
++/// SIFS_VERIFY_BACKGROUND=1 never takes focus from the person using the Mac.
++/// It doesn't activate at launch, stays out of the Dock and opens its window
++/// behind other apps' windows, where accessibility and screenshots still reach it.
++fn background_for_verification() -> bool {
++    std::env::var_os("SIFS_VERIFY_BACKGROUND").is_some_and(|v| v == "1")
++}
++
+ pub fn run() {
+-    tauri::Builder::default()
++    let builder = tauri::Builder::default();
++    #[cfg(target_os = "macos")]
++    let builder = builder.activate_ignoring_other_apps(!background_for_verification());
++    builder
+         .plugin(tauri_plugin_dialog::init())
+         .plugin(tauri_plugin_opener::init())
+         .setup(|app| {
++            #[cfg(target_os = "macos")]
++            if background_for_verification() {
++                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
++                if let Some(window) = app.get_webview_window("main") {
++                    window.set_always_on_bottom(true)?;
++                }
++            }
+             let home = std::env::var("HOME").unwrap_or_default();
+             let data = app.path().app_data_dir()?;
+             std::fs::create_dir_all(&data)?;
