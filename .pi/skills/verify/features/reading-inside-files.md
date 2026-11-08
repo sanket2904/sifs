@@ -25,6 +25,7 @@ Preconditions:
   - `~/Documents/huge-export.json skipped: larger than 1 MB`
 
   `$V shot reading-failures`.
+
 - **Hide.** `$V press hide`. The four lines are gone, and the counts line ends in `[show]`.
 
 ## Gotchas
