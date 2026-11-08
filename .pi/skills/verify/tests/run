@@ -61,9 +61,11 @@ gone() {
 
 cat >"$t/stand-in.c" <<'EOF'
 #include <signal.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <unistd.h>
 static void become_sleep(int sig) { (void)sig; execl("/bin/sleep", "sleep", "30", (char *)0); }
 int main(int argc, char **argv) {
@@ -71,11 +73,18 @@ int main(int argc, char **argv) {
     alarm(120);
     if (strcmp(mode, "ignore-term") == 0) signal(SIGTERM, SIG_IGN);
     if (strcmp(mode, "exec-on-term") == 0) signal(SIGTERM, become_sleep);
-    char ready[4096];
+    char ready[4096], now[4096];
     snprintf(ready, sizeof ready, "%s/ready", getenv("HOME"));
+    snprintf(now, sizeof now, "%s/open-now", getenv("HOME"));
     fclose(fopen(ready, "w"));
     if (strcmp(mode, "exit") == 0) return 0;
     if (strcmp(mode, "exit-soon") == 0) { sleep(15); return 0; }
+    if (strcmp(mode, "open-later") == 0) {
+        while (access(now, F_OK) != 0) usleep(50000);
+        pid_t pid;
+        char *args[] = {"/usr/bin/open", "/x/report.txt", NULL};
+        if (posix_spawn(&pid, "/usr/bin/open", NULL, NULL, args, NULL) == 0) waitpid(pid, NULL, 0);
+    }
     for (;;) pause();
 }
 EOF
@@ -138,7 +147,7 @@ variant("main-window-only", lambda t: t.update(app={"AXMainWindow": {"el": "win"
 EOF
 export SIFS_AX_TEST_TREE=$t/trees/closed.json
 
-listed() { echo "$(stat -f '%d %i' "$1") ${1#"$root"/}" >>"$root/.sifs-verify-manifest"; }
+listed() { echo "$(stat -f '%d %i' "$1") ${2:-${1#"$root"/}}" >>"$root/.sifs-verify-manifest"; }
 
 start_stand_in() {
 	local status
@@ -149,8 +158,12 @@ start_stand_in() {
 	cp "$t/stand-in" "$run/sifs"
 	mkdir -p "$t/evidence"
 	mkdir "$t/evidence/$1"
-	echo "$(stat -f '%d %i' "$t/evidence/$1") ." >"$run/evidence.files"
-	(cd "$run" && exec "$AX" supervise "$run" ${2:-}) >"$run/supervisor.log" 2>&1 </dev/null &
+	listed "$t/evidence/$1" "evidence:$1"
+	if [[ -n ${SPY_LOG:-} ]]; then
+		(cd "$run" && SIFS_VERIFY_OPEN_LOG_FD=7 exec "$AX" supervise "$run" ${2:-}) 7>"$SPY_LOG" >"$run/supervisor.log" 2>&1 </dev/null &
+	else
+		(cd "$run" && exec "$AX" supervise "$run" ${2:-}) >"$run/supervisor.log" 2>&1 </dev/null &
+	fi
 	supervised+=("$run")
 	for _ in $(seq 1 50); do status=$("$AX" status "$run" 2>/dev/null) && break; sleep 0.1; done
 	for _ in $(seq 1 50); do [[ -e $run/home/ready ]] && break; sleep 0.1; done
@@ -196,6 +209,26 @@ mkdir -m 755 "$t/ws755" && echo "$(stat -f '%d %i' "$t/ws755") ." >"$t/ws755/.si
 refused "a workspace that isn't mode 700 is refused" "mode 700" env SIFS_VERIFY_DIR="$t/ws755" "$V" cleanup
 refused "evidence inside the workspace is refused" "outside the workspace" env SIFS_VERIFY_EVIDENCE="$root/evidence" "$V" cleanup
 
+echo "# the manifest is replaced, never written in place"
+m=$root/.sifs-verify-manifest
+echo "owner document" >"$t/victim-manifest"
+ln -s "$t/victim-manifest" "$m.new"
+mkdir -p "$root/builds" && mkdir "$root/builds/f1" && listed "$root/builds/f1"
+"$V" cleanup --builds >/dev/null 2>&1
+expect "a manifest update writes nothing through a link beside the manifest" test "$(cat "$t/victim-manifest")" = "owner document"
+expect "and the update is made" bash -c '! grep -q " builds/f1$" "$1"' _ "$m"
+rm "$m.new"
+mkdir "$root/builds/f1b" && listed "$root/builds/f1b"
+ln "$m" "$t/manifest-hardlink"
+"$V" cleanup --builds >/dev/null 2>&1
+expect "a manifest update leaves another hard link to the old manifest as it was" grep -q " builds/f1b$" "$t/manifest-hardlink"
+expect "while the manifest itself changes" bash -c '! grep -q " builds/f1b$" "$1"' _ "$m"
+mv "$m" "$t/manifest-moved" && ln -s "$t/manifest-moved" "$m"
+cp "$t/manifest-moved" "$t/manifest-before"
+refused "a manifest that became a symlink is refused" "not created by sifs-verify" "$V" cleanup --builds
+expect "and the file it points to is unchanged" cmp -s "$t/manifest-moved" "$t/manifest-before"
+rm "$m" && mv "$t/manifest-moved" "$m"
+
 echo "# cleanup deletes only what sifs-verify created"
 mkdir -p "$root/builds/personal" "$root/src/personal"
 echo keep >"$root/builds/personal/keep"
@@ -219,7 +252,7 @@ echo "# names"
 mkdir -p "$root/builds"
 mkdir "$root/builds/b" && listed "$root/builds/b"
 cp "$t/stand-in" "$root/builds/b/sifs"
-printf '%s\n' BUILD=b SHA="$(printf '%040d' 0)" DIRTY=no PATCHED=no BINARY_SHA256="$(printf '%064d' 0)" >"$root/builds/b/build.env"
+printf '%s\n' BUILD=b SHA="$(printf '%040d' 0)" DIRTY=no PATCHED=no BINARY_SHA256="$(shasum -a 256 "$root/builds/b/sifs" | cut -d' ' -f1)" >"$root/builds/b/build.env"
 refused "launch refuses a run name with ../" "run name" "$V" launch --build b --name ../../escaped
 refused "launch refuses a run name with \$(...)" "run name" "$V" launch --build b --name "x\$(touch $t/pwned-name)"
 refused "launch refuses a build name with ../" "build name" "$V" launch --build ../../builds/b --name x
@@ -249,28 +282,50 @@ refused "cleanup --builds refuses a symlinked builds folder" "symlink" "$V" clea
 expect "its target survives" test -d "$t/victim/builds-target/b"
 rm "$root/builds" && mv "$t/victim/builds-real" "$root/builds"
 
-echo "# cached source copies"
-sha=$(git -C "$skill" rev-parse HEAD)
-mkdir -p "$t/shim" "$t/victim-checkout/src-tauri/src" "$root/src"
-: >"$t/victim-checkout/src-tauri/src/app.rs"
-echo 'secret' >"$t/victim-checkout/notes.txt"
-for tool in patch npm npx; do printf '#!/bin/sh\necho "%s in $PWD" >>"%s/ran"\nexit 1\n' "$tool" "$t" >"$t/shim/$tool"; done
-chmod +x "$t/shim/"*
-build_ref() { env PATH="$t/shim:$PATH" "$V" build --ref "$sha"; }
-ln -s "$t/victim-checkout" "$root/src/$sha"
-refused "build --ref refuses a source copy that is a symlink" "symlink" build_ref
-rm "$root/src/$sha" && mkdir -p "$root/src/$sha/src-tauri/src"
-refused "build --ref refuses a source copy it didn't create" "not a source copy sifs-verify created" build_ref
-rm -rf "$root/src/$sha" && mkdir "$root/src/$sha" && listed "$root/src/$sha"
-mkdir -p "$root/src/$sha/src-tauri/src" "$root/src/$sha/src"
-: >"$root/src/$sha/src-tauri/src/app.rs"
-ln -s "$t/victim-checkout/notes.txt" "$root/src/$sha/src/notes.txt"
-refused "build --ref refuses a source copy that holds a symlink" "holds symlinks" build_ref
-rm "$root/src/$sha/src/notes.txt"
-ln -s "$t/victim-checkout" "$root/src/$sha/node_modules"
-refused "build --ref refuses a symlinked node_modules in a source copy" "symlink" build_ref
-expect "no patch, npm or build ran for any of them" test ! -e "$t/ran"
-rm -rf "${root:?}/src/$sha"
+echo "# a --ref build starts from a new source copy every time"
+repo=$t/repo
+mkdir -p "$repo/.pi/skills" "$repo/src-tauri/src"
+cp -R "$skill" "$repo/.pi/skills/verify"
+printf '%s\n' 'activate_ignoring_other_apps(!verification::instance())' 'verification::check_folder' >"$repo/src-tauri/src/app.rs"
+: >"$repo/src-tauri/src/verification.rs"
+git -C "$repo" init -q && git -C "$repo" add -A && git -C "$repo" -c user.name=t -c user.email=t@t commit -qm t
+sha=$(git -C "$repo" rev-parse HEAD)
+RV=$repo/.pi/skills/verify/sifs-verify
+mkdir -p "$t/build-shim"
+printf '#!/bin/sh\nexit 0\n' >"$t/build-shim/npm"
+printf '%s\n' '#!/bin/bash' 'target=${CARGO_TARGET_DIR:-src-tauri/target}' \
+	'{ echo "pwd $PWD"; [[ -e $target ]] && echo "target existed"; } >>"$SHIM_LOG"' \
+	'mkdir -p "$target/debug"' 'echo "{\"rustc_fingerprint\":1}" >"$target/.rustc_info.json"' \
+	'cp "$SHIM_BINARY" "$target/debug/sifs"' >"$t/build-shim/npx"
+chmod +x "$t/build-shim/"*
+shim_build() { env PATH="$t/build-shim:$PATH" SHIM_LOG="$t/npx-saw" SHIM_BINARY="$t/stand-in" "$@"; }
+echo "owner document" >"$t/victim-target"
+mkdir -p "$root/src"
+for planted in "$sha" "${sha:0:7}-planted"; do
+	mkdir -p "$root/src/$planted" && listed "$root/src/$planted"
+	mkdir -p "$root/src/$planted/src-tauri/target"
+	ln -s "$t/victim-target" "$root/src/$planted/src-tauri/target/.rustc_info.json"
+done
+mkdir -p "$t/shared-target" && ln -s "$t/victim-target" "$t/shared-target/.rustc_info.json"
+shim_build env CARGO_TARGET_DIR="$t/shared-target" "$RV" build --ref "$sha" >/dev/null 2>&1
+expect "build --ref builds" test -x "$root/builds/${sha:0:7}/sifs"
+expect "the build's writes stay in a new source copy, whatever earlier copies or CARGO_TARGET_DIR hold" \
+	test "$(cat "$t/victim-target")" = "owner document"
+expect "it starts with no Cargo target" bash -c '! grep -q "target existed" "$1"' _ "$t/npx-saw"
+built_in=$(sed -n 's/^pwd //p' "$t/npx-saw")
+expect "in a folder no earlier command made" bash -c '[[ $1 == "$2"/src/"${3:0:7}"-* && $1 != *-planted ]]' _ "$built_in" "$root" "$sha"
+expect "and deletes that copy after the build" test ! -e "$built_in"
+expect "earlier copies are left for cleanup --builds" test -L "$root/src/$sha/src-tauri/target/.rustc_info.json"
+refused "build --src refuses a folder inside the workspace" "inside the workspace" "$RV" build --src "$root/src/$sha"
+rm -f "$t/npx-saw"
+out=$(shim_build "$RV" build --ref "$sha" 2>&1)
+expect "an unchanged build is reused" grep -q "reusing build" <<<"$out"
+expect "without building" test ! -e "$t/npx-saw"
+echo x >>"$root/builds/${sha:0:7}/sifs"
+out=$(shim_build "$RV" build --ref "$sha" 2>&1)
+expect "a build whose binary changed is rebuilt, not reused" bash -c '! grep -q "reusing build" <<<"$1" && test -e "$2"' _ "$out" "$t/npx-saw"
+"$V" cleanup --builds >/dev/null 2>&1
+expect "cleanup --builds deletes the copies it listed" test ! -e "$root/src/$sha" -a ! -e "$root/src/${sha:0:7}-planted"
 
 echo "# run.env is data"
 start_stand_in meta
@@ -318,6 +373,55 @@ refused "a pid in place of a run folder is refused" "not a run folder" "$AX" rea
 refused "a run folder through .. is refused" "not a run folder" "$AX" read "$root/runs/../runs/ours"
 mkdir -p "$t/elsewhere/runs" && ln -s "$ours" "$t/elsewhere/runs/ours"
 refused "a run folder through a symlink is refused" "not a run folder" "$AX" read "$t/elsewhere/runs/ours"
+"$V" cleanup --all >/dev/null 2>&1
+
+echo "# sifs-ax acts only on runs the manifest lists, and starts each once"
+mkdir -p "$t/outside-home"
+# A supervise that isn't refused would serve forever, so it gets 3 s and is
+# then stopped through itself.
+supervise_briefly() {
+	rm -f "$t/supervise.rc"
+	("$AX" supervise "$1" >"$t/supervise.out" 2>&1; echo $? >"$t/supervise.rc") &
+	for _ in $(seq 1 30); do [[ -e $t/supervise.rc ]] && break; sleep 0.1; done
+	if [[ ! -e $t/supervise.rc ]]; then
+		"$AX" stop "$1" >/dev/null 2>&1
+		wait
+		echo "supervise started the run" >&2
+		return 0
+	fi
+	wait
+	cat "$t/supervise.out" >&2
+	return "$(cat "$t/supervise.rc")"
+}
+unlisted=$root/runs/direct
+mkdir -p "$unlisted/home" && cp "$t/stand-in" "$unlisted/sifs"
+refused "supervise refuses a run folder the manifest doesn't list" "manifest of .* lists" supervise_briefly "$unlisted"
+refused "status refuses it too" "manifest of .* lists" "$AX" status "$unlisted"
+refused "and check" "manifest of .* lists" "$AX" check "$unlisted"
+expect "nothing started there" test ! -e "$unlisted/home/ready" -a ! -e "$unlisted/control.sock"
+rm -rf "$unlisted"
+supervise_refused() {
+	local name=$1 pattern=$2
+	run=$root/runs/$3
+	refused "$name" "$pattern" supervise_briefly "$run"
+	expect "and started nothing ($3)" test ! -e "$t/outside-home/ready" -a ! -e "$run/home/ready" -a ! -e "$run/control.sock"
+}
+mkdir "$root/runs/home-link" && listed "$root/runs/home-link"
+cp "$t/stand-in" "$root/runs/home-link/sifs" && ln -s "$t/outside-home" "$root/runs/home-link/home"
+supervise_refused "supervise refuses a home that is a symlink" "home is not a plain folder" home-link
+mkdir "$root/runs/home-inner-link" && listed "$root/runs/home-inner-link"
+cp "$t/stand-in" "$root/runs/home-inner-link/sifs" && mkdir "$root/runs/home-inner-link/home"
+ln -s "$t/outside-home" "$root/runs/home-inner-link/home/Library"
+supervise_refused "supervise refuses a home with a symlink inside" "is a symlink" home-inner-link
+mkdir "$root/runs/exe-link" && listed "$root/runs/exe-link"
+mkdir "$root/runs/exe-link/home" && ln -s "$t/stand-in" "$root/runs/exe-link/sifs"
+supervise_refused "supervise refuses a binary that is a symlink" "sifs is not a plain file" exe-link
+rm -rf "$root/runs/home-link" "$root/runs/home-inner-link" "$root/runs/exe-link"
+start_stand_in once
+"$AX" stop "$run" >/dev/null
+rm "$run/home/ready"
+refused "supervise starts a run once" "was started before" supervise_briefly "$run"
+expect "and a stopped run stays stopped" test ! -e "$run/home/ready"
 "$V" cleanup --all >/dev/null 2>&1
 
 echo "# a native dialog lets only Escape and Cancel through"
@@ -403,6 +507,38 @@ printf '%s\n' RUN=orphan "PID=$orphan" "START=$("$t/start-of" "$orphan")" >"$run
 out=$("$V" cleanup --run orphan 2>&1)
 expect "without a live supervisor cleanup signals nothing" alive "$orphan"
 expect "and keeps the run, saying why" test -d "$run" -a -n "$(grep "left running" <<<"$out")"
+stopped_within() {
+	local seconds=$1 pid=$2
+	for _ in $(seq 1 $((seconds * 10))); do
+		[[ -z $(ps -o stat= -p "$pid") ]] && return 0
+		sleep 0.1
+	done
+	return 1
+}
+start_stand_in moved
+mv "$run" "$t/moved-run"
+expect "a supervisor whose run folder is moved stops its process" stopped_within 4 "$pid"
+start_stand_in replaced
+mv "$run" "$t/replaced-run" && mkdir "$run"
+expect "a supervisor whose run folder is replaced by another stops its process" stopped_within 4 "$pid"
+rmdir "$run"
+start_stand_in idle-client
+python3 -c 'import os, socket, sys, time; os.chdir(sys.argv[1]); s = socket.socket(socket.AF_UNIX); s.connect("control.sock"); time.sleep(8)' "$run" &
+idle=$!
+sleep 0.3
+rm -rf "$run"
+expect "a client that sends nothing doesn't keep a supervisor from noticing its run folder is gone" stopped_within 6 "$pid"
+wait "$idle"
+run=$root/runs/mute
+mkdir "$run" && listed "$run"
+python3 -c 'import os, socket, sys, time; os.chdir(sys.argv[1]); s = socket.socket(socket.AF_UNIX); s.bind("control.sock"); s.listen(1); time.sleep(8)' "$run" &
+mute=$!
+for _ in $(seq 1 50); do [[ -S $run/control.sock ]] && break; sleep 0.1; done
+began=$(date +%s)
+"$AX" status "$run" >/dev/null 2>&1
+expect "status gives up on a socket that never answers" test $(($(date +%s) - began)) -le 5
+wait "$mute"
+rm -rf "$run"
 start_stand_in zombie exit
 "$AX" status "$run" >/dev/null
 expect "a process that exits stays unreaped, so its pid can't go to another process" bash -c '[[ $(ps -o stat= -p "$1") == Z* ]]' _ "$pid"
@@ -416,6 +552,16 @@ start_stand_in ev
 ev=$t/evidence/ev
 SIFS_VERIFY_RUN=ev "$V" read >/dev/null 2>&1
 expect "read logs into the run's transcript" grep -q "No folders yet" "$ev/transcript.md"
+ln "$ev/transcript.md" "$t/transcript-hardlink"
+SIFS_VERIFY_RUN=ev "$V" read >/dev/null 2>&1
+expect "a transcript is appended to by replacing it, so another hard link to it stays as it was" \
+	test "$(grep -c '^## ' "$t/transcript-hardlink")" = 1 -a "$(grep -c '^## ' "$ev/transcript.md")" = 2
+echo "$(stat -f '%d %i' "$ev") ." >"$t/victim-ledger"
+cp "$t/victim-ledger" "$t/victim-ledger-before"
+ln -s "$t/victim-ledger" "$run/evidence.files"
+SIFS_VERIFY_RUN=ev "$V" read >/dev/null 2>&1
+expect "a file planted in the run folder is not an evidence record, and isn't written" cmp -s "$t/victim-ledger" "$t/victim-ledger-before"
+rm "$run/evidence.files"
 mv "$ev/transcript.md" "$t/transcript.md"
 echo unrelated >"$t/victim-document"
 ln -s "$t/victim-document" "$ev/transcript.md"
@@ -430,12 +576,13 @@ refused "an evidence folder that became a symlink is refused" "not the evidence 
 rm "$ev" && mkdir "$ev"
 refused "an evidence folder replaced by another is refused" "not the evidence folder this run created" env SIFS_VERIFY_RUN=ev "$V" read
 expect "nothing was written into either" test -z "$(ls -A "$ev")" -a -z "$(ls -A "$t/evidence-moved")"
-: >"$t/spy.log"
-SIFS_VERIFY_SPY=$t/open-spy.dylib SIFS_VERIFY_OPEN_LOG=$t/spy.log start_stand_in spy
+SPY_LOG=$t/spy.log SIFS_VERIFY_SPY=$t/open-spy.dylib start_stand_in spy open-later
 expect "the open spy loads into the app alone" test "$(cat "$t/spy.log")" = "spy loaded"
-ln -s "$t/victim-document" "$t/spy-link.log"
-SIFS_VERIFY_SPY=$t/open-spy.dylib SIFS_VERIFY_OPEN_LOG=$t/spy-link.log start_stand_in spylink
-expect "the open spy doesn't write through a symlinked log" test "$(cat "$t/victim-document")" = unrelated
+mv "$t/spy.log" "$t/spy-moved.log" && echo unrelated >"$t/spy.log"
+touch "$run/home/open-now"
+for _ in $(seq 1 50); do grep -q report.txt "$t/spy-moved.log" && break; sleep 0.1; done
+expect "the open spy records through the descriptor launch opened" grep -qx $'open\t/x/report.txt' "$t/spy-moved.log"
+expect "and never by path, so a file now at the log's path is untouched" test "$(cat "$t/spy.log")" = unrelated
 "$V" cleanup --all >/dev/null 2>&1
 
 echo "# doctor's folder check"
@@ -507,6 +654,8 @@ expect "ax.swift posts no mouse event and activates nothing" bash -c '! grep -nE
 expect "the scripts drive no other app" bash -c '! grep -nE "tell application|System Events|keystroke|key code|cliclick|click at|\.activate\(|open -a" "$1" "$2"' _ "$V" "$S"
 expect "only the supervisor's stopChild sends signals" \
 	bash -c '[[ $(grep -c "kill(" "$1") == $(sed -n "/^func stopChild/,/^}/p" "$1" | grep -c "kill(") ]]' _ "$skill/ax.swift"
+expect "sifs-verify writes no file in place: no >>, set -C for every >, >| only to a new temporary file" \
+	bash -c '! grep -n ">>" "$1" && grep -qx "set -C" "$1" && ! grep -n ">|" "$1" | grep -v ">|\"\$tmp\""' _ "$V"
 expect "the scripts send no signals" bash -c '! grep -nwE "kill|pkill|killall" "$1" "$2"' _ "$V" "$S"
 
 echo

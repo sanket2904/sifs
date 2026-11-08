@@ -59,21 +59,44 @@ struct Run {
     var expected: Identity { Identity(start: start, exe: dir + "/sifs", home: dir + "/home") }
 }
 
+func fileID(_ path: String) -> String? {
+    var st = stat()
+    guard lstat(path, &st) == 0 else { return nil }
+    return "\(st.st_dev) \(st.st_ino)"
+}
+
+func isMine(_ path: String, _ kind: mode_t) -> Bool {
+    var st = stat()
+    return lstat(path, &st) == 0 && st.st_mode & S_IFMT == kind && st.st_uid == getuid()
+}
+
+/// A run folder is <workspace>/runs/<id>, spelled canonically, that the
+/// workspace's manifest lists by device and inode: sifs-verify launch made it.
 func runDir(_ path: String) -> String {
     let name = (path as NSString).lastPathComponent
     guard let real = realpath(path, nil) else { refuse("\(path) is not a run folder") }
     let canonical = String(cString: real)
     free(real)
+    let runs = (path as NSString).deletingLastPathComponent
     guard canonical == path, (1...64).contains(name.count),
         name.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }),
-        ((path as NSString).deletingLastPathComponent as NSString).lastPathComponent == "runs"
+        (runs as NSString).lastPathComponent == "runs"
     else { refuse("\(path) is not a run folder: sifs-verify passes <workspace>/runs/<id>, canonical") }
+    let workspace = (runs as NSString).deletingLastPathComponent
+    let manifest = workspace + "/.sifs-verify-manifest"
+    guard isMine(workspace, S_IFDIR), isMine(manifest, S_IFREG), isMine(path, S_IFDIR),
+        let lines = try? String(contentsOfFile: manifest, encoding: .utf8).split(separator: "\n"),
+        let workspaceID = fileID(workspace), lines.first.map(String.init) == workspaceID + " .",
+        let runID = fileID(path), lines.contains(Substring(runID + " runs/" + name))
+    else { refuse("\(path) is not a run the manifest of \(workspace) lists; only sifs-verify launch makes runs") }
     return canonical
 }
 
 func loadRun(_ path: String) -> Run {
     let dir = runDir(path)
-    guard let text = try? String(contentsOfFile: dir + "/run.env", encoding: .utf8) else { refuse("\(dir)/run.env can't be read") }
+    guard isMine(dir + "/run.env", S_IFREG), let text = try? String(contentsOfFile: dir + "/run.env", encoding: .utf8) else {
+        refuse("\(dir)/run.env can't be read")
+    }
     var lines = text.split(separator: "\n", omittingEmptySubsequences: false)
     if lines.last == "" { lines.removeLast() }
     var values: [Substring: Substring] = [:]
@@ -114,15 +137,24 @@ func withAddress<T>(_ path: String, _ body: (UnsafePointer<sockaddr>, socklen_t)
     }
 }
 
-func readAll(_ fd: Int32) -> String {
+func setTimeout(_ fd: Int32, seconds: Double) {
+    var limit = timeval(tv_sec: Int(seconds), tv_usec: Int32((seconds - seconds.rounded(.down)) * 1_000_000))
+    let size = socklen_t(MemoryLayout<timeval>.size)
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &limit, size)
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &limit, size)
+}
+
+func readAll(_ fd: Int32, until deadline: Date) -> String {
     var bytes: [UInt8] = []
     var buffer = [UInt8](repeating: 0, count: 512)
-    while true {
-        let n = Darwin.read(fd, &buffer, buffer.count)
+    while bytes.count < 4096 {
+        let left = deadline.timeIntervalSinceNow
+        guard left > 0 else { break }
+        setTimeout(fd, seconds: max(left, 0.001))
+        let n = Darwin.read(fd, &buffer, min(buffer.count, 4096 - bytes.count))
         if n < 0 && errno == EINTR { continue }
         if n <= 0 { break }
         bytes += buffer[0..<n]
-        if bytes.count > 4096 { break }
     }
     return String(decoding: bytes, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
 }
@@ -154,28 +186,54 @@ func stopChild(_ pid: pid_t) -> String {
     return "stopped pid \(pid): it ignored TERM for 5 s, so it got KILL"
 }
 
+func unstartable(_ dir: String) -> String? {
+    for leftover in ["run.env", "app.log", controlSocket] where fileID(dir + "/" + leftover) != nil {
+        return "\(dir) was started before (it has \(leftover)); launch a new run"
+    }
+    guard isMine(dir + "/sifs", S_IFREG) else { return "\(dir)/sifs is not a plain file of yours" }
+    guard isMine(dir + "/home", S_IFDIR), let inside = FileManager.default.enumerator(atPath: dir + "/home") else {
+        return "\(dir)/home is not a plain folder of yours"
+    }
+    for case let name as String in inside {
+        var st = stat()
+        let path = dir + "/home/" + name
+        guard lstat(path, &st) == 0, st.st_uid == getuid(), st.st_mode & S_IFMT != S_IFLNK else {
+            return "\(path) is a symlink or not yours"
+        }
+    }
+    return nil
+}
+
+func spyLog(_ env: [String: String]) -> Int32? {
+    guard let text = env["SIFS_VERIFY_OPEN_LOG_FD"] else { return nil }
+    var st = stat()
+    guard let fd = Int32(text), fd > 2, fstat(fd, &st) == 0, st.st_mode & S_IFMT == S_IFREG, st.st_uid == getuid(),
+        fcntl(fd, F_GETFL) & O_ACCMODE != O_RDONLY, fcntl(fd, F_SETFD, 0) == 0
+    else { fail("SIFS_VERIFY_OPEN_LOG_FD must be a descriptor open for writing on a file of yours") }
+    return fd
+}
+
 /// Reaps the child only on a stop request, so until then the app's pid,
-/// alive or exited, can't name another process. Once control.sock is gone,
-/// deleted with the run folder, nothing can reach it, so it stops the child
-/// and exits.
+/// alive or exited, can't name another process. Once the run's path no
+/// longer names the folder and socket it started with (deleted, moved or
+/// replaced), nothing can reach it, so it stops the child and exits.
 func supervise(_ dir: String, _ childArgs: [String]) -> Never {
     signal(SIGHUP, SIG_IGN)
     signal(SIGPIPE, SIG_IGN)
+    if let why = unstartable(dir) { refuse(why) }
+    var env = ProcessInfo.processInfo.environment
+    let log = spyLog(env)
     _ = setsid()
     guard chdir(dir) == 0 else { fail("can't enter \(dir): \(errnoText())") }
     let server = socket(AF_UNIX, SOCK_STREAM, 0)
     guard server >= 0, fcntl(server, F_SETFD, FD_CLOEXEC) == 0,
         withAddress(controlSocket, { Darwin.bind(server, $0, $1) }) == 0, listen(server, 8) == 0
     else { fail("can't listen on \(dir)/\(controlSocket): \(errnoText())") }
-    var bound = stat()
-    guard lstat(controlSocket, &bound) == 0 else { fail("can't stat \(dir)/\(controlSocket): \(errnoText())") }
-    func socketGone() -> Bool {
-        var now = stat()
-        return lstat(controlSocket, &now) != 0 || now.st_dev != bound.st_dev || now.st_ino != bound.st_ino
-    }
+    let socketPath = dir + "/" + controlSocket
+    guard let runID = fileID(dir), let socketID = fileID(socketPath) else { fail("can't stat \(socketPath): \(errnoText())") }
+    func runGone() -> Bool { fileID(dir) != runID || fileID(socketPath) != socketID }
 
     let exe = dir + "/sifs", home = dir + "/home"
-    var env = ProcessInfo.processInfo.environment
     let spy = env.removeValue(forKey: "SIFS_VERIFY_SPY")
     env["DYLD_INSERT_LIBRARIES"] = spy
     env["HOME"] = home
@@ -190,6 +248,7 @@ func supervise(_ dir: String, _ childArgs: [String]) -> Never {
     let envp = env.map { strdup("\($0.key)=\($0.value)") } + [nil]
     var pid: pid_t = 0
     let spawned = posix_spawn(&pid, exe, &actions, nil, argv, envp)
+    if let log { close(log) }
     guard spawned == 0 else { fail("starting \(exe): \(String(cString: strerror(spawned)))") }
     guard let started = identity(pid), started.exe == exe, started.home == home else {
         print(stopChild(pid))
@@ -197,20 +256,18 @@ func supervise(_ dir: String, _ childArgs: [String]) -> Never {
     }
 
     while true {
-        var ready = pollfd(fd: server, events: Int16(POLLIN), revents: 0)
-        let polled = poll(&ready, 1, 1000)
-        if polled <= 0 {
-            if polled == 0 && socketGone() {
-                _ = stopChild(pid)
-                exit(0)
-            }
-            continue
+        if runGone() {
+            _ = stopChild(pid)
+            exit(0)
         }
+        var ready = pollfd(fd: server, events: Int16(POLLIN), revents: 0)
+        guard poll(&ready, 1, 1000) > 0 else { continue }
         let client = accept(server, nil, nil)
         guard client >= 0 else {
-            if errno == EINTR { continue }
+            if errno == EINTR || errno == ECONNABORTED { continue }
             fail("accept: \(errnoText())")
         }
+        setTimeout(client, seconds: 2)
         var buffer = [UInt8](repeating: 0, count: 16)
         let n = Darwin.read(client, &buffer, buffer.count)
         switch String(decoding: buffer[0..<max(n, 0)], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) {
@@ -218,7 +275,7 @@ func supervise(_ dir: String, _ childArgs: [String]) -> Never {
             send(client, "\(exited(pid) ? "exited" : "running") \(pid) \(started.start)")
         case "stop":
             let how = stopChild(pid)
-            unlink(controlSocket)
+            unlink(socketPath)
             send(client, how)
             close(client)
             exit(0)
@@ -229,13 +286,15 @@ func supervise(_ dir: String, _ childArgs: [String]) -> Never {
     }
 }
 
-func ask(_ dir: String, _ request: String) -> String? {
+func ask(_ dir: String, _ request: String, seconds: Double) -> String? {
     guard chdir(dir) == 0 else { return nil }
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-    guard fd >= 0, withAddress(controlSocket, { connect(fd, $0, $1) }) == 0 else { return nil }
+    guard fd >= 0 else { return nil }
+    defer { close(fd) }
+    let deadline = Date().addingTimeInterval(seconds)
+    guard withAddress(controlSocket, { connect(fd, $0, $1) }) == 0 else { return nil }
     send(fd, request)
-    let reply = readAll(fd)
-    close(fd)
+    let reply = readAll(fd, until: deadline)
     return reply.isEmpty ? nil : reply
 }
 
@@ -736,10 +795,10 @@ func search(_ admitted: Admitted, _ query: String, settle: Double) -> Screen {
 let args = Array(CommandLine.arguments.dropFirst())
 let usage = """
     usage: sifs-ax <command> <run> [args]
-    <run> is a run folder, <workspace>/runs/<id>, as sifs-verify passes it. Every
-    command but supervise, status and stop refuses unless the run's pid is still
-    the process the run started.
-      supervise <run> [args]        start <run>/sifs as a child, hold it, and serve status and stop
+    <run> is a run folder, <workspace>/runs/<id>, as sifs-verify passes it, that
+    the workspace's manifest lists. Every command but supervise, status and stop
+    refuses unless the run's pid is still the process the run started.
+      supervise <run> [args]        start <run>/sifs as a child, once, hold it, and serve status and stop
       status <run>                  the supervisor's answer: running|exited <pid> <start>
       stop <run>                    ask the supervisor to stop its child; nothing is signalled without one
       check <run>                   the run's process, if it is still the one the run started
@@ -765,7 +824,9 @@ case "supervise":
     supervise(runDir(args[1]), Array(args.dropFirst(2)))
 case "status", "stop":
     let dir = runDir(args[1])
-    guard let reply = ask(dir, command) else { refuse("no supervisor answers for \(dir), so nothing was signalled") }
+    guard let reply = ask(dir, command, seconds: command == "stop" ? 10 : 3) else {
+        refuse("no supervisor answers for \(dir), so nothing was signalled")
+    }
     print(reply)
     exit(0)
 default: break

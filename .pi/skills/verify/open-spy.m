@@ -1,22 +1,22 @@
 // Loaded into a test instance only (DYLD_INSERT_LIBRARIES, set by
 // sifs-verify launch). Opening a result runs /usr/bin/open and showing it in
 // Finder calls NSWorkspace; either would bring another app forward and could
-// open the owner's apps. This records each request in $SIFS_VERIFY_OPEN_LOG
-// and reports success without opening anything.
+// open the owner's apps. This records each request in the log launch created,
+// through the descriptor $SIFS_VERIFY_OPEN_LOG_FD it inherits, and reports
+// success without opening anything. It never opens the log by path.
 #import <AppKit/AppKit.h>
 #import <objc/runtime.h>
 #include <fcntl.h>
 #include <spawn.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
+static int log_fd = -1;
+
 static void record(NSString *line) {
-    const char *path = getenv("SIFS_VERIFY_OPEN_LOG");
-    if (!path) return;
-    int log = open(path, O_WRONLY | O_APPEND | O_NOFOLLOW_ANY);
-    if (log < 0) return;
-    dprintf(log, "%s\n", line.UTF8String);
-    close(log);
+    if (log_fd >= 0) dprintf(log_fd, "%s\n", line.UTF8String);
 }
 
 static int spy_spawn(pid_t *pid, const char *path, const posix_spawn_file_actions_t *actions,
@@ -45,6 +45,12 @@ __attribute__((used, section("__DATA,__interpose"))) static struct {
 };
 
 __attribute__((constructor)) static void spy_reveal(void) {
+    const char *fd = getenv("SIFS_VERIFY_OPEN_LOG_FD");
+    struct stat st;
+    if (fd && fstat(atoi(fd), &st) == 0 && S_ISREG(st.st_mode)) {
+        log_fd = atoi(fd);
+        fcntl(log_fd, F_SETFD, FD_CLOEXEC);
+    }
     Method method = class_getInstanceMethod([NSWorkspace class], @selector(activateFileViewerSelectingURLs:));
     method_setImplementation(method, imp_implementationWithBlock(^(id workspace, NSArray<NSURL *> *urls) {
         NSMutableArray *words = [NSMutableArray arrayWithObject:@"reveal"];
