@@ -71,7 +71,7 @@ There's no migration system yet: `SCHEMA` (`index/db.rs`) is `CREATE … IF NOT 
 
 Triggers on `files` keep the queue right, so the crawler, watcher and search don't change:
 - **A file is added:** it's queued if its extension has a reader. Priority 0 if it changed in the last week, else its reader's priority (documents 1, images 2, the rest 3).
-- **A file's `modified` or `size` changes:** it's queued again at priority 0. The old text stays searchable until the new read replaces it. An unchanged rescan queues nothing (a test pins this, since the upsert rewrites every column).
+- **A file's `modified` or `size` changes:** it's queued again at priority 0. The old text stays in the index until the new read replaces it, but from step 3 search leaves it out (its extract no longer matches the file). An unchanged rescan queues nothing (a test pins this, since the upsert rewrites every column).
 - **A file is deleted** (including folder removal and ignore-pattern rescans): its contents, facts, extract and queue row go too.
 - **Only files, folders and links are indexed.** FIFOs, sockets and devices are not, since opening one can block.
 
@@ -259,7 +259,7 @@ Step 2 had seven review rounds. Each finding was fixed with a test that fails wi
 
 The reviewers' tests are kept as `office/review.rs` to `review7.rs`. The reports were in `handover/`, removed when the step merged: `git show <the commit before "Remove the handover folder">:handover/step2-review-r7/REPORT.txt` brings one back. Rounds 1 to 3 were reviewed by gpt-6-astra, rounds 4 to 6 by claude-opus-5-5 (astra was stopped by its provider's content filter), round 7 by gpt-6.1-sol.
 
-**Checked on a Mac (2026-11-04):** the three readers over the 706 Word, Excel and PowerPoint files on the owner's Mac: no crash and no timeout; 669 read (at most 131 ms each, median under 1 ms), 2 skipped as password-protected. The other 35 were iCloud placeholders: opening one asks macOS to download it, and the read blocked about 4.6 s before failing. Skipping placeholders (step 1) has to come before step 1 is used on the Mac.
+**Checked on a Mac (2026-11-04):** the three readers over the 706 Word, Excel and PowerPoint files on the owner's Mac: no crash and no timeout; 669 read (at most 131 ms each, median under 1 ms), 2 skipped as password-protected. The other 35 were iCloud placeholders: opening one asks macOS to download it, and the read blocked about 4.6 s before failing. Step 1 already skips placeholders before opening them (`platform::may_read`, the `SF_DATALESS` flag): checked against those files, it skips exactly the 35, agreeing with macOS's own flag on all 706.
 
 ### Left for a Mac session
 
@@ -381,3 +381,182 @@ The reader as built, over the 2,698 PDFs Spotlight lists under `~`, one after an
 | stopped by a limit, or crashed | 0 |
 
 27,526 pages; 43.8 million characters kept; 969 files have pages without text, marked for OCR. At a load average of 300 to 780 from other programs: 601 s in all, median 56 ms per file, p95 810 ms, max 18.5 s; the helpers used 108 s of processor time in all. SIFS's side peaked at 14 MB resident; the largest helper at 275 MB. Starting the helper from the app's own binary took a median of 50 ms against 47 ms from the small scratch program (15 runs each, alternating), so the app's size adds little to each start.
+
+## Step 3 in detail: search over contents
+
+**Goal:** one search box finds files by their names and by the words inside them. Each content result shows where its words were found (`page 3`, a sheet's name, `slide 2 notes`) and a short snippet with the words marked. Typing stays instant.
+
+### How a query runs
+
+Two commands:
+- `search_files` (as now): names only, on every keystroke. It is shown at once.
+- `search_all`, new: names and contents, ranked together. The window asks for it about 120 ms after typing stops and replaces the list when it comes. A response to an older query is dropped.
+
+`search_all` runs off the main thread (`spawn_blocking`), on its own read connection. It has **400 ms**: past that the content query is stopped (SQLite's interrupt) and the name results come alone, or the snippets not yet made are left empty; either way the results are marked "contents took too long".
+
+### The content query
+
+- Each word is matched as a token through FTS5: `unicode61 remove_diacritics 2`, so "resume" finds "résumé" and Hindi words stay whole.
+- The query is split into words as the index splits them (`index/query.rs`), and each is quoted, so the query language (`AND`, `NEAR(`, `*`, `"`, `:`) is never interpreted.
+- The **last word matches as a prefix** while typing ("invo" finds "invoice"), but only when it has at least 3 characters, so one or two letters don't expand to most of the index.
+- Every word must appear in the same part (page, sheet or slide).
+- Per file, its best part counts (FTS5's bm25 rank), with its label and snippet. The first **10,000 matching parts** are looked at; past that the results are marked incomplete.
+
+### Ranking (owner's decision 5)
+
+A name match ranks above a content match only when kind and place are equal. Added-up scores can't give that both ways: an exact name match scores 25 to 100 by quality, while kind priors differ by up to 90 (documents +40, code −30, build products −50). So results are ordered in turn by:
+1. **kind and place:** the kind prior plus the place prior (SDKs, dependencies and build folders −40);
+2. **then, with those equal:** name matches, then content matches, then typo-tolerant name matches (a guess ranks below words that are really there);
+3. **then score:** for names, match quality, recency and shorter names and paths, as now; for contents, the bm25 position among the content results (up to 10) and recency.
+
+So a document whose text matches ranks above a source file whose name matches, and a document whose name matches ranks above one whose text does. A file matching by both name and contents is shown once, as a name match (score plus 5), with its snippet; a typo-tolerant name match whose contents match ranks as a content match.
+
+The owner keeps decision 5 as it is for now (2026-11-04) and will revisit it after using it for a few days: the window check showed "screenshot" ranking 43 notes that mention the word above most screenshot images, and one option is to let a name that starts with the query beat the kind difference.
+
+### Snippets
+
+Made in Rust from the best part's text, for the shown results only: at most 200 characters, from the first whole word up to 40 characters before the first query word, every query word marked, and "…" where text is left out. Words are found and folded as the index finds and folds them (`index/query.rs`), so a hit is a position in the text, never a mark inside it, and the file's own characters can't pose as one. They become segments, `[{text, hit}]`, so the window never puts file text into HTML.
+
+### The window
+
+- A content result shows its file as now, then a second line: the label, then the snippet with the matched words in bold.
+- The footer says how many were found, and whether contents were searched in full ("contents took too long", or "still reading N files" while the worker has a queue).
+
+### Tests (Linux, `cargo test --no-default-features --lib`)
+
+- **Ranking:**
+  - a document's contents rank above a code file's name;
+  - a document's name ranks above a document's contents;
+  - a file matching both is shown once, first, with its snippet;
+  - recency breaks ties.
+- **Query safety:** queries with `"`, `*`, `AND`, `NEAR(`, `:`, `-` and parentheses give results or nothing, never an error. Every word must be in one part.
+- **Prefix:** the last word at 3 or more characters matches a prefix; at 1 or 2 characters it matches only whole words.
+- **Text:** "resume" finds "résumé" (composed and decomposed), and Hindi and Japanese samples are found by their words.
+- **Snippets and labels:** the right label (page, sheet, slide, notes), and segments that rebuild the snippet with the hits marked.
+- **Lifecycle:** a removed folder's files are never returned (`NOT_REMOVING`), and a file changed since it was read is found by its new words only.
+- **Time:** a query stopped by the time limit returns names only, marked. Tested with a limit of 0 ms.
+- **The command:** `search_all` returns the same as the library call.
+
+The window has no tests; it is checked with `npm run check` and by hand on the Mac.
+
+### Measuring
+
+`sifs-bench --contents` gains query timings: common, rare and prefix words; the 95th percentile and the slowest; on the Linux fixtures here, and on the real home folder in step 6.
+
+### Step 3 review, round 1 (2026-11-04): the redesign
+
+Three independent checks of PR #5 at 6e11b57 (gpt-6.1-sol and gpt-6-astra code reviews, an Opus verifier driving the page in headless Chromium over a copy of the real index) found 14 distinct blocking problems, each shown by a test. Their reports: `devos-work/astra/s3sol/REPORT.txt`, `s3astra/REPORT.txt`, `s3ui/REPORT.txt`. They share three causes, so the content search changes shape rather than gaining patches:
+
+1. **Candidates were capped before ranking.** Names were cut to the 60 best by name score, contents to 2,000 parts and then 200 files by bm25, and only then ranked by kind and place. So the right winner could be gone before the ranking ran (a document named or containing the word lost to 60 code files; one 2,000-page file hid every other match).
+2. **SQLite's `snippet()` does unbounded work in one step.** On a part repeating the query word, it took 2.6 s to over 5 s, inside one VM operation the progress handler can't interrupt. Its markers (`\u{2}`, `\u{3}`) can also be in the file's own text, and its 12 tokens don't bound bytes (a 1 MB snippet).
+3. **The query was split on spaces, not as the index splits words,** so punctuation changed what matched (`rent,invoice`, `alpha-beta` as a phrase, `in,` as a prefix), a NUL ended the FTS string, and 1,100 words overflowed SQLite's expression depth.
+
+**The new shape.** The data, in order:
+- **`Query`** (`index/query.rs`), parsed once at the boundary for both searches: control characters count as spaces; words split by the same rule as the `contents_fts` tokenizer (letters, digits, marks and private-use characters are word characters, everything else separates); folded as the tokenizer folds them (lowercase, then SQLite's own diacritic table); duplicates dropped; at most 16 distinct words, the rest ignored and reported; a word over 64 characters is cut there and matches by its start. An empty query returns nothing. The last word is a prefix when it has at least 3 characters. Name search keeps its substring terms but is bounded the same way.
+- **Candidate files, without snippets.** Contents: one row per file, its best part by bm25 (grouped per file in SQL), from contents whose extract still matches the file (`extracts.modified = files.modified AND extracts.size = files.size`, so an edited file's old words are never found), not removing. Names: every name candidate (the name search's own bound, 5,000), not its top 60. The work is bounded by the deadline and a cap on matching parts scanned (the first 10,000, in rowid order: the order files were read, recent ones and documents first); hitting either marks the results incomplete, each in its own words (see the cap below).
+- **Ranking over all candidates,** then the limit: kind and place priors first; then name matches, content matches, typo-tolerant names; a typo-tolerant name that also matches by contents ranks as a content match.
+- **Snippets for the shown results only** (at most the limit), built in Rust from the best part's text: the first window around a query word, at most 200 characters, with hits as character ranges (`Segment{text, hit}`), never markers in the text. The scan checks the deadline as it goes.
+
+**The window:** typing and Escape cancel both pending searches at once (the generation advances on input, both timers are cleared, error paths check the generation too); a finished read of new files refreshes the current search (coalesced, at most every 2 s); the selection follows the file only after the user moved it, else stays on the first row; the selection is kept across a refresh; separators keep their spaces.
+
+**Not in this PR** (already on main, tracked as issues): light appearance rows unreadable (`app.html` sets a black body background); the search box loses focus at startup (SvelteKit's focus reset).
+
+**As built.** Where it differs from the design above, and why:
+- **Control characters count as spaces**, not dropped: a pasted tab must separate two words, not join them.
+- **A word over 64 characters is cut and matched by its start**, not ignored: a pasted long file name must still find the file. Words past 16 are ignored, and the window says so ("too many words, some not searched").
+- **Folding uses SQLite's own diacritic table** (`fts5_remove_diacritic`, copied from the bundled 3.46) with Rust's lowercase, so a word is marked in a snippet exactly when the index matched it. A test tokenizes a sample of scripts both ways and compares.
+- **Migration 2 adds `contents_owner ON contents(id, file_id)`.** Learning a matching part's file from its own row reads that row, and a part's row holds its text, so most rows fill a page. On the index copy, 10,000 matching parts of "data" read 8,537 pages and took 0.5 to 6.1 s that way; through the index, 515 pages and 17 ms. The migration took 5.6 s once on the copy (173,113 parts); the owner's index has no contents yet. A test bounds the pages one search reads.
+- **The 790 ms overshoot** in the window check came from work SQLite does inside one step, where the progress handler can't stop it: `snippet()` over whole parts, and reading text-filled rows from disk. Neither happens now before the limit: the content query reads no text, and snippets are made only for the shown results, checking the time as they go. The 400 ms covers the whole call. What remains unsplittable is one FTS5 prefix expansion (`com*`: 40 ms) and reading one shown part's text (at most 4 MB).
+- **A cap hit is reported apart from the time limit** (round 2): `contents_capped` shows "very common words: only some files' contents searched" and only the time limit shows "contents took too long", because a cap hit is fast (about 70 ms for "the" or "rev") and its parts are the first 10,000 in storage order rather than the best, since ranking every match is the work the cap bounds.
+- **The window's selection rule** pins the opposite of two of the reviewers' probes (sol's `transition`, astra's window `selection`): they expect an untouched selection to follow its file. They fail by design. Copies where the user moves the selection first pass.
+- **Not done:** astra's suggestion that obsolete `search_all` calls stop queueing behind the content connection. Each call is now bounded by the limit and measured at 105 ms at most on the copy, and the window asks only after typing pauses for 180 ms. Revisit if the Mac shows a queue.
+
+**Tests.** `extract/find_tests.rs` holds the reviewers' Rust tests, adapted to `search_all` (their helpers now write the extract row the worker writes), and new ones for the cap, the snippet window, the deadline inside a snippet, the fold and the pages read: 27 tests. Each fix was undone in a copy and its test failed (16 Rust mutations, all caught); the window's fixes were undone the same way against the reviewers' probes and `drive.mjs` (9 mutations, all caught). Script and log: `devos-work/astra/s3fix1/mutations.py`, `mutations.log`.
+
+**Measured** (release build, the index copy from the window check: 385,983 files, 173,113 parts; `search_all` with limit 60 and the 400 ms limit; median and slowest of 5 runs, warm; the machine was loaded, with a VM and a disk scan running):
+
+| Query | Before | After |
+|---|---|---|
+| revenue | 15.8 / 16.8 ms | 8.2 / 9.0 ms |
+| quarterly | 28.5 / 29.7 ms | 8.8 / 9.1 ms |
+| screenshot | 24.2 / 24.5 ms | 6.4 / 6.7 ms |
+| resume | 12.7 / 13.0 ms | 16.2 / 16.3 ms |
+| gross profit | 20.3 / 20.8 ms | 8.0 / 8.7 ms |
+| rev | 46.4 / 47.0 ms | 33.8 / 34.1 ms, cap |
+| "gross profit" OR revenue* | 26.5 / 27.1 ms | 8.5 / 8.8 ms |
+| NEAR(a b) -x AND | 56.4 / 57.3 ms | 31.8 / 31.8 ms |
+| привет | 4.9 / 5.1 ms | 2.6 / 3.7 ms |
+| zzqxjvwk | 0.9 / 1.0 ms | 0.8 / 0.9 ms |
+| customer | 328.1 / 330.4 ms | 14.9 / 15.1 ms |
+| 日本 | 37.8 / 39.8 ms | 37.4 / 40.3 ms |
+| शर्मा | 2.4 / 2.5 ms | 0.4 / 0.5 ms |
+| the | 472.3 / 474.7 ms, timed out | 72.3 / 73.4 ms, cap |
+| and | 470.2 / 470.7 ms, timed out | 37.8 / 38.5 ms, cap |
+| data | 382.7 / 383.5 ms | 38.5 / 40.7 ms, cap |
+| com | 554.4 / 3,825.8 ms, timed out | 102.4 / 103.3 ms, cap |
+| inv | 139.5 / 140.5 ms | 31.8 / 32.8 ms, cap |
+| invoice | 57.9 / 60.0 ms | 8.9 / 9.3 ms |
+
+The slowest run of any query, first runs included: 3,826 ms before ("com"), 104.5 ms after ("com"). One part repeating "needle " 30,000 times: 2.70 to 2.78 s before, 0.4 to 0.7 ms after; "tapir " 100,000 times: 29.2 to 31.6 s before, 0.7 to 0.9 ms after. One part of "needle" and 999,980 emoji: a 3,999,932-byte snippet before, 782 bytes after. 200 parts of a million characters, limit 1: before, stopped at 400 ms with no result while peak memory rose from 32 to 136 MB; after, 2.6 ms, one result, peak memory 32.2 to 33.5 MB; with limit 60, 51.5 ms and 23,730 bytes of snippets in all.
+
+### Step 3 review, round 2 (owner's bar: real bugs)
+
+Three checks of PR #5 at 5054213: gpt-6.1-sol and gpt-6-astra code reviews, and a run of the real window through the verify skill. Their reports: `devos-work/reviews/s3r2sol/REPORT.txt`, `s3r2astra/REPORT.txt`, `s3r2ui/REPORT.txt`. The owner's decision for this round (2026-11-08): fix every problem a real user could hit, plus cheap bounds and the small window items. Stress cases nobody produces by hand are recorded below as known limits, with their numbers, and measured again on the real home folder in step 6. Each fix gets a test that fails without it, checked by undoing the fix.
+
+1. **One snapshot per search.** A worker commit between the candidate query and the snippet read could attach another file's label and text to a result (part ids are reused), and a part deleted in between was reported as "contents took too long". Now `search_all` reads names, contents and snippets inside one read transaction, so every read sees the same index. A candidate keeps its file id with its part id, and the label and text are read together, by both ids. A missing part gives no snippet and does not count as a timeout. Only the time limit sets `contents_timed_out`.
+2. **Edits within the same second.** File times were stored in whole seconds, so an edit that kept the size and the second stayed searchable by its old words, permanently. Migration 3 adds `modified_ns` (the nanoseconds within the second) to `files`, `extracts` and `extract_queue`. NULL means unknown: rows written before the migration. The queue's triggers queue a file again when its second or size changes, or when both nanosecond values are known and differ. Contents count as current when second and size are equal and the nanoseconds are equal where both are known. The worker reads a queued file again unless what it read has the same known nanoseconds. So the first scan after the upgrade fills in the nanoseconds without queuing every file again. The migration runs in one transaction with its version number, like migration 2, and a test interrupts it and opens the index again.
+3. **SQLite's own tokenizer.** Query words were split and folded in Rust (a regex and a copy of SQLite's diacritic table), which disagrees with SQLite on newer emoji, Cherokee, Greek symbol variants and about 1,900 BMP characters. So a file could not be found by its own text, or was found without the word marked. Now query words and snippet word positions come from the `contents_fts` tokenizer itself, created through FTS5's C API (`xFindTokenizer("unicode61")`) with the same arguments as the table. One constant holds the arguments, and a test checks it against the stored table. Each word's own text goes into the FTS query, quoted, so FTS folds it as it folded the file. The regex and the diacritic table are deleted. A test tokenizes every BMP character both ways (through `fts5vocab` and through the new path) and compares.
+4. **Bounded input.** A pasted 30 MB query took about 1 s and 350 MB to parse, outside the time limit. Now `Query::parse` reads at most 4 KiB of what was typed, cut at a character boundary. The window sends at most 4,097 characters, so the message to the backend is bounded and the backend still knows that the text was cut. Words past 16 set a flag; they are not kept to be counted. `Results.words_left_out` replaces `ignored_words`, and the window shows "too many words, some not searched" for a cut query too.
+5. **Candidates in ranking order.** The 5,000 name candidates were the first 5,000 stored, and the typo-tolerant pass ran only when fewer than the display limit matched, so a document named for the query could lose to 5,000 code files, and the first result changed between limit 60 and 61. Now the name rows stream into a bounded selection that keeps the 5,000 best by the order `search_all` ranks in (kind and place, then exact before close, then score). The typo-tolerant pass runs unless more than 5,000 names match exactly, whatever the limit, and its rows are selected the same way. More than 5,000 matching names sets `names_capped`, shown as "many names match: the best 5,000 compared". The names-only command selects by its own order (score). The 10,000-part cap for very common words stays as it is, disclosed: taking parts in ranking order means looking up the file of every matching part, which is the work the cap bounds.
+6. **The whole call within 400 ms.** The clock started after the command waited for the contents connection, and the name queries ran before the time limit was installed. Now the clock starts when the command is called. One stop condition (the deadline, or a newer `search_all` call) stops every SQL statement of the call, names included, and the snippet scans. A newer call advances a counter, so an older call that is still running or waiting stops at its next check. Names cut short set `names_timed_out` ("names took too long"). `search_files` runs under the same limit.
+7. **Small items.** A snippet is at most 200 characters including its ellipses. The footer says "still reading N files" while the worker has a queue. A successful search clears the previous search's error, not other errors. Leaving the page clears all three timers and drops replies still to come. While the contents answer is pending, an empty name list shows nothing instead of "Nothing found" (it flashed for about 120 ms before content results arrived).
+
+**Known limits, left as they are** (measured by the reviewers on a loaded machine; revisit in step 6 on the real home folder):
+- **A million long names matching many short terms.** 1,000,000 files with 234-byte names and a query of 16 two-letter terms took 0.98 to 1.58 s (median 1.02 s) before this round, because a term under 3 characters has no trigram index and is checked against every name. Item 6 stops it at the time limit and says so, so the window never hangs, but the names after the cut are not compared. Nobody has a million such names; the index copy has 385,983 files in all.
+- **Memory for a prefix over millions of matching parts.** For the prefix query `common*` with limit 1, SQLite's extra heap peaked at 0.65 MB with 10,000 matching parts, 1.55 MB with 100,000 and 174 MB with 8,000,000. FTS5 reads the whole prefix's lists and ranks the phrase across them, whatever the outer LIMIT. Bounding it needs a prefix index on `contents_fts` (a rebuild of the index) or no bm25 ranking. 8 million matching parts is 800 files of 10,000 pages each, all containing the word; the index copy has 173,113 parts in all.
+
+**As built.** Where it differs from the plan above, and why:
+- **A missing part can't happen inside one snapshot.** With the read transaction, a part that matched is still there when its snippet is read, so the reviewers' delete-during-search test now finds the snippet. Reading by part and file stays, since a part id is reused once deleted, and a missing part still counts as no timeout.
+- **The typo-tolerant names run whenever 5,000 or fewer names match exactly.** Any fixed number below that is a cliff where one more exact code file hides a close-named document, which the owner's ranking puts first. Close names still rank below exact names of the same kind and place.
+- **Names are selected without building every row.** A name whose kind alone can't beat the 5,000th kept is skipped before it is ranked, and `place_prior` checks its markers with one case-insensitive regex instead of lowercasing every path. Without these, "a" took 176 ms for names on the index copy.
+- **`search_files` runs off the main thread too,** and a newer call stops an older one, as for `search_all`: a one-letter query now compares every name.
+- **Not covered by a test:** that the clock starts before the wait for the contents connection is the order of two lines in `app.rs`, which needs Tauri to test. The test that a newer call stops an older one covers what bounds the wait.
+
+**Tests.** `extract/find_review_tests.rs` holds the reviewers' round 2 tests, adapted, and one or more per fix; `index/tokenize_tests.rs` compares the tokenizer with `contents_fts` over every BMP character. Each fix was undone in place and its tests failed (17 Rust mutations, all caught); the window's fixes were undone in a copy of the page and the reviewers' Chromium probes, extended by four, failed (6 mutations, all caught). Scripts and logs: `devos-work/reviews/s3fix3/mutations.py`, `mutations2.out`, `ui/ui-mutations.py`, `ui/ui-mutations.log`.
+
+**Measured** (release build, the index copy: 385,983 files, 173,113 parts; median and slowest of 5 warm runs of `search_all` with limit 60, and one run of the names-only search; 5054213 against this round's head, run alternately on a loaded machine):
+
+| Query | Names only, before → after | search_all, before → after |
+|---|---|---|
+| revenue | 6.6 → 9.1 ms | 8.8 / 10.3 → 11.6 / 12.2 ms |
+| resume | 5.9 → 11.3 ms | 17.1 / 18.3 → 22.1 / 23.0 ms |
+| notes | 2.3 → 27.2 ms | 12.7 / 13.0 → 36.1 / 37.7 ms |
+| data | 5.3 → 25.9 ms | 40.4 / 40.6 → 59.9 / 61.9 ms, both caps |
+| the | 2.0 → 2.1 ms | 76.3 / 79.0 → 75.9 / 77.1 ms, part cap |
+| com | 6.2 → 10.6 ms | 103.6 / 110.2 → 115.0 / 127.0 ms, both caps |
+| re | 6.9 → 73.7 ms | 30.1 / 30.7 → 94.9 / 102.6 ms, both caps |
+| a | 3.2 → 146.6 ms | 23.3 / 24.8 → 116.9 / 119.0 ms, both caps |
+
+The slowest run of any query: 110.2 ms before ("com"), 146.6 ms after (names only, "a"). The added time is the work the old code skipped: it compared the first 5,000 names stored and stopped, and for "a" 302,651 names match; reading those rows alone takes SQLite about 70 ms. One- and two-letter queries pay most. If that is felt in use, a name index for short terms is the fix, not a return to storage order. Full tables: `devos-work/reviews/s3fix3/timings-before-r4.tsv`, `timings-after-r4.tsv`.
+
+### Step 3 review, round 3 (frozen scope)
+
+Three checks of PR #5 at a4668b4: gpt-6.1-sol and gpt-6-astra code reviews, and a run of the real window through the frozen verify skill (`devos-work/reviews/s3r3sol/REPORT.txt`, `s3r3astra/REPORT.txt`, `s3r3ui/REPORT.txt`). This is the last round under the owner's round cap, so its scope is the six items below. Anything else found goes into an issue. First-letter speed (#13) and the watcher's missed writes (#14) are issues already. Each fix gets a test that fails without it, checked by undoing the fix.
+
+1. **A stale files row hid read contents.** In the window check, 6 of about 150 .docx written in bursts kept the size and time of a partial write in `files`, while `extracts` had the full file. Search shows contents only when the two agree, so their words were never found and nothing said so. The worker already stats a file before and after reading it. Now, when it writes what it read, it checks the file once more under the writer lock. If the file is still as read, the `files` row takes that size and time in the same transaction, and the file leaves the queue. If the file changed since, nothing is written and the file stays queued. A file whose contents are current but whose `files` row differs is read again instead of dropped, so that write corrects the row too. The watcher missing the last write is #14 and is not fixed here.
+2. **Legacy rows without nanoseconds (#15).** No released build has written contents (the owner's installed app is the phase 1 build), so the rule that an unknown nanosecond value matches the second goes. Migration 3 queues every file read before it for one more read. Until then its contents count as current only while the file's nanoseconds are unknown too, so the first scan after the upgrade hides them and an edit before or after that scan is never missed.
+3. **The name shortlist dropped the combined winner.** A file whose name and contents both match could fall outside the 5,000 best names and come back as a contents-only match, below its own name tier and without the both-match bonus. Now every content match is checked against the query's name terms, the same substring test the name search uses, and a match keeps the name tier, its name score and the bonus. The other case, 10,000 exact code names hiding a close-named document, is in the names-only selection and goes to an issue.
+4. **The tokenizer can't be re-entered.** `Tokenizer::words` took `&self`, so a callback could call it again on the same tokenizer, and SQLite reused the buffer holding the outer word. `words` now takes `&mut self`, and a compile-fail doc test shows that a nested call does not build. Two tokenizers nested keep their own words, which a runtime test checks.
+5. **The query is cut on a character.** The window cut the query at 4,097 UTF-16 units, which can split an emoji's surrogate pair, and the IPC message then fails to decode. The cut now moves one unit on when it would split a pair, so the text sent is still more than 4,096 bytes when the query was longer and the backend still reports the cut. Only the first 4,098 units are copied.
+6. **Flashes and the footer.** Typing a new query after an empty one showed "Nothing found" for the new text for 60 ms, before its search ran. Now any input marks the contents as pending until that query's combined search answers. An `index-changed` event searched names first, which replaced content-only rows with the names-only list for 150 to 250 ms. It now runs the combined search directly and keeps the current rows until it answers, as the refresh after files are read does. While contents are pending and no name matches, the footer says "searching inside files" instead of "0 results".
+
+**As built.** Where it differs from the plan above, and why:
+- **The queue's update trigger had to change for item 2.** The crawler and the watcher write `files` with an upsert, and SQLite runs an upsert's update with ABORT, which overrides a trigger's `OR REPLACE`. So updating a file still in the queue failed (`UNIQUE constraint failed: extract_queue.file_id`) and the upsert rolled back. With migration 3 queuing every file read before it, each edit to such a file before its re-read would have been lost. Migration 3 recreates `files_au_extract` with `INSERT … ON CONFLICT (file_id) DO UPDATE`, which is not overridden. This is a probable cause of the stale rows in item 1 too, so it is noted on #14, which stays open for the watcher itself.
+- **The migration test stops a statement once.** `migration_3_stopped_at_any_point…` returned true from the progress handler from the stop point on, so it also stopped the rollback; with an `INSERT … SELECT` in the migration, that left the transaction open. It now stops exactly one step, and a stop after the commit counts as wholly migrated. Never half migrated is still what it checks, and opened again the file is queued once.
+- **Round 2's upgrade test is replaced.** `after_the_upgrade_the_first_scan_queues_nothing…` asserted the rule item 2 removes. Its replacements are the reviewers' two upgrade tests, adapted.
+- **The compile-fail doc test runs with `cargo test --doc`**, not in the `--lib` gate. Undoing the fix makes it compile, which fails it.
+- **10,000 exact code names hiding a close-named document** is #17: that document matches by name only, so item 3 doesn't reach it.
+
+**Tests.** `extract/find_round3_tests.rs` holds the reviewers' round 3 tests, adapted; `extract/tests.rs` holds item 1's four. Each fix was undone in place and its tests failed: 8 Rust mutations and 4 window mutations, all caught. The window's probes extend round 2's Chromium probes, and the query cut is also checked through Tauri's own IPC serializer and runtime, decoded by `serde_json`. Scripts and logs: `devos-work/reviews/s3fix4/RESULTS.md`, `mutations.py`, `mutations.log`, `ui/`.
+
+**In the window** (ba125fd, the frozen verify skill; report `devos-work/reviews/s3fix4/window/REPORT.txt`, PASS+NOTES). 411 .docx written in five bursts, 140 of them partial writes, were all read and found: in the database every files row matched its contents row and the file on disk, and 140 searches for phrases only one file holds each found that file with its real size (9.2 to 9.3 KB, never 495 B). No files row stayed stale, so the window did not exercise the worker's correction; the tests above do. Typing after "Nothing found" never showed it for the new text (6 trials), a file written during a content-only search never blanked its rows (12 trials, 0 blank reads of about 1,000), the pending footer never said "0 results", and a PDF's word showed "page 2" with the word in bold.

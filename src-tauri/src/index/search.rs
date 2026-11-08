@@ -3,8 +3,16 @@
 //! recency.
 
 use super::db::{row_to_record, FileRecord, Index, NOT_REMOVING};
+use super::query::Query;
+use super::stop::{stopped, Stop, Until};
+use super::tokenize::Tokenizer;
 use anyhow::Result;
+use regex::Regex;
+use rusqlite::Row;
+use std::cmp::Ordering;
 use std::collections::HashSet;
+use std::sync::LazyLock;
+use std::time::Duration;
 
 /// One result: the file and why it ranked where it did.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -13,42 +21,228 @@ pub struct Hit {
     pub file: FileRecord,
     pub score: f64,
     pub fuzzy: bool,
+    /// kind_prior plus place_prior, part of score.
+    #[serde(skip)]
+    pub(crate) prior: f64,
 }
 
-const COLUMNS: &str = "f.path, f.root, f.name, f.ext, f.is_dir, f.size, f.modified, f.inode";
-/// Candidates fetched before ranking.
-const CANDIDATES: usize = 5000;
+const COLUMNS: &str = "f.path, f.root, f.name, f.ext, f.is_dir, f.size, f.modified, f.inode, f.modified_ns";
+/// Name matches kept, the best by the caller's order; past it the search
+/// is marked capped.
+pub const CANDIDATES: usize = 5000;
+/// How long a name search may take: past it, it stops with what it found.
+pub const NAME_TIME: Duration = Duration::from_millis(400);
+
+/// The name matches a search kept.
+#[derive(Debug, Default)]
+pub(crate) struct Names {
+    /// Best first.
+    pub hits: Vec<Hit>,
+    /// More than CANDIDATES names matched: only the best were kept.
+    pub capped: bool,
+    /// The search stopped before every name was looked at.
+    pub timed_out: bool,
+}
 
 /// Searches names. now is the current time in Unix seconds, for recency.
 pub fn search(index: &Index, query: &str, limit: usize, now: i64) -> Result<Vec<Hit>> {
-    let query = query.trim();
-    if query.is_empty() {
-        return Ok(Vec::new());
-    }
-    let terms: Vec<String> = query.split_whitespace().map(|t| t.to_lowercase()).collect();
-    let mut hits: Vec<Hit> = candidates(index, &terms)?
-        .into_iter()
-        .map(|file| {
-            let score = rank(&file, &terms, now);
-            Hit { file, score, fuzzy: false }
-        })
-        .collect();
-    if hits.len() < limit && query.chars().count() >= 4 {
-        let seen: HashSet<String> = hits.iter().map(|h| h.file.path.clone()).collect();
-        for (file, shared) in fuzzy_candidates(index, &query.to_lowercase())? {
-            if !seen.contains(&file.path) {
-                let score = fuzzy_rank(&file, shared, now);
-                hits.push(Hit { file, score, fuzzy: true });
-            }
-        }
-    }
-    hits.sort_by(|a, b| b.score.total_cmp(&a.score).then_with(|| a.file.path.cmp(&b.file.path)));
+    search_until(index, query, limit, now, &Until::after(NAME_TIME))
+}
+
+/// search, stopping when until passes, with what it found.
+pub fn search_until(index: &Index, query: &str, limit: usize, now: i64, until: &Until) -> Result<Vec<Hit>> {
+    let query = Query::parse(query, &mut Tokenizer::contents(&index.conn)?)?;
+    let _stop = Stop::at(&index.conn, until);
+    let mut hits = matches(index, &query, now, until, Order::Score)?.hits;
     hits.truncate(limit);
     Ok(hits)
 }
 
-/// Files whose name contains every term.
-fn candidates(index: &Index, terms: &[String]) -> Result<Vec<FileRecord>> {
+/// The order name matches are kept and returned in, best first; ties go by path.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Order {
+    /// By score: the names-only search.
+    Score,
+    /// By kind and place, then exact before close names, then score: as
+    /// search over names and contents ranks.
+    Tiers,
+}
+
+/// What a match is ordered by, compared from the first number; higher is better.
+type Key = [f64; 3];
+
+impl Order {
+    fn key(self, prior: f64, fuzzy: bool, score: f64) -> Key {
+        match self {
+            Order::Score => [score, 0.0, 0.0],
+            Order::Tiers => [prior, if fuzzy { -1.0 } else { 0.0 }, score],
+        }
+    }
+
+    /// The best key an exact match of this kind and recency can have:
+    /// place_prior and the length penalties only lower it, and match
+    /// quality adds at most 100.
+    fn best_key(self, kind: f64, recency: f64) -> Key {
+        match self {
+            Order::Score => [kind + recency + 100.0, 0.0, 0.0],
+            Order::Tiers => [kind, 0.0, f64::INFINITY],
+        }
+    }
+}
+
+fn better(a: (&Key, &str), b: (&Key, &str)) -> Ordering {
+    let by_key = (0..3).map(|i| b.0[i].total_cmp(&a.0[i])).find(|o| o.is_ne()).unwrap_or(Ordering::Equal);
+    by_key.then_with(|| a.1.cmp(b.1))
+}
+
+/// The CANDIDATES best files in order whose name matches: those containing
+/// every term, and, unless more than CANDIDATES do, those whose names are
+/// close. Stops when until passes, with what it found (the caller holds a
+/// Stop for it).
+pub(crate) fn matches(index: &Index, query: &Query, now: i64, until: &Until, order: Order) -> Result<Names> {
+    let terms = &query.terms;
+    if terms.is_empty() {
+        return Ok(Names::default());
+    }
+    // A statement that finishes within SQLite's first check is never stopped.
+    if until.passed() {
+        return Ok(Names { timed_out: true, ..Names::default() });
+    }
+    let whole = terms.join(" ");
+    let mut best = Best { keep: CANDIDATES, items: Vec::new(), worst: None, dropped: false };
+    let finished = each_candidate(index, terms, |row| {
+        let file = Fields::of(row)?;
+        let kind = kind_prior(file.is_dir, file.ext);
+        if best.beats(&order.best_key(kind, recency(file.modified, now))) {
+            best.dropped = true;
+            return Ok(());
+        }
+        let prior = kind + place_prior(file.path);
+        let score = rank(file, terms, &whole, prior, now);
+        best.offer(order.key(prior, false, score), file.path, || Ok(Hit { file: row_to_record(row)?, score, fuzzy: false, prior }))
+    })?;
+    let mut timed_out = !finished;
+    if finished && !best.dropped && whole.chars().count() >= 4 {
+        // Every exact match is kept so far, so every one is in best.
+        let exact: HashSet<String> = best.items.iter().map(|(_, h)| h.file.path.clone()).collect();
+        timed_out = until.passed()
+            || !each_close_name(index, &whole, |row, shared| {
+                let file = Fields::of(row)?;
+                if exact.contains(file.path) {
+                    return Ok(());
+                }
+                let prior = kind_prior(file.is_dir, file.ext) + place_prior(file.path);
+                let score = fuzzy_rank(file, shared, now);
+                best.offer(order.key(prior, true, score), file.path, || Ok(Hit { file: row_to_record(row)?, score, fuzzy: true, prior }))
+            })?;
+    }
+    let (hits, capped) = best.into_sorted();
+    Ok(Names { hits, capped, timed_out })
+}
+
+/// The score a file whose name contains every term has in the name search;
+/// None if it doesn't. For a file found another way, which may be one of
+/// many names left out of the CANDIDATES best.
+pub(crate) fn name_score(file: &FileRecord, terms: &[String], prior: f64, now: i64) -> Option<f64> {
+    let name = file.name.to_lowercase();
+    if terms.is_empty() || !terms.iter().all(|t| name.contains(t.as_str())) {
+        return None;
+    }
+    let fields = Fields { path: &file.path, name: &file.name, ext: &file.ext, is_dir: file.is_dir, modified: file.modified };
+    Some(rank(fields, terms, &terms.join(" "), prior, now))
+}
+
+/// The keep best matches offered, in memory for at most twice as many.
+struct Best {
+    keep: usize,
+    items: Vec<(Key, Hit)>,
+    /// The last one kept at the last trim: one no better is not kept.
+    worst: Option<(Key, String)>,
+    /// A match was not kept, for keep better ones.
+    dropped: bool,
+}
+
+impl Best {
+    /// Whether every match kept now is better than one with this key.
+    fn beats(&self, key: &Key) -> bool {
+        self.worst.as_ref().is_some_and(|(worst, _)| better((worst, ""), (key, "")).is_lt())
+    }
+
+    /// Keeps the match make makes if it may be among the best, without
+    /// making it otherwise.
+    fn offer(&mut self, key: Key, path: &str, make: impl FnOnce() -> Result<Hit>) -> Result<()> {
+        if self.worst.as_ref().is_some_and(|(k, p)| better((&key, path), (k, p)).is_ge()) {
+            self.dropped = true;
+            return Ok(());
+        }
+        self.items.push((key, make()?));
+        if self.items.len() >= 2 * self.keep {
+            self.trim();
+        }
+        Ok(())
+    }
+
+    fn trim(&mut self) {
+        if self.items.len() > self.keep {
+            let last = self.keep - 1;
+            self.items.select_nth_unstable_by(last, |a, b| better((&a.0, &a.1.file.path), (&b.0, &b.1.file.path)));
+            self.items.truncate(self.keep);
+            self.worst = Some((self.items[last].0, self.items[last].1.file.path.clone()));
+            self.dropped = true;
+        }
+    }
+
+    /// Best first, and whether any were dropped.
+    fn into_sorted(mut self) -> (Vec<Hit>, bool) {
+        self.trim();
+        self.items.sort_by(|a, b| better((&a.0, &a.1.file.path), (&b.0, &b.1.file.path)));
+        (self.items.into_iter().map(|(_, hit)| hit).collect(), self.dropped)
+    }
+}
+
+/// What ranking reads of a file, borrowed from its row (COLUMNS).
+#[derive(Debug, Clone, Copy)]
+struct Fields<'a> {
+    path: &'a str,
+    name: &'a str,
+    ext: &'a str,
+    is_dir: bool,
+    modified: i64,
+}
+
+impl<'a> Fields<'a> {
+    fn of(row: &'a Row) -> Result<Fields<'a>> {
+        Ok(Fields {
+            path: row.get_ref(0)?.as_str()?,
+            name: row.get_ref(2)?.as_str()?,
+            ext: row.get_ref(3)?.as_str()?,
+            is_dir: row.get(4)?,
+            modified: row.get(6)?,
+        })
+    }
+}
+
+/// Calls each with every row the statement returns. Ok(false) if the
+/// statement was stopped first.
+fn each_row(index: &Index, sql: &str, params: &[String], mut each: impl FnMut(&Row) -> Result<()>) -> Result<bool> {
+    let mut stmt = index.conn.prepare_cached(sql)?;
+    let mut rows = match stmt.query(rusqlite::params_from_iter(params)) {
+        Err(e) if stopped(&e) => return Ok(false),
+        rows => rows?,
+    };
+    loop {
+        match rows.next() {
+            Ok(Some(row)) => each(row)?,
+            Ok(None) => return Ok(true),
+            Err(e) if stopped(&e) => return Ok(false),
+            Err(e) => return Err(e.into()),
+        }
+    }
+}
+
+/// Calls each with every file (COLUMNS) whose name contains every term.
+/// Ok(false) if stopped first.
+fn each_candidate(index: &Index, terms: &[String], each: impl FnMut(&Row) -> Result<()>) -> Result<bool> {
     let (long, short): (Vec<&String>, Vec<&String>) = terms.iter().partition(|t| t.chars().count() >= 3);
     let mut params: Vec<String> = Vec::new();
     let mut sql = if long.is_empty() {
@@ -65,34 +259,28 @@ fn candidates(index: &Index, terms: &[String]) -> Result<Vec<FileRecord>> {
         params.push(format!("%{}%", escape_like(term)));
         sql.push_str(&format!(" AND f.name LIKE ?{} ESCAPE '\\'", params.len()));
     }
-    sql.push_str(&format!(" LIMIT {CANDIDATES}"));
-    let mut stmt = index.conn.prepare_cached(&sql)?;
-    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), row_to_record)?;
-    Ok(rows.collect::<std::result::Result<_, _>>()?)
+    each_row(index, &sql, &params, each)
 }
 
-/// Files sharing trigrams with the query, for a misspelt one, with how many
-/// of its trigrams each shares.
-fn fuzzy_candidates(index: &Index, query: &str) -> Result<Vec<(FileRecord, usize)>> {
+/// Calls each with every file (COLUMNS) sharing at least half of the
+/// query's trigrams, for a misspelt one, with how many it shares.
+/// Ok(false) if stopped first.
+fn each_close_name(index: &Index, query: &str, mut each: impl FnMut(&Row, usize) -> Result<()>) -> Result<bool> {
     let grams = trigrams(query);
     if grams.is_empty() {
-        return Ok(Vec::new());
+        return Ok(true);
     }
     let phrase = grams.iter().map(|g| format!("\"{}\"", g.replace('"', "\"\""))).collect::<Vec<_>>().join(" OR ");
-    let sql = format!("SELECT {COLUMNS} FROM files_fts JOIN files f ON f.id = files_fts.rowid WHERE files_fts MATCH ?1 AND {NOT_REMOVING} LIMIT {CANDIDATES}");
-    let mut stmt = index.conn.prepare_cached(&sql)?;
-    let rows = stmt.query_map([phrase], row_to_record)?;
-    let mut out = Vec::new();
-    for row in rows {
-        let file = row?;
-        let name = file.name.to_lowercase();
+    let sql = format!("SELECT {COLUMNS} FROM files_fts JOIN files f ON f.id = files_fts.rowid WHERE files_fts MATCH ?1 AND {NOT_REMOVING}");
+    each_row(index, &sql, &[phrase], |row| {
+        let name = Fields::of(row)?.name.to_lowercase();
         let shared = grams.iter().filter(|g| name.contains(g.as_str())).count();
         // At least half the query's trigrams, so a few common ones don't match.
         if shared * 2 >= grams.len() {
-            out.push((file, shared));
+            each(row, shared)?;
         }
-    }
-    Ok(out)
+        Ok(())
+    })
 }
 
 fn trigrams(s: &str) -> Vec<String> {
@@ -116,23 +304,22 @@ fn escape_like(s: &str) -> String {
 /// shorter names and paths. A person searching their files means their
 /// documents far more often than a same-named source file in an SDK or a
 /// build product: "resume" should find a resume, not resume.py.
-fn rank(file: &FileRecord, terms: &[String], now: i64) -> f64 {
+fn rank(file: Fields, terms: &[String], whole: &str, prior: f64, now: i64) -> f64 {
     let name = file.name.to_lowercase();
     let stem = match name.rfind('.') {
         Some(i) if i > 0 && !file.is_dir => &name[..i],
         _ => name.as_str(),
     };
-    let whole = terms.join(" ");
     let mut score = if stem == whole || name == whole {
         100.0
-    } else if name.starts_with(&whole) {
+    } else if name.starts_with(whole) {
         70.0
     } else if terms.iter().all(|t| starts_word(&name, t)) {
         50.0
     } else {
         25.0
     };
-    score += kind_prior(file) + place_prior(&file.path);
+    score += prior;
     score += recency(file.modified, now);
     score -= (name.chars().count() as f64) * 0.05;
     score -= (file.path.matches('/').count() as f64) * 0.3;
@@ -147,11 +334,11 @@ pub const CODE: &[&str] = &[
 ];
 
 /// How likely a person searching is to want this kind of file.
-pub(crate) fn kind_prior(file: &FileRecord) -> f64 {
-    if file.is_dir {
+pub(crate) fn kind_prior(is_dir: bool, ext: &str) -> f64 {
+    if is_dir {
         return 5.0;
     }
-    match file.ext.as_str() {
+    match ext {
         "pdf" | "doc" | "docx" | "pages" | "rtf" | "odt" | "txt" | "md" | "epub" | "xls" | "xlsx" | "numbers" | "csv"
         | "ods" | "ppt" | "pptx" | "key" | "odp" | "eml" | "msg" => 40.0,
         "jpg" | "jpeg" | "png" | "heic" | "gif" | "webp" | "tiff" | "raw" | "mp4" | "mov" | "mkv" | "avi" | "mp3"
@@ -166,24 +353,30 @@ pub(crate) fn kind_prior(file: &FileRecord) -> f64 {
 /// Paths inside SDKs, dependencies and build products: rarely what a
 /// person is looking for, though they may live in a folder they chose.
 pub(crate) fn place_prior(path: &str) -> f64 {
-    const NOISE: &[&str] = &[
-        "/build/", "/dist/", "/out/", "/vendor/", "/third_party/", "/third-party/", "/site-packages/", "/checkouts/",
-        "/intermediates", ".noindex/", "/deriveddata", "/sourcepackages/", "-sdk/", "/sdk/", "/sdks/", "/lib/",
-        "/libs/", "/cache/", "/caches/", "/tmp/", "/target/", "/pods/", "/bin/",
-    ];
-    let lower = path.to_lowercase();
-    if NOISE.iter().any(|marker| lower.contains(marker)) {
+    if NOISE.is_match(path) {
         -40.0
     } else {
         0.0
     }
 }
 
-fn fuzzy_rank(file: &FileRecord, shared: usize, now: i64) -> f64 {
+/// Any of these, ignoring case, in one pass: place_prior runs on every name
+/// that matches.
+static NOISE: LazyLock<Regex> = LazyLock::new(|| {
+    const MARKERS: &[&str] = &[
+        "/build/", "/dist/", "/out/", "/vendor/", "/third_party/", "/third-party/", "/site-packages/", "/checkouts/",
+        "/intermediates", ".noindex/", "/deriveddata", "/sourcepackages/", "-sdk/", "/sdk/", "/sdks/", "/lib/",
+        "/libs/", "/cache/", "/caches/", "/tmp/", "/target/", "/pods/", "/bin/",
+    ];
+    let any: Vec<String> = MARKERS.iter().map(|m| regex::escape(m)).collect();
+    Regex::new(&format!("(?i){}", any.join("|"))).unwrap()
+});
+
+fn fuzzy_rank(file: Fields, shared: usize, now: i64) -> f64 {
     10.0 + shared as f64 * 2.0 + recency(file.modified, now) * 0.5 - (file.name.chars().count() as f64) * 0.05
 }
 
-fn recency(modified: i64, now: i64) -> f64 {
+pub(crate) fn recency(modified: i64, now: i64) -> f64 {
     let days = (now - modified).max(0) as f64 / 86_400.0;
     if days < 7.0 {
         15.0

@@ -30,6 +30,9 @@ pub struct FileRecord {
     pub size: i64,
     pub modified: i64,
     pub inode: i64,
+    /// The nanoseconds within modified's second, so an edit within the same
+    /// second is a change. None if not known: written before migration 3.
+    pub modified_ns: Option<i64>,
 }
 
 pub struct Index {
@@ -108,14 +111,15 @@ impl Index {
         let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         {
             let mut stmt = tx.prepare_cached(
-                "INSERT INTO files (path, root, name, ext, is_dir, size, modified, inode, seen)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                "INSERT INTO files (path, root, name, ext, is_dir, size, modified, inode, seen, modified_ns)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                  ON CONFLICT(path) DO UPDATE SET root = excluded.root, name = excluded.name,
                      ext = excluded.ext, is_dir = excluded.is_dir, size = excluded.size,
-                     modified = excluded.modified, inode = excluded.inode, seen = excluded.seen",
+                     modified = excluded.modified, inode = excluded.inode, seen = excluded.seen,
+                     modified_ns = excluded.modified_ns",
             )?;
             for r in records {
-                stmt.execute(params![r.path, r.root, r.name, r.ext, r.is_dir, r.size, r.modified, r.inode, seen])?;
+                stmt.execute(params![r.path, r.root, r.name, r.ext, r.is_dir, r.size, r.modified, r.inode, seen, r.modified_ns])?;
             }
         }
         tx.commit()?;
@@ -199,15 +203,16 @@ impl Index {
         let mut written = 0;
         {
             let mut stmt = tx.prepare_cached(&format!(
-                "INSERT INTO files (path, root, name, ext, is_dir, size, modified, inode, seen)
-                 SELECT ?1, owner, ?2, ?3, ?4, ?5, ?6, ?7, ?8 FROM (SELECT {} AS owner) WHERE owner IS NOT NULL
+                "INSERT INTO files (path, root, name, ext, is_dir, size, modified, inode, seen, modified_ns)
+                 SELECT ?1, owner, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9 FROM (SELECT {} AS owner) WHERE owner IS NOT NULL
                  ON CONFLICT(path) DO UPDATE SET root = excluded.root, name = excluded.name,
                      ext = excluded.ext, is_dir = excluded.is_dir, size = excluded.size,
-                     modified = excluded.modified, inode = excluded.inode, seen = excluded.seen",
+                     modified = excluded.modified, inode = excluded.inode, seen = excluded.seen,
+                     modified_ns = excluded.modified_ns",
                 folder_of("?1")
             ))?;
             for r in records {
-                written += stmt.execute(params![r.path, r.name, r.ext, r.is_dir, r.size, r.modified, r.inode, seen])?;
+                written += stmt.execute(params![r.path, r.name, r.ext, r.is_dir, r.size, r.modified, r.inode, seen, r.modified_ns])?;
             }
         }
         tx.commit()?;
@@ -309,7 +314,7 @@ impl Index {
         Ok(self
             .conn
             .query_row(
-                "SELECT path, root, name, ext, is_dir, size, modified, inode FROM files WHERE path = ?1",
+                "SELECT path, root, name, ext, is_dir, size, modified, inode, modified_ns FROM files WHERE path = ?1",
                 params![path],
                 row_to_record,
             )
@@ -458,6 +463,7 @@ pub(crate) fn row_to_record(r: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
         size: r.get(5)?,
         modified: r.get(6)?,
         inode: r.get(7)?,
+        modified_ns: r.get(8)?,
     })
 }
 
