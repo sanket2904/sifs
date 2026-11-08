@@ -5,7 +5,8 @@
 use super::*;
 use crate::extract::{store, worker, Registry, WorkerOptions};
 use crate::index::crawl::record_of;
-use crate::index::query::fold;
+use crate::index::stop::Until;
+use std::time::Instant;
 use rusqlite::params;
 
 const NOW: i64 = 1_800_000_000;
@@ -34,6 +35,7 @@ fn file(index: &mut Index, path: &str, modified: i64, parts: &[(&str, &str)]) ->
                 size,
                 modified,
                 inode: 1,
+                modified_ns: Some(0),
             }],
             1,
         )
@@ -46,8 +48,8 @@ fn file(index: &mut Index, path: &str, modified: i64, parts: &[(&str, &str)]) ->
         index
             .conn
             .execute(
-                "INSERT INTO extracts (file_id, reader, version, modified, size, status, millis, read_at)
-                 VALUES (?1, 'text', 1, ?2, ?3, 'done', 0, ?2)",
+                "INSERT INTO extracts (file_id, reader, version, modified, size, status, millis, read_at, modified_ns)
+                 VALUES (?1, 'text', 1, ?2, ?3, 'done', 0, ?2, 0)",
                 params![id, modified, size],
             )
             .unwrap();
@@ -67,7 +69,7 @@ fn part(index: &Index, file_id: i64, n: i64, label: &str, text: &str) {
 }
 
 fn all(index: &Index, query: &str, limit: usize) -> Results {
-    search_all(index, query, limit, NOW, Duration::from_secs(10)).unwrap()
+    search_all(index, query, limit, NOW, &Until::after(Duration::from_secs(10))).unwrap()
 }
 
 fn paths(results: &Results) -> Vec<&str> {
@@ -106,7 +108,7 @@ fn a_control_character_typed_separates_words_and_never_errors() {
     let (_dir, mut index) = db();
     file(&mut index, "/home/notes.txt", NOW, &[("", "tapir zebra okapi")]);
     for q in ["\0", "tapir\0", "tapir\0zebra", "tapir \0 zebra", "tapir\0okapi", "tapir \0", "\u{1}\u{2}\u{3}\u{7f}"] {
-        let got = search_all(&index, q, 60, NOW, CONTENT_TIME);
+        let got = search_all(&index, q, 60, NOW, &Until::after(CONTENT_TIME));
         assert!(got.is_ok(), "{q:?}: {got:?}");
     }
     assert_eq!(paths(&all(&index, "tapir\0okapi", 60)), ["/home/notes.txt"]);
@@ -139,12 +141,12 @@ fn many_words_never_error_and_those_past_the_limit_are_reported() {
     let (_dir, mut index) = db();
     file(&mut index, "/home/notes.txt", NOW, &[("", "a tapir")]);
     let same = "a ".repeat(1100);
-    let got = search_all(&index, &same, 60, NOW, CONTENT_TIME).unwrap();
+    let got = search_all(&index, &same, 60, NOW, &Until::after(CONTENT_TIME)).unwrap();
     assert_eq!(paths(&got), ["/home/notes.txt"]);
-    assert_eq!(got.ignored_words, 0, "the same word repeated is one word");
+    assert!(!got.words_left_out, "the same word repeated is one word");
     let distinct: Vec<String> = (0..1100).map(|i| format!("w{i}")).collect();
-    let got = search_all(&index, &distinct.join(" "), 60, NOW, CONTENT_TIME).unwrap();
-    assert_eq!(got.ignored_words, 1100 - crate::index::query::MAX_WORDS);
+    let got = search_all(&index, &distinct.join(" "), 60, NOW, &Until::after(CONTENT_TIME)).unwrap();
+    assert!(got.words_left_out);
     // Long words of varied letters: the typo-tolerant name search ORs
     // their trigrams.
     let mut seed: u32 = 1;
@@ -158,7 +160,7 @@ fn many_words_never_error_and_those_past_the_limit_are_reported() {
                 .collect()
         })
         .collect();
-    assert!(search_all(&index, &long.join(" "), 60, NOW, CONTENT_TIME).is_ok());
+    assert!(search_all(&index, &long.join(" "), 60, NOW, &Until::after(CONTENT_TIME)).is_ok());
 }
 
 #[test]
@@ -167,24 +169,6 @@ fn a_word_longer_than_kept_matches_by_its_start() {
     let word = "x".repeat(100);
     file(&mut index, "/home/notes.txt", NOW, &[("", &format!("{word} tapir"))]);
     assert_eq!(paths(&all(&index, &format!("{word} tapir"), 60)), ["/home/notes.txt"]);
-}
-
-#[test]
-fn words_are_split_and_folded_as_the_index_splits_and_folds_them() {
-    let (_dir, index) = db();
-    let text = "Résumé re\u{301}sume\u{301} Việt ẞtraße İstanbul λόγος ſ µm 𐐀 ＡＢＣ ﬁle Ⓐbc I❤️you 1️⃣ \u{e000}x \
-                किराया शर्मा 東京 alpha-beta_gamma o'brien naïve CAFÉ";
-    index.conn.execute_batch(concat!(
-        "CREATE VIRTUAL TABLE temp.t USING fts5(text, tokenize=\"unicode61 remove_diacritics 2 categories 'L* N* Co M*' separators '",
-        "\u{fe0e}\u{fe0f}\u{20e3}",
-        "'\"); CREATE VIRTUAL TABLE temp.v USING fts5vocab(temp, t, 'instance');"
-    ))
-    .unwrap();
-    index.conn.execute("INSERT INTO temp.t (text) VALUES (?1)", [text]).unwrap();
-    let mut stmt = index.conn.prepare("SELECT term FROM temp.v ORDER BY offset").unwrap();
-    let sqlite: Vec<String> = stmt.query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
-    let ours: Vec<String> = WORD.find_iter(text).map(|m| fold(m.as_str())).filter(|w| !w.is_empty()).collect();
-    assert_eq!(ours, sqlite);
 }
 
 // --- what is found ---
@@ -330,7 +314,7 @@ fn a_snippet_is_around_the_first_word_with_every_word_marked() {
     assert_eq!(marked(&found), ["Résumé", "résumé"]);
     let shown = rebuilt(&found);
     assert!(shown.starts_with('…') && shown.ends_with('…'), "{shown}");
-    assert!(shown.chars().count() <= SNIPPET_CHARS + 2, "{shown}");
+    assert!(shown.chars().count() <= SNIPPET_CHARS, "{shown}");
     assert!(shown.starts_with("…words ") || shown.starts_with("…in ") || shown.starts_with("…lead "), "starts at a whole word: {shown}");
 }
 
@@ -342,7 +326,7 @@ fn only_the_results_kept_are_read_for_snippets() {
     for i in 0..300 {
         file(&mut index, &format!("/home/n{i:03}.txt"), NOW, &[("", &text)]);
     }
-    let got = search_all(&index, "tapir", 5, NOW, CONTENT_TIME).unwrap();
+    let got = search_all(&index, "tapir", 5, NOW, &Until::after(CONTENT_TIME)).unwrap();
     assert!(!got.contents_timed_out);
     assert_eq!(got.hits.len(), 5);
     assert!(got.hits.iter().all(|h| h.found.as_ref().is_some_and(|f| marked(f) == ["tapir"])));
@@ -366,7 +350,7 @@ fn matching_parts_are_found_without_reading_their_text() {
         now
     };
     let before = pages_read();
-    let got = search_all(&index, "tapir", 1, NOW, Duration::from_secs(10)).unwrap();
+    let got = search_all(&index, "tapir", 1, NOW, &Until::after(Duration::from_secs(10))).unwrap();
     assert_eq!(got.hits.len(), 1);
     let read = pages_read() - before;
     // Reading the 2,000 parts' own rows would be over 500 pages.
@@ -375,10 +359,12 @@ fn matching_parts_are_found_without_reading_their_text() {
 
 #[test]
 fn looking_for_a_snippet_stops_at_the_deadline() {
-    let query = Query::parse("tapir");
+    let (_dir, index) = db();
+    let tokenizer = Tokenizer::contents(&index.conn).unwrap();
+    let query = Query::parse("tapir", &tokenizer).unwrap();
     let text = format!("{}tapir", "word ".repeat(100_000));
-    assert!(snippet(&text, &query, Instant::now() + Duration::from_secs(60)).is_some());
-    assert_eq!(snippet(&text, &query, Instant::now()), None);
+    assert!(snippet(&tokenizer, &text, &query, &Until::after(Duration::from_secs(60))).unwrap().is_some());
+    assert_eq!(snippet(&tokenizer, &text, &query, &Until::after(Duration::ZERO)).unwrap(), None);
 }
 
 #[test]
@@ -390,7 +376,7 @@ fn a_part_repeating_the_word_is_searched_within_the_time_limit() {
         drop(index);
         let index = Index::open(&dir.path().join("find.db")).unwrap();
         let started = Instant::now();
-        let got = search_all(&index, word, 60, NOW, CONTENT_TIME).unwrap();
+        let got = search_all(&index, word, 60, NOW, &Until::after(CONTENT_TIME)).unwrap();
         let took = started.elapsed();
         assert!(took < CONTENT_TIME + Duration::from_millis(100), "{word} x{times}: {took:?}");
         assert_eq!(got.hits.len(), 1);
@@ -423,7 +409,7 @@ fn labels_scripts_and_query_syntax() {
         assert_eq!(hit.found.as_ref().unwrap().label, want);
     }
     for q in ["*", "^", "\"", "\u{1}", "\u{2}", "\u{3}", "\u{7f}", "AND", "NEAR(alpha beta)", "text:alpha", "alpha OR beta"] {
-        let got = search_all(&index, q, 60, NOW, CONTENT_TIME);
+        let got = search_all(&index, q, 60, NOW, &Until::after(CONTENT_TIME));
         assert!(got.is_ok(), "{q:?}: {got:?}");
     }
 }
@@ -449,16 +435,16 @@ fn each_file_is_found_once_with_the_label_of_the_part_its_words_are_in() {
 // --- the time limit and the connection ---
 
 #[test]
-fn a_search_stopped_at_its_time_returns_names_only_and_leaves_the_connection_clean() {
+fn a_search_stopped_at_its_time_says_so_and_leaves_the_connection_clean() {
     let (_dir, mut index) = db();
-    let named = file(&mut index, "/home/Documents/capybara.txt", NOW, &[]);
+    file(&mut index, "/home/Documents/capybara.txt", NOW, &[]);
     for i in 0..205 {
         file(&mut index, &format!("/home/Documents/n{i}.txt"), NOW, &[("", "capybara")]);
     }
-    let stopped = search_all(&index, "capybara", 60, NOW, Duration::ZERO).unwrap();
-    assert!(stopped.contents_timed_out);
+    let stopped = search_all(&index, "capybara", 60, NOW, &Until::after(Duration::ZERO)).unwrap();
+    assert!(stopped.names_timed_out && stopped.contents_timed_out);
     assert!(!stopped.contents_capped, "205 parts are under the cap");
-    assert_eq!(paths(&stopped), [named.as_str()]);
+    assert!(stopped.hits.is_empty());
     plain_sql_runs(&index);
     let got = all(&index, "capybara", 500);
     assert_eq!(got.hits.len(), 206, "no cap on files matching by contents");
@@ -474,7 +460,7 @@ fn a_failed_search_leaves_the_connection_clean() {
     let (_dir, mut index) = db();
     file(&mut index, "/home/notes.txt", NOW, &[("", "tapir")]);
     index.conn.execute_batch("ALTER TABLE extracts RENAME COLUMN size TO missing_size").unwrap();
-    assert!(search_all(&index, "tapir", 60, NOW, Duration::ZERO).is_err());
+    assert!(search_all(&index, "tapir", 60, NOW, &Until::after(Duration::from_secs(10))).is_err());
     plain_sql_runs(&index);
 }
 
@@ -547,3 +533,6 @@ fn a_reader_sees_each_commit_and_the_writer_commits_during_its_reads() {
     reader.conn.execute_batch("COMMIT").unwrap();
     assert_eq!(names(&all(&reader, "latestword", 60)), ["notes.txt"]);
 }
+
+#[path = "find_review_tests.rs"]
+mod review_round2;

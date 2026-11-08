@@ -18,9 +18,15 @@
 	/** @type {{ path: string, status: string, error: string }[] | null} */
 	let failures = $state(null);
 	let error = $state('');
+	/** The current search's error, apart from other operations' errors. */
+	let searchError = $state('');
+	let namesSlow = $state(false);
+	let namesCapped = $state(false);
 	let contentsSlow = $state(false);
 	let contentsCapped = $state(false);
-	let ignoredWords = $state(0);
+	let wordsLeftOut = $state(false);
+	/** Names are shown and contents not yet: an empty list is not "nothing found" yet. */
+	let contentsPending = $state(false);
 	let input;
 	let timer;
 	/** @type {ReturnType<typeof setTimeout> | undefined} */
@@ -28,6 +34,8 @@
 	/** @type {ReturnType<typeof setTimeout> | undefined} */
 	let refreshTimer;
 	let latest = 0;
+	/** index::query::MAX_BYTES + 1: the query sent is bounded, and the backend still sees that it was cut. */
+	const SENT_CHARS = 4097;
 	/** What the last search was for. */
 	let searched = '';
 	/**
@@ -47,24 +55,24 @@
 	async function search() {
 		cancel();
 		const id = latest;
-		const q = query.trim();
-		searched = q;
+		const q = query.trim().slice(0, SENT_CHARS);
+		searched = query.trim();
 		if (!q) {
 			clear();
 			return;
 		}
 		const started = performance.now();
+		contentsPending = true;
 		try {
 			const hits = await invoke('search_files', { query: q, limit: 60 });
 			if (id !== latest) return;
 			show(hits);
-			contentsSlow = false;
-			contentsCapped = false;
-			ignoredWords = 0;
+			setFlags({});
+			searchError = '';
 			searchMs = Math.round(performance.now() - started);
 		} catch (e) {
 			if (id !== latest) return;
-			error = String(e);
+			searchError = String(e);
 		}
 		// Names show at once; names and contents together replace them once
 		// typing pauses.
@@ -79,17 +87,29 @@
 	async function searchAll(id, q, started) {
 		if (id !== latest) return;
 		try {
-			const found = await invoke('search_all', { query: q, limit: 60 });
+			const found = await invoke('search_all', { query: q.slice(0, SENT_CHARS), limit: 60 });
 			if (id !== latest) return;
 			show(found.hits);
-			contentsSlow = found.contents_timed_out;
-			contentsCapped = found.contents_capped;
-			ignoredWords = found.ignored_words ?? 0;
+			setFlags(found);
+			searchError = '';
 			searchMs = Math.round(performance.now() - started);
 		} catch (e) {
 			if (id !== latest) return;
-			error = String(e);
+			searchError = String(e);
 		}
+		contentsPending = false;
+	}
+
+	/**
+	 * What a search_all reply says it left out; {} for none.
+	 * @param {{ names_timed_out?: boolean, names_capped?: boolean, contents_timed_out?: boolean, contents_capped?: boolean, words_left_out?: boolean }} found
+	 */
+	function setFlags(found) {
+		namesSlow = !!found.names_timed_out;
+		namesCapped = !!found.names_capped;
+		contentsSlow = !!found.contents_timed_out;
+		contentsCapped = !!found.contents_capped;
+		wordsLeftOut = !!found.words_left_out;
 	}
 
 	/** Searches names and contents again, for files read inside since: at most every 2 s. */
@@ -107,9 +127,9 @@
 	function clear() {
 		results = [];
 		searchMs = null;
-		contentsSlow = false;
-		contentsCapped = false;
-		ignoredWords = 0;
+		searchError = '';
+		contentsPending = false;
+		setFlags({});
 	}
 
 	/** @param {any[]} hits */
@@ -253,7 +273,11 @@
 			}),
 			listen('index-changed', () => query && search())
 		];
-		return () => unlisten.forEach((p) => p.then((f) => f()));
+		return () => {
+			cancel();
+			clearTimeout(refreshTimer);
+			unlisten.forEach((p) => p.then((f) => f()));
+		};
 	});
 </script>
 
@@ -279,6 +303,7 @@
 		</div>
 	{/if}
 	{#if error}<div class="error">{error}</div>{/if}
+	{#if searchError}<div class="error">{searchError}</div>{/if}
 
 	{#if showSettings && settings}
 		<section class="settings">
@@ -351,11 +376,11 @@
 			</li>
 		{/each}
 	</ul>
-	{#if query && results.length === 0 && searchMs !== null}
+	{#if query && results.length === 0 && searchMs !== null && !contentsPending}
 		<p class="muted center">Nothing found for “{query}”.</p>
 	{/if}
 	<footer class="muted">
-		{#if searchMs !== null}{results.length} results in {searchMs} ms{' · '}{/if}{#if contentsSlow}contents took too long{' · '}{/if}{#if contentsCapped}very common words: only some files' contents searched{' · '}{/if}{#if ignoredWords}too many words, some not searched{' · '}{/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
+		{#if searchMs !== null}{results.length} results in {searchMs} ms{' · '}{/if}{#if namesSlow}names took too long{' · '}{/if}{#if namesCapped}many names match: the best 5,000 compared{' · '}{/if}{#if contentsSlow}contents took too long{' · '}{/if}{#if contentsCapped}very common words: only some files' contents searched{' · '}{/if}{#if searchMs !== null && contents?.waiting}still reading {contents.waiting.toLocaleString()} files{' · '}{/if}{#if wordsLeftOut}too many words, some not searched{' · '}{/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
 	</footer>
 </main>
 

@@ -6,8 +6,10 @@ use crate::index::db::Index;
 use crate::index::folders::{Event, Folders};
 use crate::index::ignore::Rules;
 use crate::index::search::{self, Hit};
+use crate::index::stop::Until;
 use crate::index::watch::Watch;
 use serde::Serialize;
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::menu::{Menu, MenuItem};
@@ -23,6 +25,11 @@ struct AppState {
     /// The connection searches over contents use, so a slow one never
     /// holds up names or settings.
     contents_reader: Mutex<Index>,
+    /// The newest search_all's number: an older one still running, or
+    /// waiting for contents_reader, stops.
+    searches: Arc<AtomicU64>,
+    /// The same for search_files.
+    name_searches: Arc<AtomicU64>,
     rules: Arc<Mutex<Rules>>,
     watch: Mutex<Option<Watch>>,
     /// Scans and removals of folders, in the background.
@@ -61,21 +68,30 @@ fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
+/// Names only, off the main thread (a short query compares most names),
+/// within NAME_TIME from now. A newer call stops this one.
 #[tauri::command]
-fn search_files(state: State<AppState>, query: String, limit: Option<usize>) -> Result<Vec<Hit>, String> {
-    let index = state.reader.lock().unwrap();
-    search::search(&index, &query, limit.unwrap_or(60).min(500), now()).map_err(err)
+async fn search_files(app: AppHandle, query: String, limit: Option<usize>) -> Result<Vec<Hit>, String> {
+    let until = Until::after(search::NAME_TIME).or_newer(&app.state::<AppState>().name_searches);
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let index = state.reader.lock().unwrap();
+        search::search_until(&index, &query, limit.unwrap_or(60).min(500), now(), &until).map_err(err)
+    })
+    .await
+    .map_err(err)?
 }
 
-/// Names and contents ranked together, off the main thread; a content
-/// query over its time limit returns names only, marked.
+/// Names and contents ranked together, off the main thread, within
+/// CONTENT_TIME from now (waiting for the connection included); past it,
+/// what was found, marked. A newer call stops this one.
 #[tauri::command]
 async fn search_all(app: AppHandle, query: String, limit: Option<usize>) -> Result<extract::find::Results, String> {
+    let until = Until::after(extract::find::CONTENT_TIME).or_newer(&app.state::<AppState>().searches);
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let index = state.contents_reader.lock().unwrap();
-        extract::find::search_all(&index, &query, limit.unwrap_or(60).min(500), now(), extract::find::CONTENT_TIME)
-            .map_err(err)
+        extract::find::search_all(&index, &query, limit.unwrap_or(60).min(500), now(), &until).map_err(err)
     })
     .await
     .map_err(err)?
@@ -250,6 +266,8 @@ pub fn run() {
                 home,
                 reader: Mutex::new(index),
                 contents_reader,
+                searches: Arc::default(),
+                name_searches: Arc::default(),
                 rules,
                 watch: Mutex::new(watch),
                 folders,

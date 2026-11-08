@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use rusqlite::{Connection, TransactionBehavior};
 
 /// Migration n + 1 is MIGRATIONS[n].
-const MIGRATIONS: &[&str] = &[CONTENTS, CONTENT_OWNERS];
+pub(crate) const MIGRATIONS: &[&str] = &[CONTENTS, CONTENT_OWNERS, NANOSECONDS];
 
 /// Version 1: reading inside files. What was read from each file, its text
 /// by page or part with a full-text index over it, the facts read alongside,
@@ -129,6 +129,44 @@ END;
 /// holds its text, so most rows fill a page: search finds the files of
 /// thousands of matching parts through this index, reading far fewer pages.
 const CONTENT_OWNERS: &str = "CREATE INDEX contents_owner ON contents(id, file_id);";
+
+/// Version 3: file times to the nanosecond, so an edit within the same
+/// second that keeps the size is a change: the file is read again, and its
+/// old words are not found meanwhile. NULL is a time written before this
+/// version, not known to the nanosecond: filling it in queues nothing (the
+/// first scan after the upgrade does it for every file), and it compares
+/// to the second, as before.
+const NANOSECONDS: &str = r#"
+ALTER TABLE files ADD COLUMN modified_ns INTEGER;
+ALTER TABLE extracts ADD COLUMN modified_ns INTEGER;
+ALTER TABLE extract_queue ADD COLUMN modified_ns INTEGER;
+
+DROP TRIGGER files_ai_extract;
+CREATE TRIGGER files_ai_extract AFTER INSERT ON files BEGIN
+    INSERT OR REPLACE INTO extract_queue (file_id, priority, modified, size, attempts, modified_ns)
+    SELECT new.id, CASE WHEN new.modified >= unixepoch() - 604800 THEN 0 ELSE k.priority END,
+           new.modified, new.size, 0, new.modified_ns
+    FROM extract_kinds k WHERE k.ext = new.ext AND (new.is_dir = 0 OR k.packages = 1);
+END;
+DROP TRIGGER files_au_extract;
+CREATE TRIGGER files_au_extract AFTER UPDATE OF modified, size, modified_ns ON files
+WHEN new.modified IS NOT old.modified OR new.size IS NOT old.size
+    OR (old.modified_ns IS NOT NULL AND new.modified_ns IS NOT old.modified_ns) BEGIN
+    INSERT OR REPLACE INTO extract_queue (file_id, priority, modified, size, attempts, modified_ns)
+    SELECT new.id, 0, new.modified, new.size, 0, new.modified_ns
+    FROM extract_kinds k WHERE k.ext = new.ext AND (new.is_dir = 0 OR k.packages = 1);
+END;
+DROP TRIGGER files_au_unread;
+CREATE TRIGGER files_au_unread AFTER UPDATE OF is_dir, modified, size, modified_ns ON files
+WHEN (new.is_dir IS NOT old.is_dir OR new.modified IS NOT old.modified OR new.size IS NOT old.size
+        OR (old.modified_ns IS NOT NULL AND new.modified_ns IS NOT old.modified_ns))
+    AND NOT EXISTS (SELECT 1 FROM extract_kinds k WHERE k.ext = new.ext AND (new.is_dir = 0 OR k.packages = 1)) BEGIN
+    DELETE FROM contents WHERE file_id = new.id;
+    DELETE FROM facts WHERE file_id = new.id;
+    DELETE FROM extracts WHERE file_id = new.id;
+    DELETE FROM extract_queue WHERE file_id = new.id;
+END;
+"#;
 
 /// The schema version this build knows.
 pub const VERSION: i64 = MIGRATIONS.len() as i64;

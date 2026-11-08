@@ -7,6 +7,8 @@ pub mod ignore;
 pub mod migrate;
 pub mod query;
 pub mod search;
+pub mod stop;
+pub mod tokenize;
 pub mod watch;
 
 #[cfg(test)]

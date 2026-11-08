@@ -274,11 +274,11 @@ fn the_sink_stops_a_reader_past_its_time_limit() {
 // --- the migration ---
 
 #[test]
-fn a_new_index_reaches_version_2_with_every_table() {
+fn a_new_index_reaches_version_3_with_every_table() {
     let home = Home::new();
     let index = home.open();
-    assert_eq!(count(&index, "PRAGMA user_version"), 2);
-    assert_eq!(crate::index::migrate::VERSION, 2);
+    assert_eq!(count(&index, "PRAGMA user_version"), 3);
+    assert_eq!(crate::index::migrate::VERSION, 3);
     for table in ["extracts", "contents", "contents_fts", "facts", "extract_queue", "extract_kinds", "contents_owner"] {
         let n = count(&index, &format!("SELECT COUNT(*) FROM sqlite_master WHERE name = '{table}'"));
         assert_eq!(n, 1, "{table}");
@@ -292,7 +292,7 @@ fn a_new_index_reaches_version_2_with_every_table() {
     }
     drop(index);
     // Opening again changes nothing.
-    assert_eq!(count(&home.open(), "PRAGMA user_version"), 2);
+    assert_eq!(count(&home.open(), "PRAGMA user_version"), 3);
 }
 
 #[test]
@@ -316,7 +316,7 @@ fn a_phase_1_index_is_migrated_and_its_files_are_queued() {
         assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
     }
     let mut index = home.open();
-    assert_eq!(count(&index, "PRAGMA user_version"), 2);
+    assert_eq!(count(&index, "PRAGMA user_version"), 3);
     assert_eq!(index.count().unwrap(), 5, "the files are kept");
     assert_eq!(queued(&index), 0, "nothing is queued by the migration itself");
     let registry = Registry::platform();
@@ -1072,8 +1072,14 @@ fn the_migration_keeps_every_phase_1_row() {
     }
     let dump = |conn: &rusqlite::Connection| -> Vec<String> {
         let mut out = Vec::new();
-        for table in ["files", "folders", "ignore_patterns", "meta"] {
-            let mut stmt = conn.prepare(&format!("SELECT * FROM {table} ORDER BY 1")).unwrap();
+        // The columns phase 1 wrote; migration 3 adds modified_ns.
+        for (table, columns) in [
+            ("files", "id, path, root, name, ext, is_dir, size, modified, inode, seen"),
+            ("folders", "*"),
+            ("ignore_patterns", "*"),
+            ("meta", "*"),
+        ] {
+            let mut stmt = conn.prepare(&format!("SELECT {columns} FROM {table} ORDER BY 1")).unwrap();
             let n = stmt.column_count();
             let rows = stmt
                 .query_map([], |r| {
@@ -1107,7 +1113,8 @@ fn the_migration_keeps_every_phase_1_row() {
     assert_eq!(dump(&home.open().conn), before);
     let index = home.open();
     assert_eq!(dump(&index.conn), before, "a second open changes nothing");
-    assert_eq!(count(&index, "PRAGMA user_version"), 2);
+    assert_eq!(count(&index, "PRAGMA user_version"), 3);
+    assert_eq!(count(&index, "SELECT COUNT(*) FROM files WHERE modified_ns IS NOT NULL"), 0, "not known to the nanosecond");
 }
 
 #[test]
@@ -2299,7 +2306,7 @@ fn read_home(files: &[(&str, &[u8])]) -> (Home, Index) {
 }
 
 fn all(index: &Index, query: &str) -> super::find::Results {
-    super::find::search_all(index, query, 60, now(), Duration::from_secs(30)).unwrap()
+    super::find::search_all(index, query, 60, now(), &crate::index::stop::Until::after(Duration::from_secs(30))).unwrap()
 }
 
 fn names_of(results: &super::find::Results) -> Vec<String> {
@@ -2348,7 +2355,7 @@ fn every_word_must_be_in_one_part_and_the_last_matches_as_a_prefix_from_three_le
 fn query_syntax_is_never_interpreted() {
     let (_home, index) = read_home(&[("Documents/a.txt", b"tapir and okapi near the river: yes")]);
     for query in ["\"tapir", "tapir*", "tapir AND", "NEAR(tapir okapi)", "river:", "-tapir", "(okapi", "\"", "*", "a\"b", "^tapir", "tapir OR zebra"] {
-        let results = super::find::search_all(&index, query, 60, now(), Duration::from_secs(30));
+        let results = super::find::search_all(&index, query, 60, now(), &crate::index::stop::Until::after(Duration::from_secs(30)));
         assert!(results.is_ok(), "{query}: {results:?}");
     }
     assert_eq!(names_of(&all(&index, "tapir AND")), ["a.txt"], "AND is a word here, and in the text");
@@ -2400,15 +2407,15 @@ fn a_removed_folder_and_old_words_are_never_found() {
 }
 
 #[test]
-fn a_content_query_past_its_time_returns_names_only() {
+fn a_search_past_its_time_says_so_for_names_and_contents() {
     // Enough matches that the query runs past SQLite's first check.
     let many: Vec<(String, &[u8])> = (0..300).map(|i| (format!("Documents/n{i}.txt"), b"a tapir" as &[u8])).collect();
     let mut files: Vec<(&str, &[u8])> = many.iter().map(|(p, b)| (p.as_str(), *b)).collect();
     files.push(("Documents/tapir.txt", b"x"));
     let (_home, index) = read_home(&files);
-    let results = super::find::search_all(&index, "tapir", 60, now(), Duration::ZERO).unwrap();
-    assert!(results.contents_timed_out && !results.contents_capped);
-    assert_eq!(names_of(&results), ["tapir.txt"]);
+    let results = super::find::search_all(&index, "tapir", 60, now(), &crate::index::stop::Until::after(Duration::ZERO)).unwrap();
+    assert!(results.names_timed_out && results.contents_timed_out && !results.contents_capped);
+    assert!(results.hits.is_empty(), "the time limit covers names too");
     // And the connection is fine afterwards.
     assert!(!all(&index, "tapir").contents_timed_out);
 }

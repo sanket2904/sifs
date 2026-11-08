@@ -22,6 +22,8 @@ pub struct Job {
     pub ext: String,
     pub modified: i64,
     pub size: i64,
+    /// As the queue has it: None if written before migration 3.
+    pub modified_ns: Option<i64>,
     /// Including this claim.
     pub attempts: i64,
 }
@@ -51,6 +53,7 @@ pub struct Extract {
     pub reader: &'static str,
     pub version: u32,
     pub modified: i64,
+    pub modified_ns: i64,
     pub size: i64,
     pub status: Status,
     pub error: Option<String>,
@@ -146,12 +149,13 @@ pub fn reconcile(index: &mut Index, registry: &Registry, now: i64) -> Result<usi
         let hi = lo + RECONCILE_CHUNK;
         let _write = writer();
         queued += index.conn.execute(
-            "INSERT OR IGNORE INTO extract_queue (file_id, priority, modified, size, attempts)
-             SELECT f.id, CASE WHEN f.modified >= ?1 - 604800 THEN 0 ELSE k.priority END, f.modified, f.size, 0
+            "INSERT OR IGNORE INTO extract_queue (file_id, priority, modified, size, attempts, modified_ns)
+             SELECT f.id, CASE WHEN f.modified >= ?1 - 604800 THEN 0 ELSE k.priority END, f.modified, f.size, 0,
+                    f.modified_ns
              FROM files f JOIN extract_kinds k ON k.ext = f.ext LEFT JOIN extracts e ON e.file_id = f.id
              WHERE f.id > ?2 AND f.id <= ?3 AND (f.is_dir = 0 OR k.packages = 1)
                AND (e.file_id IS NULL OR e.modified != f.modified OR e.size != f.size
-                    OR e.reader != k.reader OR e.version < k.version)",
+                    OR e.modified_ns != f.modified_ns OR e.reader != k.reader OR e.version < k.version)",
             params![now, lo, hi],
         )?;
         lo = hi;
@@ -171,8 +175,8 @@ pub fn requeue_not_downloaded(index: &mut Index) -> Result<usize> {
     let _write = writer();
     let tx = index.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let n = tx.execute(
-        "INSERT OR IGNORE INTO extract_queue (file_id, priority, modified, size, attempts)
-         SELECT f.id, k.priority, f.modified, f.size, 0
+        "INSERT OR IGNORE INTO extract_queue (file_id, priority, modified, size, attempts, modified_ns)
+         SELECT f.id, k.priority, f.modified, f.size, 0, f.modified_ns
          FROM extracts e JOIN files f ON f.id = e.file_id JOIN extract_kinds k ON k.ext = f.ext
          WHERE e.status = 'skipped' AND e.error = ?1",
         params![platform::NOT_DOWNLOADED],
@@ -190,7 +194,7 @@ pub fn requeue_not_downloaded(index: &mut Index) -> Result<usize> {
 pub fn claim(index: &mut Index, limit: usize) -> Result<Vec<Job>> {
     let _write = writer();
     let tx = index.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let select = "SELECT q.file_id, f.path, f.ext, q.modified, q.size, q.attempts + 1
+    let select = "SELECT q.file_id, f.path, f.ext, q.modified, q.size, q.attempts + 1, q.modified_ns
                   FROM extract_queue q JOIN files f ON f.id = q.file_id";
     let to_job = |r: &rusqlite::Row| {
         Ok(Job {
@@ -200,6 +204,7 @@ pub fn claim(index: &mut Index, limit: usize) -> Result<Vec<Job>> {
             modified: r.get(3)?,
             size: r.get(4)?,
             attempts: r.get(5)?,
+            modified_ns: r.get(6)?,
         })
     };
     let mut jobs: Vec<Job> = {
@@ -235,9 +240,10 @@ pub fn write_results(index: &mut Index, results: &[Finished], now: i64) -> Resul
         // Only the queue row as claimed: if the file changed meanwhile, the
         // trigger has replaced it with the new time and size, and it stays.
         let mut dequeue =
-            tx.prepare_cached("DELETE FROM extract_queue WHERE file_id = ?1 AND modified = ?2 AND size = ?3")?;
+            tx.prepare_cached("DELETE FROM extract_queue WHERE file_id = ?1 AND modified = ?2 AND size = ?3 AND modified_ns IS ?4")?;
         let mut unclaim = tx.prepare_cached(
-            "UPDATE extract_queue SET attempts = MAX(attempts - 1, 0) WHERE file_id = ?1 AND modified = ?2 AND size = ?3",
+            "UPDATE extract_queue SET attempts = MAX(attempts - 1, 0)
+             WHERE file_id = ?1 AND modified = ?2 AND size = ?3 AND modified_ns IS ?4",
         )?;
         let mut path_of = tx.prepare_cached("SELECT path FROM files WHERE id = ?1")?;
         let mut clear_contents = tx.prepare_cached("DELETE FROM contents WHERE file_id = ?1")?;
@@ -248,8 +254,9 @@ pub fn write_results(index: &mut Index, results: &[Finished], now: i64) -> Resul
         let mut add_fact =
             tx.prepare_cached("INSERT OR IGNORE INTO facts (file_id, key, value) VALUES (?1, ?2, ?3)")?;
         let mut record = tx.prepare_cached(
-            "INSERT OR REPLACE INTO extracts (file_id, reader, version, modified, size, status, error, millis, chars, read_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT OR REPLACE INTO extracts (file_id, reader, version, modified, size, status, error, millis, chars, read_at,
+                 modified_ns)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         )?;
         for result in results {
             let job = match result {
@@ -264,16 +271,16 @@ pub fn write_results(index: &mut Index, results: &[Finished], now: i64) -> Resul
             }
             match result {
                 Finished::Drop(job) => {
-                    dequeue.execute(params![job.file_id, job.modified, job.size])?;
+                    dequeue.execute(params![job.file_id, job.modified, job.size, job.modified_ns])?;
                 }
                 Finished::Unclaim(job) => {
-                    unclaim.execute(params![job.file_id, job.modified, job.size])?;
+                    unclaim.execute(params![job.file_id, job.modified, job.size, job.modified_ns])?;
                 }
                 Finished::Clear(job) => {
                     clear_contents.execute(params![job.file_id])?;
                     clear_facts.execute(params![job.file_id])?;
                     clear_extract.execute(params![job.file_id])?;
-                    dequeue.execute(params![job.file_id, job.modified, job.size])?;
+                    dequeue.execute(params![job.file_id, job.modified, job.size, job.modified_ns])?;
                 }
                 Finished::Read(job, extract) => {
                     clear_contents.execute(params![job.file_id])?;
@@ -294,9 +301,10 @@ pub fn write_results(index: &mut Index, results: &[Finished], now: i64) -> Resul
                         extract.error,
                         extract.millis,
                         extract.chars() as i64,
-                        now
+                        now,
+                        extract.modified_ns
                     ])?;
-                    dequeue.execute(params![job.file_id, job.modified, job.size])?;
+                    dequeue.execute(params![job.file_id, job.modified, job.size, job.modified_ns])?;
                 }
             }
         }
