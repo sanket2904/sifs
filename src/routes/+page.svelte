@@ -19,6 +19,7 @@
 	let failures = $state(null);
 	let error = $state('');
 	let contentsSlow = $state(false);
+	let contentsCapped = $state(false);
 	let ignoredWords = $state(0);
 	let input;
 	let timer;
@@ -58,6 +59,7 @@
 			if (id !== latest) return;
 			show(hits);
 			contentsSlow = false;
+			contentsCapped = false;
 			ignoredWords = 0;
 			searchMs = Math.round(performance.now() - started);
 		} catch (e) {
@@ -81,6 +83,7 @@
 			if (id !== latest) return;
 			show(found.hits);
 			contentsSlow = found.contents_timed_out;
+			contentsCapped = found.contents_capped;
 			ignoredWords = found.ignored_words ?? 0;
 			searchMs = Math.round(performance.now() - started);
 		} catch (e) {
@@ -105,6 +108,7 @@
 		results = [];
 		searchMs = null;
 		contentsSlow = false;
+		contentsCapped = false;
 		ignoredWords = 0;
 	}
 
@@ -351,7 +355,7 @@
 		<p class="muted center">Nothing found for “{query}”.</p>
 	{/if}
 	<footer class="muted">
-		{#if searchMs !== null}{results.length} results in {searchMs} ms{' · '}{/if}{#if contentsSlow}contents took too long{' · '}{/if}{#if ignoredWords}too many words, some not searched{' · '}{/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
+		{#if searchMs !== null}{results.length} results in {searchMs} ms{' · '}{/if}{#if contentsSlow}contents took too long{' · '}{/if}{#if contentsCapped}very common words: only some files' contents searched{' · '}{/if}{#if ignoredWords}too many words, some not searched{' · '}{/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
 	</footer>
 </main>
 

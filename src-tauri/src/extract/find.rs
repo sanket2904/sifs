@@ -12,8 +12,9 @@ use std::time::{Duration, Instant};
 /// How long a search over names and contents may take: past it, the
 /// content query stops and snippets are left empty.
 pub const CONTENT_TIME: Duration = Duration::from_millis(400);
-/// Matching parts looked at, at most (a file may match in many). Past it
-/// the results are marked incomplete.
+/// Matching parts looked at, at most (a file may match in many): the first
+/// ones in storage order, not the best, since finding the best means ranking
+/// every match. Past it the results are marked capped.
 pub const CONTENT_PARTS: usize = 10_000;
 /// A snippet's length in characters, at most, and how many of them come
 /// before its first word.
@@ -61,9 +62,12 @@ pub struct Ranked {
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct Results {
     pub hits: Vec<Ranked>,
-    /// The content search stopped short, at its time limit or its cap on
-    /// parts: files matching by contents may be missing, or lack a snippet.
+    /// The time limit passed: files matching by contents may be missing, or
+    /// lack a snippet.
     pub contents_timed_out: bool,
+    /// CONTENT_PARTS parts matched and no more were looked at: files
+    /// matching only in later parts are missing.
+    pub contents_capped: bool,
     /// Words typed past the ones searched (index::query::MAX_WORDS).
     pub ignored_words: usize,
 }
@@ -86,8 +90,8 @@ type PartId = i64;
 #[derive(Default)]
 struct ContentMatches {
     files: Vec<(FileRecord, PartId)>,
-    /// The search stopped before it saw every matching part.
-    incomplete: bool,
+    /// CONTENT_PARTS parts matched and no more were looked at.
+    capped: bool,
 }
 
 struct Candidate {
@@ -107,12 +111,15 @@ pub fn search_all(index: &Index, typed: &str, limit: usize, now: i64, time_limit
     let deadline = Instant::now() + time_limit;
     let query = Query::parse(typed);
     let names = search::matches(index, &query, limit, now)?;
+    let mut timed_out = false;
     let contents = match query.fts() {
         None => ContentMatches::default(),
-        Some(fts) => matching_parts(&index.conn, &fts, deadline)?
-            .unwrap_or(ContentMatches { files: Vec::new(), incomplete: true }),
+        Some(fts) => matching_parts(&index.conn, &fts, deadline)?.unwrap_or_else(|| {
+            timed_out = true;
+            ContentMatches::default()
+        }),
     };
-    let mut incomplete = contents.incomplete;
+    let capped = contents.capped;
     let total = contents.files.len().max(1) as f64;
     let mut by_contents: HashMap<String, (FileRecord, f64, PartId)> = contents
         .files
@@ -151,16 +158,16 @@ pub fn search_all(index: &Index, typed: &str, limit: usize, now: i64, time_limit
             None => None,
             Some(part) => {
                 let found = found_in(index, part, &query, deadline)?;
-                incomplete |= found.snippet.is_empty();
+                timed_out |= found.snippet.is_empty();
                 Some(found)
             }
         };
         hits.push(Ranked { file: c.file, score: c.score, fuzzy: c.by == By::CloseName, found });
     }
-    Ok(Results { hits, contents_timed_out: incomplete, ignored_words: query.ignored })
+    Ok(Results { hits, contents_timed_out: timed_out, contents_capped: capped, ignored_words: query.ignored })
 }
 
-/// The files whose contents match, incomplete past CONTENT_PARTS. Only
+/// The files whose contents match, capped at CONTENT_PARTS. Only
 /// contents read from the file as it is now count (an edited file's old
 /// words are not found), and not under a folder being removed. None if the
 /// deadline passed first.
@@ -189,7 +196,7 @@ fn matching_parts(conn: &Connection, fts: &str, deadline: Instant) -> Result<Opt
                 files.push((row_to_record(row)?, row.get(8)?));
             }
         }
-        Ok(ContentMatches { files, incomplete: scanned >= CONTENT_PARTS })
+        Ok(ContentMatches { files, capped: scanned >= CONTENT_PARTS })
     })();
     match found {
         Ok(found) => Ok(Some(found)),

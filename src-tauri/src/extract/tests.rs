@@ -2407,7 +2407,7 @@ fn a_content_query_past_its_time_returns_names_only() {
     files.push(("Documents/tapir.txt", b"x"));
     let (_home, index) = read_home(&files);
     let results = super::find::search_all(&index, "tapir", 60, now(), Duration::ZERO).unwrap();
-    assert!(results.contents_timed_out);
+    assert!(results.contents_timed_out && !results.contents_capped);
     assert_eq!(names_of(&results), ["tapir.txt"]);
     // And the connection is fine afterwards.
     assert!(!all(&index, "tapir").contents_timed_out);

@@ -212,11 +212,11 @@ fn one_file_with_many_matching_pages_hides_no_other() {
     let got = all(&index, "tapir", 60);
     assert_eq!(names(&got).len(), 2, "{:?}", names(&got));
     assert!(names(&got).contains(&"notes.txt"));
-    assert!(!got.contents_timed_out);
+    assert!(!got.contents_timed_out && !got.contents_capped);
 }
 
 #[test]
-fn parts_past_the_cap_mark_the_results_incomplete() {
+fn a_fast_search_past_the_cap_reports_the_cap_not_the_time() {
     let (_dir, mut index) = db();
     let atlas = file(&mut index, "/home/atlas.docx", NOW, &[("page 0", "tapir")]);
     index
@@ -230,7 +230,8 @@ fn parts_past_the_cap_mark_the_results_incomplete() {
     file(&mut index, "/home/later.txt", NOW, &[("", "tapir")]);
     let got = all(&index, "tapir", 60);
     assert_eq!(names(&got), ["atlas.docx"]);
-    assert!(got.contents_timed_out, "a file past the cap may be missing");
+    assert!(got.contents_capped, "a file past the cap may be missing");
+    assert!(!got.contents_timed_out, "it finished well within its time");
 }
 
 // --- ranking: every candidate, then the limit ---
@@ -456,6 +457,7 @@ fn a_search_stopped_at_its_time_returns_names_only_and_leaves_the_connection_cle
     }
     let stopped = search_all(&index, "capybara", 60, NOW, Duration::ZERO).unwrap();
     assert!(stopped.contents_timed_out);
+    assert!(!stopped.contents_capped, "205 parts are under the cap");
     assert_eq!(paths(&stopped), [named.as_str()]);
     plain_sql_runs(&index);
     let got = all(&index, "capybara", 500);
