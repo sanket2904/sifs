@@ -93,6 +93,18 @@ pub mod fact {
     pub const SHEETS: &str = "sheets";
     /// A presentation's number of slides.
     pub const SLIDES: &str = "slides";
+    /// A PDF's pages with no text (scans, for OCR later), when there are any.
+    pub const TEXTLESS_PAGES: &str = "textless_pages";
+    /// Why reading stopped part way, keeping the pages read before.
+    pub const STOPPED: &str = "stopped";
+}
+
+/// Some readers run in a helper process: SIFS's own program, started again.
+/// Every program that reads files calls this first, at the top of main: in
+/// a helper it does the helper's work and exits, otherwise it returns.
+pub fn serve_helper_if_asked() {
+    #[cfg(target_os = "macos")]
+    readers::macos::pdf::serve_if_asked();
 }
 
 pub trait Reader: Send + Sync + 'static {
