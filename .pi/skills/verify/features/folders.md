@@ -19,7 +19,7 @@ The user chooses which folders SIFS searches. Settings (⚙︎) list each folder
 Preconditions:
 
 - Baseline run. This feature changes the folders, so run it after the read-only features or in its own run.
-- `fo-first-run` is covered by `launch` itself: launch waits for `No folders yet` before it presses `+ ~/Documents` and `+ ~/Desktop`, and `transcript.md` holds the read-back.
+- `fo-first-run` is covered by `launch` itself: launch waits for `No folders yet` and saves `01-first-run.png` and its read-back before it presses `+ ~/Documents` and `+ ~/Desktop`.
 
 - **Open settings.** `$V press "⚙︎"`, then `$V read`. `lines` holds `~/Desktop 10 items [Remove]` and `~/Documents 13 items [Remove] [Add a folder…] [+ ~/Downloads]`.
 - **Add a suggestion.** `$V press "+ ~/Downloads"`, then `$V wait '^~/Downloads [0-9]+ items' 30`. It prints `~/Downloads 2 items [Remove] [Add a folder…]`, and the `+ ~/Downloads` button is gone. `$V shot folders-added`.
@@ -30,7 +30,7 @@ Preconditions:
 
 ## Gotchas
 
-- **Never press Open in the Add a folder… dialog.** It starts in the owner's real home, not the fake one. A development run pressed Open after Go to Folder (⌘⇧G) failed to take its path, and the test instance began indexing the owner's real Documents. Picking a folder in the dialog is not supported. `fo-dialog` proves only that the dialog opens.
+- **Never press Open in the Add a folder… dialog.** It starts in the owner's real home, not the fake one. A development run pressed Open after Go to Folder (⌘⇧G) failed to take its path, and the test instance began indexing the owner's real Documents. Picking a folder in the dialog is not supported. `fo-dialog` proves only that the dialog opens. While it is open, `sifs-ax` refuses every input except Escape and `cancel-dialog`, and the test instance refuses any folder outside its fake home.
 - The `N items indexed in total.` line can stay stale after Remove: the window reloads settings as soon as it asks for the removal, which finishes in the background. One development run on main at 6a45930 kept the old total; the proof run showed the new one. Prove removal by searching, not by the total.
 - Folder paths show as `~/…` only when the fake home's path has no symlink in it. `sifs-verify` uses `/private/tmp`, not `/tmp`. Under `/tmp` a folder shows as `/private~/Documents`, and the suggestion buttons don't hide after adding.
 - Counts include the folders themselves: `~/Downloads 2 items` is the folder and `invoice-2041.txt`.

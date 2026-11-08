@@ -11,7 +11,7 @@ This folder is the maintained source for verifying what a SIFS user can do. Read
 
 ## Driving conventions
 
-- `V=.pi/skills/verify/sifs-verify`. Every drive goes through `$V`, which addresses the test instance by pid, through accessibility, without activating it or touching the mouse.
+- `V=.pi/skills/verify/sifs-verify`. Every drive goes through `$V`, which addresses the test instance through its run, through accessibility, without activating it or touching the mouse.
 - Name buttons by their visible title (`⚙︎`, `+ ~/Downloads`, `Remove`, `Save and re-index`, `show`). Name a folder's Remove with `--after "<folder as shown>"`.
 - Assert on read-back JSON (`rows[].text`, `rows[].name`, `footer`, `lines`), not on screenshots. Screenshots are for the reviewer.
 - A feature that changes state (folders, skipped patterns) runs last in a run, or in its own run. Recipes say what they change.

@@ -1,12 +1,15 @@
 #!/bin/bash
-# Usage: seed-home.sh <dir>
+# Usage: seed-home.sh <new folder>
 # Writes the fake home folder a verification instance runs in. Every file
-# is generated here, so runs are identical on any Mac.
+# is generated here, so runs are identical on any Mac. The folder is an
+# absolute path that doesn't exist yet; this creates it, mode 700.
 set -euo pipefail
 
-home=${1:?usage: seed-home.sh <dir>}
-[[ -e $home ]] && { echo "seed-home: $home already exists" >&2; exit 1; }
-mkdir -p "$home"
+die() { echo "seed-home: $*" >&2; exit 1; }
+[[ $# == 1 ]] || die "usage: seed-home.sh <new folder>"
+[[ $1 == /* ]] || die "needs an absolute path, not: $1"
+mkdir -m 700 "$1" || die "can't create $1; it must not exist yet"
+home=$(cd "$1" && pwd -P)
 cd "$home"
 
 # An Office file is a zip of XML parts. $1 is the output, the rest are
@@ -19,7 +22,7 @@ office() {
 		mkdir -p "$work/$(dirname "${pair%%=*}")"
 		printf '%s' "${pair#*=}" >"$work/${pair%%=*}"
 	done
-	(cd "$work" && zip -qX -r "$OLDPWD/$out" .)
+	(cd "$work" && zip -qX -r "$home/$out" .)
 	rm -rf "$work"
 }
 
@@ -90,6 +93,6 @@ printf 'Invoice 2041 for marmalade.\n' >Downloads/invoice-2041.txt
 printf 'Ideas for the weekend.\n' >Projects/side-notes/ideas.txt
 
 for f in Documents/project-brief.docx Documents/quarterly-budget.xlsx; do
-	unzip -tq "$f" >/dev/null || { echo "seed-home: $f is not a valid zip" >&2; exit 1; }
+	unzip -tq "$f" >/dev/null || die "$f is not a valid zip"
 done
 echo "seeded $home"

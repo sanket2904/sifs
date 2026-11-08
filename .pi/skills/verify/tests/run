@@ -1,0 +1,312 @@
+#!/bin/bash
+set -uo pipefail
+unset CDPATH SIFS_VERIFY_RUN
+
+skill=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
+V=$skill/sifs-verify
+S=$skill/seed-home.sh
+t=$(mktemp -d /private/tmp/sifs-verify-tests.XXXXXX)
+t=$(cd "$t" && pwd -P)
+started=()
+finish() {
+	for pid in ${started[@]+"${started[@]}"}; do kill -9 "$pid" 2>/dev/null; done
+	pkill -9 -f "^$t/"
+	chmod -R u+rwx "$t" 2>/dev/null
+	rm -rf "$t"
+}
+trap finish EXIT
+export SIFS_VERIFY_DIR=$t/ws SIFS_VERIFY_EVIDENCE=$t/evidence
+
+failed=0
+ok() { echo "ok    $1"; }
+bad() {
+	echo "FAIL  $1"
+	failed=$((failed + 1))
+}
+expect() {
+	local name=$1
+	shift
+	if "$@"; then ok "$name"; else bad "$name"; fi
+}
+refused() {
+	local name=$1 pattern=$2 err
+	shift 2
+	if err=$("$@" 2>&1 >/dev/null); then
+		bad "$name (it succeeded)"
+	elif ! grep -qE "$pattern" <<<"$err"; then
+		bad "$name (failed, but said: $err)"
+	else
+		ok "$name"
+	fi
+}
+alive() { kill -0 "$1" 2>/dev/null; }
+gone() {
+	for _ in $(seq 1 20); do alive "$1" || return 0; sleep 0.1; done
+	return 1
+}
+
+cat >"$t/stand-in.c" <<'EOF'
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+static void become_sleep(int sig) { (void)sig; execl("/bin/sleep", "sleep", "30", (char *)0); }
+int main(int argc, char **argv) {
+    if (argc > 1 && strcmp(argv[1], "ignore-term") == 0) signal(SIGTERM, SIG_IGN);
+    if (argc > 1 && strcmp(argv[1], "sleep-on-term") == 0) signal(SIGTERM, become_sleep);
+    char ready[4096];
+    snprintf(ready, sizeof ready, "%s/ready", getenv("HOME"));
+    fclose(fopen(ready, "w"));
+    for (;;) pause();
+}
+EOF
+clang -O "$t/stand-in.c" -o "$t/stand-in" || exit 1
+cat >"$t/start-of.c" <<'EOF'
+#include <libproc.h>
+#include <stdio.h>
+#include <stdlib.h>
+int main(int argc, char **argv) {
+    struct proc_bsdinfo info;
+    if (argc != 2 || proc_pidinfo(atoi(argv[1]), PROC_PIDTBSDINFO, 0, &info, sizeof info) != sizeof info) return 1;
+    printf("%llu.%06llu\n", info.pbi_start_tvsec, info.pbi_start_tvusec);
+}
+EOF
+clang -O "$t/start-of.c" -o "$t/start-of" || exit 1
+
+"$V" cleanup >/dev/null 2>&1 || { echo "FAIL  sifs-verify can't create its workspace"; exit 1; }
+root=$t/ws
+mkdir -p "$root/bin"
+swiftc -O "$skill/ax.swift" -o "$root/bin/sifs-ax" || exit 1
+swiftc -D SIFS_AX_TEST "$skill/ax.swift" -o "$t/sifs-ax-test" || exit 1
+AX=$root/bin/sifs-ax
+
+start_stand_in() {
+	run=$root/runs/$1
+	mkdir -p "$run/home"
+	cp "$t/stand-in" "$run/sifs"
+	HOME="$run/home" "$run/sifs" ${2:-} >/dev/null 2>&1 &
+	pid=$!
+	disown
+	started+=("$pid")
+	local begun
+	for _ in $(seq 1 50); do [[ -e $run/home/ready ]] && break; sleep 0.1; done
+	begun=$("$AX" bind "$run" "$pid") || {
+		bad "bind the stand-in for $1"
+		return 1
+	}
+	printf '%s\n' "RUN=$1" "PID=$pid" "START=$begun" STARTED_AT=2026-01-01T00:00:00Z FRONT_BEFORE=1 BUILD=b SHA="$(printf '%040d' 0)" \
+		DIRTY=no PATCHED=no BINARY_SHA256="$(shasum -a 256 "$run/sifs" | cut -d' ' -f1)" >"$run/run.env"
+}
+
+echo "# seed-home.sh"
+mkdir -p "$t/cwd" "$t/victim/Documents"
+refused "seed-home refuses '-'" "absolute path" bash -c 'cd "$1" && "$2" -' _ "$t/cwd" "$S"
+expect "seed-home made nothing for '-'" test -z "$(ls -A "$t/cwd")"
+refused "seed-home refuses a relative folder, whatever CDPATH says" "absolute path" \
+	env CDPATH="$t/victim" bash -c 'cd "$1" && "$2" Documents' _ "$t/cwd" "$S"
+expect "seed-home wrote nothing through CDPATH" test -z "$(ls -A "$t/victim/Documents")"
+refused "seed-home refuses a folder that exists" "must not exist" "$S" "$t/victim/Documents"
+ln -s "$t/victim/Documents" "$t/link"
+refused "seed-home refuses a symlink" "must not exist" "$S" "$t/link"
+expect "seed-home wrote nothing into an existing folder" test -z "$(ls -A "$t/victim/Documents")"
+refused "seed-home refuses two operands" "usage" "$S" "$t/a" "$t/b"
+"$S" "$t/seeded" >/dev/null
+expect "seed-home seeds a new absolute folder, mode 700" \
+	test -f "$t/seeded/Documents/quarterly-budget.xlsx" -a "$(stat -f %Lp "$t/seeded")" = 700
+
+echo "# workspace"
+expect "a new workspace is mode 700 with its marker" test "$(stat -f %Lp "$root")" = 700 -a -f "$root/.sifs-verify-workspace"
+mkdir -p "$t/personal/builds/keep" "$t/personal/src/keep"
+refused "a folder sifs-verify didn't create is refused" "not created by sifs-verify" \
+	env SIFS_VERIFY_DIR="$t/personal" "$V" cleanup --builds
+expect "its builds and src survive" test -d "$t/personal/builds/keep" -a -d "$t/personal/src/keep"
+refused "a relative SIFS_VERIFY_DIR is refused" "absolute path" env SIFS_VERIFY_DIR=ws "$V" cleanup
+ln -s "$root" "$t/ws-link"
+refused "a symlinked SIFS_VERIFY_DIR is refused" "not a folder" env SIFS_VERIFY_DIR="$t/ws-link" "$V" cleanup
+mkdir -m 755 "$t/ws755" && : >"$t/ws755/.sifs-verify-workspace"
+refused "a workspace that isn't mode 700 is refused" "mode 700" env SIFS_VERIFY_DIR="$t/ws755" "$V" cleanup
+refused "evidence inside the workspace is refused" "outside the workspace" env SIFS_VERIFY_EVIDENCE="$root/evidence" "$V" cleanup
+
+echo "# names"
+mkdir -p "$root/builds/b"
+cp "$t/stand-in" "$root/builds/b/sifs"
+printf '%s\n' BUILD=b SHA="$(printf '%040d' 0)" DIRTY=no PATCHED=no BINARY_SHA256="$(printf '%064d' 0)" >"$root/builds/b/build.env"
+refused "launch refuses a run name with ../" "run name" "$V" launch --build b --name ../../escaped
+refused "launch refuses a run name with \$(...)" "run name" "$V" launch --build b --name "x\$(touch $t/pwned-name)"
+refused "launch refuses a build name with ../" "build name" "$V" launch --build ../../builds/b --name x
+expect "nothing was created for those names" test ! -e "$t/escaped" -a ! -e "$t/pwned-name" -a ! -e "$root/runs/x"
+mkdir -p "$t/evidence/Documents"
+refused "launch refuses an evidence folder that already exists" "exists; pick another" "$V" launch --build b --name Documents
+expect "and writes nothing into it" test -z "$(ls -A "$t/evidence/Documents")" -a ! -e "$root/runs/Documents"
+refused "SIFS_VERIFY_RUN with ../ is refused" "run name" env SIFS_VERIFY_RUN=../../victim "$V" read
+refused "doctor refuses a run name with ../" "run name" "$V" doctor ../../victim
+refused "cleanup --run refuses ../" "run name" "$V" cleanup --run ../../victim
+expect "the folder those names point at survives" test -d "$t/victim/Documents"
+echo "../../victim" >"$root/current"
+refused "a current run that isn't a run name is refused" "run name" "$V" cleanup
+rm "$root/current"
+mkdir -p "$root/runs" "$t/victim/runs-target/home"
+ln -s "$t/victim/runs-target" "$root/runs/evil"
+refused "cleanup refuses a run folder that is a symlink" "symlink" "$V" cleanup --run evil
+refused "cleanup --all refuses it too" "symlink" "$V" cleanup --all
+expect "the symlink's target survives" test -d "$t/victim/runs-target/home"
+rm "$root/runs/evil"
+mv "$root/runs" "$t/victim/real-runs" && ln -s "$t/victim/real-runs" "$root/runs"
+refused "launch refuses to write through a symlinked runs folder" "symlink" "$V" launch --build b --name x
+expect "nothing was written there" test -z "$(ls -A "$t/victim/real-runs")"
+rm "$root/runs" && mkdir "$root/runs"
+mkdir -p "$t/victim/builds-target/keep" && mv "$root/builds" "$t/victim/builds-real" && ln -s "$t/victim/builds-target" "$root/builds"
+refused "cleanup --builds refuses a symlinked builds folder" "symlink" "$V" cleanup --builds
+expect "its target survives" test -d "$t/victim/builds-target/keep"
+rm "$root/builds" && mv "$t/victim/builds-real" "$root/builds"
+
+echo "# run.env is data"
+start_stand_in meta
+printf 'RUN=meta\nPID=$(touch %s/pwned-pid)\n' "$t" >"$run/run.env"
+refused "doctor refuses a run.env with \$(...) as a value" "bad PID" "$V" doctor meta
+printf 'RUN=meta\n$(touch %s/pwned-line)\n' "$t" >"$run/run.env"
+refused "doctor refuses a run.env line that isn't KEY=VALUE" "malformed" "$V" doctor meta
+printf 'RUN=meta\nX=$(touch %s/pwned-key)\n' "$t" >"$run/run.env"
+refused "doctor refuses an unknown key" "unknown key" "$V" doctor meta
+refused "cleanup refuses it too" "unknown key" "$V" cleanup --run meta
+expect "no command in run.env ran" test ! -e "$t/pwned-pid" -a ! -e "$t/pwned-line" -a ! -e "$t/pwned-key"
+expect "cleanup left that run alone" alive "$pid"
+printf 'RUN=meta\nPID=%s\nPID=%s\n' "$pid" "$pid" >"$run/run.env"
+refused "a repeated key is refused" "repeats PID" "$V" doctor meta
+refused "sifs-ax refuses a repeated key" "malformed" "$AX" check "$run"
+printf 'PID=%s\nSTART=%s\n' "$pid" '$(touch '"$t"'/pwned-ax)' >"$run/run.env"
+refused "sifs-ax refuses a bad START" "no valid PID and START" "$AX" check "$run"
+kill -9 "$pid"
+
+echo "# sifs-ax acts only on the process the run started"
+start_stand_in ours
+expect "check accepts the run's own process" bash -c '"$1" check "$2" >/dev/null' _ "$AX" "$run"
+point_run_env_at() { sed -i '' -e "s/^PID=.*/PID=$1/" -e "s/^START=.*/START=$("$t/start-of" "$1")/" "$run/run.env"; }
+sed -i '' 's/^START=.*/START=1.000000/' "$run/run.env"
+refused "another start time is refused (read)" "not the one" "$AX" read "$run"
+refused "another start time is refused (key)" "not the one" "$AX" key "$run" down
+HOME="$run/home" "$t/stand-in" >/dev/null 2>&1 &
+started+=("$!")
+disown
+point_run_env_at "${started[${#started[@]} - 1]}"
+refused "another binary is refused" "not the one" "$AX" key "$run" down
+HOME="$t/victim" "$run/sifs" >/dev/null 2>&1 &
+started+=("$!")
+disown
+refused "the run's binary with another HOME doesn't bind" "refused" "$AX" bind "$run" "${started[${#started[@]} - 1]}"
+point_run_env_at "${started[${#started[@]} - 1]}"
+refused "the run's binary with another HOME is refused" "not the one" "$AX" type "$run" x
+point_run_env_at $$
+refused "this test's own shell is refused" "not the one" "$AX" key "$run" return
+point_run_env_at "$pid"
+kill -9 "$pid" && gone "$pid"
+refused "a pid that is gone is refused" "is gone" "$AX" read "$run"
+refused "a pid in place of a run folder is refused" "not a run folder" "$AX" read "$$"
+refused "a run folder through .. is refused" "not a run folder" "$AX" read "$root/runs/../runs/ours"
+mkdir -p "$t/elsewhere/runs" && ln -s "$run" "$t/elsewhere/runs/ours"
+refused "a run folder through a symlink is refused" "not a run folder" "$AX" read "$t/elsewhere/runs/ours"
+"$V" cleanup --all >/dev/null 2>&1
+
+echo "# a native dialog lets only Escape and Cancel through"
+start_stand_in dialog
+dialog_refuses() {
+	local name=$1 out
+	shift
+	out=$(SIFS_AX_TEST_DIALOG=open "$t/sifs-ax-test" "$1" "$run" "${@:2}" 2>&1)
+	if [[ $out == *"refused: a native dialog is open"* && $out != *sent* ]]; then ok "dialog open: $name is refused"; else bad "dialog open: $name (said: $out)"; fi
+}
+dialog_refuses "Return" key return
+dialog_refuses "Cmd-Return" key return --cmd
+dialog_refuses "Down" key down
+dialog_refuses "typing" type a
+dialog_refuses "a typed newline" type $'\n'
+dialog_refuses "a typed carriage return" type $'\r'
+dialog_refuses "a press" press Open
+dialog_refuses "focusing the search box" focus-search
+dialog_refuses "focusing the text area" focus-textarea
+dialog_refuses "a search" search q
+out=$(SIFS_AX_TEST_DIALOG=open "$t/sifs-ax-test" key "$run" escape 2>&1)
+if [[ $out == "sent key 53 flags 0" ]]; then ok "dialog open: Escape is sent"; else bad "dialog open: Escape (said: $out)"; fi
+out=$(SIFS_AX_TEST_DIALOG=open "$t/sifs-ax-test" cancel-dialog "$run" 2>&1)
+if [[ $out != *refused* ]]; then ok "dialog open: cancel-dialog gets past the gate"; else bad "dialog open: cancel-dialog (said: $out)"; fi
+out=$(SIFS_AX_TEST_DIALOG=closed "$t/sifs-ax-test" key "$run" return 2>&1)
+if [[ $out == "sent key 36 flags 0" ]]; then ok "no dialog: Return is sent"; else bad "no dialog: Return (said: $out)"; fi
+out=$(SIFS_AX_TEST_DIALOG=closed "$t/sifs-ax-test" type "$run" $'a\nb' 2>&1)
+if [[ $out == $'sent key 0 flags 0 text a\nsent key 36 flags 0\nsent key 0 flags 0 text b' ]]; then ok "no dialog: a newline is typed as Return"; else bad "no dialog: type (said: $out)"; fi
+sed -i '' 's/^START=.*/START=1.000000/' "$run/run.env"
+refused "the process check comes first, dialog or not" "not the one" env SIFS_AX_TEST_DIALOG=closed "$t/sifs-ax-test" key "$run" escape
+"$V" cleanup --all >/dev/null 2>&1
+
+echo "# cleanup signals only the process the run started"
+start_stand_in term
+"$V" cleanup --run term >/dev/null 2>&1
+expect "cleanup stops the run's process" gone "$pid"
+expect "and deletes the run's folder" test ! -e "$root/runs/term"
+start_stand_in stubborn ignore-term
+err=$("$V" cleanup --run stubborn 2>&1)
+expect "a process that ignores TERM gets KILL" grep -q "ignored TERM; sent KILL" <<<"$err"
+expect "and is gone" gone "$pid"
+start_stand_in reused sleep-on-term
+err=$("$V" cleanup --run reused 2>&1)
+expect "a pid that stops being the run's process after TERM gets no KILL" alive "$pid"
+expect "and cleanup says why" grep -q "no KILL: refused: process $pid is not the one" <<<"$err"
+kill -9 "$pid"
+start_stand_in stale
+sed -i '' 's/^START=.*/START=1.000000/' "$run/run.env"
+"$V" cleanup --run stale >/dev/null 2>&1
+expect "a pid with another start time gets no signal at all" alive "$pid"
+kill -9 "$pid"
+start_stand_in direct
+sed -i '' 's/^START=.*/START=1.000000/' "$run/run.env"
+refused "sifs-ax signal refuses it too" "not the one" "$AX" signal "$run" KILL
+expect "and the process lives" alive "$pid"
+kill -9 "$pid"
+"$V" cleanup --all >/dev/null 2>&1
+
+echo "# doctor's folder check"
+start_stand_in folders
+db_dir="$run/home/Library/Application Support/com.sanket2904.sifs"
+mkdir -p "$db_dir" "$run/home/Documents" "$t/outside" "$run/home-other"
+ln -s "$t/outside" "$run/home/link"
+folder_check() {
+	rm -f "$db_dir/sifs.db"
+	if [[ $1 == corrupt ]]; then echo "not a database" >"$db_dir/sifs.db"; else
+		/usr/bin/sqlite3 "$db_dir/sifs.db" "CREATE TABLE folders(path TEXT);"
+		for f; do /usr/bin/sqlite3 "$db_dir/sifs.db" "INSERT INTO folders VALUES('$f');"; done
+	fi
+	"$V" doctor folders 2>/dev/null | grep "every folder it searches"
+}
+expect "a folder inside the fake home passes" grep -q "^ok" <<<"$(folder_check "$run/home/Documents")"
+expect "a folder outside fails" grep -q "^FAIL" <<<"$(folder_check "$run/home/Documents" "$t/outside")"
+expect "a sibling with the home's name as prefix fails" grep -q "^FAIL" <<<"$(folder_check "$run/home-other")"
+expect "a symlink in the home that leads outside fails" grep -q "^FAIL" <<<"$(folder_check "$run/home/link")"
+expect "an index that can't be read fails" grep -q "^FAIL" <<<"$(folder_check corrupt)"
+
+echo "# other SIFS processes"
+mkdir -p "$t/shim"
+printf '#!/bin/sh\nexit 1\n' >"$t/shim/pgrep" && chmod +x "$t/shim/pgrep"
+expect "no other SIFS process is an empty list, not an abort" \
+	grep -q "other SIFS processes (not ours, never touched): none" <<<"$(PATH=$t/shim:$PATH "$V" doctor folders 2>/dev/null)"
+printf '#!/bin/sh\nexit 3\n' >"$t/shim/pgrep"
+refused "a pgrep that errors stops doctor" "pgrep failed" env PATH="$t/shim:$PATH" "$V" doctor folders
+"$V" cleanup --all >/dev/null 2>&1
+
+echo "# builds carry the folder guard"
+mkdir -p "$t/unwired/src-tauri/src"
+: >"$t/unwired/src-tauri/src/verification.rs"
+echo 'let builder = builder.activate_ignoring_other_apps(!verification::instance());' >"$t/unwired/src-tauri/src/app.rs"
+git -C "$t/unwired" init -q && git -C "$t/unwired" add -A && git -C "$t/unwired" -c user.name=t -c user.email=t@t commit -qm t
+refused "build refuses source whose add_folder skips the folder guard" "doesn't wire in the verification support" "$V" build --src "$t/unwired"
+mkdir -p "$t/decoy/unwired"
+refused "build --src resolves a relative folder from here, whatever CDPATH says" "$t/unwired/src-tauri/src/app.rs doesn't wire" \
+	env CDPATH="$t/decoy" bash -c 'cd "$1" && "$2" build --src unwired' _ "$t" "$V"
+
+echo "# no mouse, no activation"
+forbidden='mouseEventSource|MouseDown|MouseUp|MouseMoved|MouseDragged|scrollWheel|CGWarpMouseCursorPosition|CGDisplayMoveCursor|CGAssociateMouse|\.activate\(|activateIgnoringOtherApps|activateWithOptions|kAXRaiseAction|AXRaise|kAXFrontmostAttribute|AXFrontmost|kAXMainAttribute|AXMain"|setFrontProcess|SetFrontProcess|openApplication|launchApplication'
+expect "ax.swift posts no mouse event and activates nothing" bash -c '! grep -nE "$1" "$2"' _ "$forbidden" "$skill/ax.swift"
+expect "the scripts drive no other app" bash -c '! grep -nE "tell application|System Events|keystroke|key code|cliclick|click at|\.activate\(|open -a" "$1" "$2"' _ "$V" "$S"
+
+echo
+if ((failed)); then echo "$failed failed"; exit 1; fi
+echo "all passed"

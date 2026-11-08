@@ -17,16 +17,17 @@ The owner uses this Mac while you verify, and runs his own SIFS. These rules pro
 
 1. **No synthesized mouse events and no coordinate clicks.** No CGEvent mouse posts, no "click at", no clicking menu bar items by position. They move the owner's cursor and click in his menu bar, where his own SIFS icon sits.
 2. **Never activate the test app or bring it to the front.** No `activate`, no setting `frontmost`, no System Events keystrokes (they go to whichever app is in front).
-3. **Everything goes through the accessibility API, addressed by the test instance's pid.** AXPress on its own buttons, AXFocused on its own elements, key events posted to its pid with `CGEventPostToPid`, screenshots with `screencapture -l <window id>`. `sifs-ax` (compiled from `ax.swift`) is built to do only these.
-4. Kill only pids this skill started. `sifs-verify cleanup` checks that a pid still runs this run's binary with this run's HOME before it kills it. Never kill by name.
-5. Never address the owner's SIFS (`SIFS.app`, often built at `~/Desktop/code/sifs/src-tauri/target/release/bundle/macos/SIFS.app`). `launch` and `doctor` list other SIFS processes and leave them alone.
-6. Never press Open in the Add a folder… dialog. The dialog starts in the owner's real home whatever HOME says, so Open can add his real Documents to a test instance. One development run did exactly that. `doctor` now fails when any searched folder is outside the fake home.
+3. **Everything goes through the accessibility API, addressed by the run.** AXPress on its own buttons, AXFocused on its own elements, key events posted to its pid with `CGEventPostToPid`, screenshots with `screencapture -l <window id>`. `sifs-ax` (compiled from `ax.swift`) does only these. It takes a run folder, not a pid, and refuses unless that run's pid is still the process the run started: the same start time, the run's copy of the binary, the run's fake HOME. It checks again before every event and signal it sends.
+4. Kill only processes this skill started. `sifs-verify cleanup` signals through `sifs-ax signal`, which repeats that check right before TERM and again before KILL. Never kill by name.
+5. Never address the owner's SIFS (`SIFS.app`, often built at `~/Desktop/code/sifs/src-tauri/target/release/bundle/macos/SIFS.app`). `sifs-ax` refuses it. `launch` and `doctor` list other SIFS processes and leave them alone.
+6. Never press Open in the Add a folder… dialog. The dialog starts in the owner's real home whatever HOME says, so Open can add his real Documents to a test instance. One development run did exactly that. Three guards now stand behind this rule. While a dialog is open, `sifs-ax` refuses every input except Escape and the dialog's Cancel. A verification instance refuses to add any folder outside its fake home. `doctor` fails when any searched folder is outside the fake home.
 
 ## Prerequisites
 
 - macOS with the Xcode command-line tools (`swiftc`, `clang`), Rust (the repo's `rust-toolchain.toml`), Node.js, `jq`, `/usr/bin/sqlite3`.
 - The terminal running the agent needs Accessibility (System Settings > Privacy & Security > Accessibility) and Screen Recording. `sifs-ax` stops with a clear message without Accessibility. Without Screen Recording, screenshots come out blank or show only the wallpaper.
-- Scratch lives in `/private/tmp/sifs-verify` (override with `SIFS_VERIFY_DIR`). Evidence lives in `<repo>/verify-evidence/<run>/` (gitignored, override with `SIFS_VERIFY_EVIDENCE`).
+- The workspace (builds, runs, compiled helpers) is `/private/tmp/sifs-verify-<uid>`. `sifs-verify` creates it with mode 700 and a `.sifs-verify-workspace` marker. It refuses any other folder, a symlink anywhere inside, and any path that leaves it. `SIFS_VERIFY_DIR` overrides it with an absolute path that doesn't exist yet or that `sifs-verify` created. Evidence lives in `<repo>/verify-evidence/<run>/` (gitignored). `SIFS_VERIFY_EVIDENCE` overrides it with an absolute path outside the workspace.
+- Run names, build ids and shot labels are 1 to 64 letters, digits or `-`.
 
 ## Launch
 
@@ -38,15 +39,16 @@ $V build --ref origin/phase3-step3      # a branch or PR head, from a copy; your
 $V launch                               # newest build; or: $V launch --build d470ac5 --name pr5
 ```
 
-`build` runs `npx tauri build --debug --no-bundle`, so the page is inside the binary and no Vite server runs. That avoids port 5173, which `npm run tauri dev` takes and which two dev instances would fight over. Do not use `tauri dev` for verification. A `--ref` build is a `git archive` copy under `$SIFS_VERIFY_DIR/src/<sha>`. Commits from before this skill lack the background hook (below), so `build` adds it from `verify-support.patch` and records `BUILD_PATCHED=yes`.
+`build` runs `npx tauri build --debug --no-bundle`, so the page is inside the binary and no Vite server runs. That avoids port 5173, which `npm run tauri dev` takes and which two dev instances would fight over. Do not use `tauri dev` for verification. A `--ref` build is a `git archive` copy under `<workspace>/src/<sha>`. Commits from before this skill lack the verification support (below), so `build` adds it from `verify-support.patch` and records `PATCHED=yes`. It refuses to build source that doesn't wire the support into `app.rs`.
 
 `launch` does this, and fails loudly at the first step that doesn't happen:
 
 1. Seeds `runs/<name>/home` with `seed-home.sh`: Documents (a .docx, an .xlsx with two sheets, .txt, .md, a folder, an unreadable file, a non-zip .docx, a binary .txt, a 1 MB .json), Desktop/sifs-demo-code (code, a `node_modules`, a hidden file, a `generated` folder), Downloads and Projects. Unique words for content search: `zanzibar`, `pelican`, `marmalade`.
 2. Starts the binary with `HOME` and `CFFIXED_USER_HOME` set to that folder. HOME moves SIFS's index (Tauri's app data dir) and the folders it offers. CFFIXED_USER_HOME moves WebKit's data and caches, which otherwise land in the real `~/Library/WebKit/sifs` and `~/Library/Caches/sifs`. Both were observed on this Mac.
-3. Sets `SIFS_VERIFY_BACKGROUND=1`. `app.rs` reads it: the app doesn't activate at launch, stays out of the Dock, and opens its window behind other apps' windows. Accessibility and `screencapture -l` reach it there and on other Spaces.
-4. Loads `open-spy.dylib` (built from `open-spy.m`) with `DYLD_INSERT_LIBRARIES`. Opening a result (Enter) and showing it in Finder (⌘Enter) are recorded in `open-requests.log` in the evidence folder and report success without opening anything. Performing them would bring Finder or another app forward and could open the owner's apps.
-5. In the window, presses `+ ~/Documents` and `+ ~/Desktop`, the suggestions a new user sees. It waits until both show an item count and `Reading inside files:` shows `0 waiting`. It closes settings, then searches `quarterly-budget`. **Ready** means that search returned `quarterly-budget.xlsx` in the real window. Last, it runs `doctor`.
+3. Sets `SIFS_VERIFY_BACKGROUND=1`, read by `src-tauri/src/verification.rs`. The app doesn't activate at launch, stays out of the Dock, and opens its window behind other apps' windows. Accessibility and `screencapture -l` reach it there and on other Spaces. It also refuses to add a folder outside its HOME.
+4. Records the process in `run.env`: its pid and its start time. The binary and HOME it must have follow from the run's folder.
+5. Loads `open-spy.dylib` (built from `open-spy.m`) with `DYLD_INSERT_LIBRARIES`. Opening a result (Enter) and showing it in Finder (⌘Enter) are recorded in `open-requests.log` in the evidence folder and report success without opening anything. Performing them would bring Finder or another app forward and could open the owner's apps.
+6. Waits for the first-run screen and saves it (`01-first-run.png` and its read-back) before any input. Then, in the window, presses `+ ~/Documents` and `+ ~/Desktop`, the suggestions a new user sees. It waits until both show an item count and `Reading inside files:` shows `0 waiting`. It closes settings, then searches `quarterly-budget`. **Ready** means that search returned `quarterly-budget.xlsx` in the real window. Last, it runs `doctor`.
 
 A launch takes about 10 seconds after the build (7 s measured on this Mac). The settled index holds 23 items. Reading inside files ends at 12 read, 1 couldn't be read (`locked-notes.txt`, permission denied) and 3 skipped (`broken-report.docx`: not a Word document; `firmware-dump.txt`: not text; `huge-export.json`: larger than 1 MB). These counts are from main at 6a45930.
 
@@ -58,19 +60,19 @@ $V doctor            # current run; or: $V doctor pr5
 
 Read-only. Exits non-zero on any FAIL. It checks that:
 
-- the pid is alive and runs this run's binary with this run's HOME;
+- the pid is alive and is the process this run started (start time, binary, HOME);
 - the binary still matches the build (sha256), and it shows the commit, the dirty flag and whether the hook was added;
 - the binary is not an installed SIFS.app;
 - the index it has open is in the fake home, and nothing is open in the owner's data folder (`~/Library/Application Support/com.sanket2904.sifs`);
 - it started with `SIFS_VERIFY_BACKGROUND=1`, the open spy loaded, and it doesn't have the keyboard;
-- every folder in its index (read from its own sifs.db, read-only) is inside the fake home;
+- every folder in its index (read from its own sifs.db, read-only), resolved, is the fake home or inside it. An index it can't read fails the check;
 - the window server knows its window.
 
 It lists every other SIFS process as "not ours, never touched". Run doctor first whenever anything looks off.
 
 ## Drive
 
-Drive commands act on the current run. Set `SIFS_VERIFY_RUN=<name>` to drive another. Each one appends the action and the resulting read-back to `transcript.md` in the evidence folder.
+Drive commands act on the current run. Set `SIFS_VERIFY_RUN=<name>` to drive another. Each one appends the action and its output to `transcript.md` in the evidence folder. A command that sends input (press, key, type, focus, cancel-dialog) also appends the read-back of the screen it leaves.
 
 ```bash
 $V search "budget"            # focus the box, clear it with Delete, type, wait until results settle, print JSON
@@ -108,7 +110,7 @@ Proof standards:
 - Check side effects next to the screen. Search after Save and re-index or Remove. Use `$V opened` for open and reveal. Use `doctor` for where the index lives.
 - The open spy is the one stand-in. It replaces the hand-off to `/usr/bin/open` and NSWorkspace, which leave SIFS anyway. Everything up to that call is real. That `open` would then open the file is not verified.
 
-Evidence stays in `<repo>/verify-evidence/<run>/`, or `$SIFS_VERIFY_EVIDENCE/<run>/`. It holds `run.env` (build, pid, paths), `transcript.md`, the shots and `open-requests.log`. Cleanup never deletes it.
+Evidence stays in `<repo>/verify-evidence/<run>/`, or `$SIFS_VERIFY_EVIDENCE/<run>/`. It holds `run.env` (build, commit, pid and start time), `transcript.md`, the shots and `open-requests.log`. Each run gets a new evidence folder: `launch` refuses a name whose folder exists. Cleanup never deletes it.
 
 ## Cleanup
 
@@ -117,22 +119,23 @@ $V cleanup                    # the current run; or --run NAME, or --all
 $V cleanup --all --builds     # also the builds and source copies
 ```
 
-Cleanup stops the run's pid only after it confirms the binary and HOME, waits up to 5 seconds, then sends SIGKILL. Then it deletes the run folder: the fake home, the index and the copied binary. It prints the evidence path and file count. Run it after every failed attempt too, so nothing is left running. The tool you run commands through may kill a launch it times out, with its whole process group, so give `launch` 3 minutes or run it in the background.
+Cleanup sends TERM to the run's process, waits up to 5 seconds, then sends KILL. `sifs-ax` checks the start time, binary and HOME right before each signal, so a pid another process now holds gets nothing. Then cleanup deletes the run folder: the fake home, the index and the copied binary. It prints the evidence path and file count. `run.env` is parsed, never sourced, and a malformed one stops cleanup before it deletes anything. Run it after every failed attempt too, so nothing is left running. The tool you run commands through may kill a launch it times out, with its whole process group, so give `launch` 3 minutes or run it in the background.
 
 ## Helpers
 
-| File                   | What it is                                                                                                                                                                                    |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sifs-verify`          | The entry point: build, launch, doctor, drive, shot, cleanup.                                                                                                                                 |
-| `ax.swift`             | Source of `sifs-ax`, compiled on first use to `$SIFS_VERIFY_DIR/bin/sifs-ax`. It reads the window and drives it by pid. `sifs-verify` passes the run's pid. Direct use: `sifs-ax read <pid>`. |
-| `seed-home.sh`         | `seed-home.sh <new dir>` writes the fake home. Office files are zipped from inline XML, so no fixture files are needed.                                                                       |
-| `open-spy.m`           | Source of the dylib that records open and reveal requests instead of performing them.                                                                                                         |
-| `verify-support.patch` | The `SIFS_VERIFY_BACKGROUND` hook, for building commits from before it.                                                                                                                       |
+| File                   | What it is                                                                                                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sifs-verify`          | The entry point: build, launch, doctor, drive, shot, cleanup.                                                                                                           |
+| `ax.swift`             | Source of `sifs-ax`, compiled on first use to `<workspace>/bin/sifs-ax`. It reads and drives the window of one run. Direct use: `sifs-ax read <workspace>/runs/<name>`. |
+| `seed-home.sh`         | `seed-home.sh <new absolute dir>` creates and writes the fake home. Office files are zipped from inline XML, so no fixture files are needed.                            |
+| `open-spy.m`           | Source of the dylib that records open and reveal requests instead of performing them.                                                                                   |
+| `verify-support.patch` | `verification.rs` and its hooks in `app.rs`, for building commits from before them.                                                                                     |
+| `tests/run`            | Tests of every guard above. They start no app and send no input: stand-in processes play test instances. Run it after any change here.                                  |
 
 ## Known limitations
 
 - **A window closed to the menu bar can't be shown again.** The tray icon opens its menu only on a real mouse click (AXPress on the status item does nothing), and rule 1 forbids clicks. Nothing in this skill closes the window. If it is closed, run `cleanup` and `launch` again.
-- **The Add a folder… dialog is only opened and cancelled.** It does open in the background, as a sheet in the test window's accessibility tree (`$V dialog-tree`, `$V cancel-dialog`). Picking a folder in it is not supported (rule 6). Adding folders is proven through the suggestion buttons.
+- **The Add a folder… dialog is only opened and cancelled.** It does open in the background, as a sheet in the test window's accessibility tree (`$V dialog-tree`, `$V cancel-dialog`). Picking a folder in it is not supported (rule 6). Adding folders is proven through the suggestion buttons. `sifs-ax` checks for a dialog when a command starts, so a Return sent in the instant a dialog is still opening would reach it. The folder guard in the app is what stops a scan then.
 - **A test instance is not invisible.** SIFS_VERIFY_BACKGROUND stops activation and the Dock icon: across launches on this Mac the app in front never changed. Whether the window shows for a moment as it opens behind other windows was not observed. Its tray icon sits in the menu bar next to the owner's until cleanup. Tell the owner a test instance is running.
 - Dates in `meta` assume an English (US) system locale, as on this Mac.
 
