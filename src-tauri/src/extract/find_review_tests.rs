@@ -109,11 +109,11 @@ fn a_part_deleted_during_a_search_is_not_a_timeout() {
 
 // --- 2. edits within the same second ---
 
-fn set_time(path: &std::path::Path, secs: i64, nanos: u32) {
+pub(super) fn set_time(path: &std::path::Path, secs: i64, nanos: u32) {
     std::fs::File::options().write(true).open(path).unwrap().set_modified(UNIX_EPOCH + Duration::new(secs as u64, nanos)).unwrap();
 }
 
-fn queue_len(index: &Index) -> i64 {
+pub(super) fn queue_len(index: &Index) -> i64 {
     index.conn.query_row("SELECT count(*) FROM extract_queue", [], |r| r.get(0)).unwrap()
 }
 
@@ -144,7 +144,7 @@ fn an_edit_within_the_same_second_keeping_the_size_is_read_again() {
 
 /// An index as version 2 left it, with one file read: notes.txt, "tapir",
 /// changed at second NOW.
-fn version_2_index(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
+pub(super) fn version_2_index(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
     let (db, path) = (dir.join("v2.db"), dir.join("notes.txt"));
     std::fs::write(&path, "tapir").unwrap();
     set_time(&path, NOW, 100_000_000);
@@ -168,26 +168,6 @@ fn version_2_index(dir: &std::path::Path) -> (std::path::PathBuf, std::path::Pat
 }
 
 #[test]
-fn after_the_upgrade_the_first_scan_queues_nothing_and_a_same_second_edit_is_read_again() {
-    let dir = tempfile::tempdir().unwrap();
-    let (db, path) = version_2_index(dir.path());
-    let root = dir.path().to_str().unwrap();
-    let mut index = Index::open(&db).unwrap();
-    let registry = Registry::platform();
-    store::register_kinds(&mut index, &registry).unwrap();
-    index.upsert(&[record_of(&path, root).unwrap()], 2).unwrap();
-    assert_eq!(queue_len(&index), 0, "a time becoming known to the nanosecond is no change");
-    assert_eq!(all(&index, "tapir", 60).hits.len(), 1, "what was read before the upgrade is still found");
-    std::fs::write(&path, "zebra").unwrap();
-    set_time(&path, NOW, 900_000_000);
-    index.upsert(&[record_of(&path, root).unwrap()], 3).unwrap();
-    assert_eq!(queue_len(&index), 1, "a known time changed within its second");
-    assert!(worker::run_until_empty(&mut index, &registry, &WorkerOptions::default()).unwrap().errors.is_empty());
-    assert!(all(&index, "tapir", 60).hits.is_empty());
-    assert_eq!(all(&index, "zebra", 60).hits.len(), 1);
-}
-
-#[test]
 fn migration_3_stopped_at_any_point_leaves_version_2_and_runs_again() {
     let dir = tempfile::tempdir().unwrap();
     let steps = Arc::new(AtomicUsize::new(0));
@@ -197,7 +177,7 @@ fn migration_3_stopped_at_any_point_leaves_version_2_and_runs_again() {
         let mut conn = rusqlite::Connection::open(&db).unwrap();
         let counter = steps.clone();
         counter.store(0, Ordering::SeqCst);
-        conn.progress_handler(1, Some(move || counter.fetch_add(1, Ordering::SeqCst) + 1 >= stop_at));
+        conn.progress_handler(1, Some(move || counter.fetch_add(1, Ordering::SeqCst) + 1 == stop_at));
         let migrated = migrate::migrate(&mut conn).is_ok();
         conn.progress_handler(0, None::<fn() -> bool>);
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
@@ -213,10 +193,12 @@ fn migration_3_stopped_at_any_point_leaves_version_2_and_runs_again() {
         if migrated {
             assert_eq!((version, columns), (3, 3));
         } else {
-            assert_eq!((version, columns), (2, 0), "stopped at step {stop_at}: nothing of version 3 is left");
+            // Stopped after the commit, it is wholly migrated.
+            assert!([(2, 0), (3, 3)].contains(&(version, columns)), "stopped at step {stop_at}: never half migrated, {version} {columns}");
             drop(conn);
             let index = Index::open(&db).unwrap();
             assert_eq!(index.conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 3);
+            assert_eq!(queue_len(&index), 1, "opened again, what was read is queued once more");
             assert_eq!(all(&index, "tapir", 60).hits.len(), 1, "opened again, it is migrated and searchable");
         }
         migrated
@@ -269,12 +251,12 @@ fn a_huge_query_is_cut_and_searched_within_the_time_limit() {
     let took = started.elapsed();
     assert!(took < CONTENT_TIME, "{} bytes typed: {took:?}", typed.len());
     assert!(got.words_left_out);
-    let tokenizer = Tokenizer::contents(&index.conn).unwrap();
+    let mut tokenizer = Tokenizer::contents(&index.conn).unwrap();
     let cut = format!("{}tapir", "é ".repeat(2000));
-    let query = Query::parse(&cut, &tokenizer).unwrap();
+    let query = Query::parse(&cut, &mut tokenizer).unwrap();
     assert!(query.left_out, "past {} bytes", crate::index::query::MAX_BYTES);
     assert!(query.words.iter().all(|w| w.text != "tapir"), "words past the cut are not searched");
-    let query = Query::parse(&"é ".repeat(1000), &tokenizer).unwrap();
+    let query = Query::parse(&"é ".repeat(1000), &mut tokenizer).unwrap();
     assert!(!query.left_out);
 }
 

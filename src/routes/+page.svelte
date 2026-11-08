@@ -36,6 +36,18 @@
 	let latest = 0;
 	/** index::query::MAX_BYTES + 1: the query sent is bounded, and the backend still sees that it was cut. */
 	const SENT_CHARS = 4097;
+
+	/**
+	 * At most SENT_CHARS UTF-16 units of text, or one more rather than half
+	 * of a character: a lone surrogate can't cross IPC.
+	 * @param {string} text
+	 */
+	function bounded(text) {
+		let end = Math.min(text.length, SENT_CHARS);
+		const last = text.charCodeAt(end - 1);
+		if (end < text.length && last >= 0xd800 && last <= 0xdbff) end++;
+		return text.slice(0, end);
+	}
 	/** What the last search was for. */
 	let searched = '';
 	/**
@@ -55,7 +67,7 @@
 	async function search() {
 		cancel();
 		const id = latest;
-		const q = query.trim().slice(0, SENT_CHARS);
+		const q = bounded(query.trim());
 		searched = query.trim();
 		if (!q) {
 			clear();
@@ -87,7 +99,7 @@
 	async function searchAll(id, q, started) {
 		if (id !== latest) return;
 		try {
-			const found = await invoke('search_all', { query: q.slice(0, SENT_CHARS), limit: 60 });
+			const found = await invoke('search_all', { query: bounded(q), limit: 60 });
 			if (id !== latest) return;
 			show(found.hits);
 			setFlags(found);
@@ -117,11 +129,19 @@
 		if (refreshTimer !== undefined) return;
 		refreshTimer = setTimeout(() => {
 			refreshTimer = undefined;
-			// Not while the user is typing: that search will see them.
-			if (!searched || searched !== query.trim()) return;
-			clearTimeout(contentTimer);
-			searchAll(++latest, searched, performance.now());
+			refresh();
 		}, 2000);
+	}
+
+	/**
+	 * Searches names and contents again for the query shown, whose rows stay
+	 * until the answer replaces them. Not while the user is typing: that
+	 * search will see the change.
+	 */
+	function refresh() {
+		if (!searched || searched !== query.trim()) return;
+		cancel();
+		searchAll(latest, searched, performance.now());
 	}
 
 	function clear() {
@@ -154,6 +174,8 @@
 	function onInput() {
 		cancel();
 		chosen = null;
+		// The rows shown are another query's: no verdict on this one until it is searched.
+		contentsPending = !!query.trim();
 		timer = setTimeout(search, 60);
 	}
 
@@ -271,7 +293,7 @@
 				contents = e.payload;
 				refreshSoon();
 			}),
-			listen('index-changed', () => query && search())
+			listen('index-changed', refresh)
 		];
 		return () => {
 			cancel();
@@ -380,7 +402,7 @@
 		<p class="muted center">Nothing found for “{query}”.</p>
 	{/if}
 	<footer class="muted">
-		{#if searchMs !== null}{results.length} results in {searchMs} ms{' · '}{/if}{#if namesSlow}names took too long{' · '}{/if}{#if namesCapped}many names match: the best 5,000 compared{' · '}{/if}{#if contentsSlow}contents took too long{' · '}{/if}{#if contentsCapped}very common words: only some files' contents searched{' · '}{/if}{#if searchMs !== null && contents?.waiting}still reading {contents.waiting.toLocaleString()} files{' · '}{/if}{#if wordsLeftOut}too many words, some not searched{' · '}{/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
+		{#if searchMs !== null}{#if contentsPending && results.length === 0}searching inside files{:else}{results.length} results in {searchMs} ms{/if}{' · '}{/if}{#if namesSlow}names took too long{' · '}{/if}{#if namesCapped}many names match: the best 5,000 compared{' · '}{/if}{#if contentsSlow}contents took too long{' · '}{/if}{#if contentsCapped}very common words: only some files' contents searched{' · '}{/if}{#if searchMs !== null && contents?.waiting}still reading {contents.waiting.toLocaleString()} files{' · '}{/if}{#if wordsLeftOut}too many words, some not searched{' · '}{/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
 	</footer>
 </main>
 

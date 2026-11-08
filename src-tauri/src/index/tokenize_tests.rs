@@ -3,7 +3,7 @@ use crate::index::db::Index;
 use rusqlite::params;
 use std::ops::ControlFlow;
 
-fn words(tokenizer: &Tokenizer, text: &str) -> Vec<String> {
+fn words(tokenizer: &mut Tokenizer, text: &str) -> Vec<String> {
     let mut out = Vec::new();
     tokenizer
         .words(text, |word, _| {
@@ -37,14 +37,14 @@ fn words_are_the_contents_index_words_for_every_bmp_character() {
             indexed[doc - 1].push(term);
         }
     }
-    let tokenizer = Tokenizer::contents(&index.conn).unwrap();
+    let mut tokenizer = Tokenizer::contents(&index.conn).unwrap();
     for (n, theirs) in indexed.iter().enumerate() {
-        let ours = words(&tokenizer, &block(n as u32));
+        let ours = words(&mut tokenizer, &block(n as u32));
         let differ = ours.iter().zip(theirs).position(|(a, b)| a != b).unwrap_or(ours.len().min(theirs.len()));
         assert_eq!(ours.len(), theirs.len(), "U+{:04X} block: first difference at word {differ}", n * 256);
         assert!(ours == *theirs, "U+{:04X} block: ours {:?}, index {:?}", n * 256, &ours[differ..], &theirs[differ..]);
         for term in theirs {
-            assert_eq!(words(&tokenizer, term), std::slice::from_ref(term), "a word as the index keeps it is that word again");
+            assert_eq!(words(&mut tokenizer, term), std::slice::from_ref(term), "a word as the index keeps it is that word again");
         }
     }
 }
@@ -53,7 +53,7 @@ fn words_are_the_contents_index_words_for_every_bmp_character() {
 fn word_positions_are_bytes_of_the_text_and_breaking_stops() {
     let dir = tempfile::tempdir().unwrap();
     let index = Index::open(&dir.path().join("t.db")).unwrap();
-    let tokenizer = Tokenizer::contents(&index.conn).unwrap();
+    let mut tokenizer = Tokenizer::contents(&index.conn).unwrap();
     let text = "Ré\u{301}sumé, किराया\0x";
     let mut seen = Vec::new();
     let finished = tokenizer

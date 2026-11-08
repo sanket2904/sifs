@@ -2428,3 +2428,105 @@ fn snippets_become_segments() {
     assert!(!text.contains('\n') && !text.contains('\t') && !text.contains('\u{2}'), "{text:?}");
     assert_eq!(found.snippet.iter().filter(|s| s.hit).count(), 1);
 }
+
+// --- a files row the watcher left stale (step 3 review, round 3) ---
+
+/// The record of path as the watcher saw it part-way through a write: an
+/// older time and a smaller size.
+fn partial(home: &Home, path: &str) -> crate::index::db::FileRecord {
+    let mut record = record_of(Path::new(path), &home.root).unwrap();
+    record.size = 3;
+    record.modified -= 1;
+    record.modified_ns = Some(123);
+    record
+}
+
+fn size_by_name(index: &Index, query: &str) -> i64 {
+    crate::index::search::search(index, query, 10, now()).unwrap()[0].file.size
+}
+
+#[test]
+fn a_stale_files_row_takes_the_time_and_size_read_and_the_words_are_found() {
+    let home = Home::new();
+    let fake = Fake::new("fake", &["txt"]);
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    let path = home.write("burst/filler-08.txt", "page 2999 · filler text of document 8, a wombat".as_bytes());
+    index.upsert(&[partial(&home, &path)], 2).unwrap();
+    run(&mut index, &registry);
+    let disk = record_of(Path::new(&path), &home.root).unwrap();
+    assert_eq!(names_of(&all(&index, "wombat")), ["filler-08.txt"], "its words are found");
+    assert_eq!(size_by_name(&index, "filler-08"), disk.size, "the name result shows the real size");
+    assert_eq!(index.get(&path).unwrap().unwrap(), disk);
+    assert_eq!(queued(&index), 0);
+    run(&mut index, &registry);
+    assert_eq!(fake.of(&path), 1, "read once");
+}
+
+#[test]
+fn current_contents_under_a_stale_files_row_are_read_again() {
+    let home = Home::new();
+    let path = home.write("notes.txt", b"a wombat at dusk");
+    let fake = Fake::new("fake", &["txt"]);
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!(names_of(&all(&index, "wombat")), ["notes.txt"]);
+    // A late write from the watcher, of what it saw part-way through.
+    index.upsert(&[partial(&home, &path)], 2).unwrap();
+    assert!(all(&index, "wombat").hits.is_empty());
+    run(&mut index, &registry);
+    assert_eq!(fake.of(&path), 2);
+    assert_eq!(names_of(&all(&index, "wombat")), ["notes.txt"]);
+    assert_eq!(index.get(&path).unwrap().unwrap(), record_of(Path::new(&path), &home.root).unwrap());
+    assert_eq!(queued(&index), 0);
+}
+
+#[test]
+fn a_change_the_watcher_saw_after_a_read_is_not_undone_by_its_write() {
+    let home = Home::new();
+    let first = home.write("a.txt", b"old tapir");
+    let other = home.write("b.txt", b"other");
+    set_age(&other, 1);
+    let (db, root, edited) = (home.db.clone(), home.root.clone(), first.clone());
+    // a.txt is read first; while b.txt is read, a.txt is saved again and
+    // its new time and size are written, before the batch is.
+    let fake = Fake::new("fake", &["txt"]).body(move |path, sink, n| {
+        if path.ends_with("b.txt") && n == 1 {
+            fs::write(&edited, b"new zebra, longer").unwrap();
+            let now = record_of(Path::new(&edited), &root).unwrap();
+            let index = Index::open(&db).unwrap();
+            let _write = crate::index::db::writer();
+            index
+                .conn
+                .execute(
+                    "UPDATE files SET modified = ?2, size = ?3, modified_ns = ?4 WHERE path = ?1",
+                    params![now.path, now.modified, now.size, now.modified_ns],
+                )
+                .unwrap();
+        }
+        sink.text(&fs::read_to_string(path)?)?;
+        Ok(())
+    });
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    run_until_empty(&mut index, &registry, &WorkerOptions { concurrency: 1, ..options() }).unwrap();
+    assert_eq!(fake.of(&first), 2, "read again after the change");
+    assert!(all(&index, "tapir").hits.is_empty(), "no old words");
+    assert_eq!(names_of(&all(&index, "zebra")), ["a.txt"]);
+    assert_eq!(index.get(&first).unwrap().unwrap(), record_of(Path::new(&first), &home.root).unwrap());
+}
+
+#[test]
+fn a_file_saved_again_before_it_is_read_is_updated_by_the_watcher() {
+    let home = Home::new();
+    let path = home.write("burst/lorem-1.txt", b"part");
+    let registry = Fake::new("fake", &["txt"]).registry();
+    let mut index = home.scanned(&registry);
+    assert_eq!(queued(&index), 1);
+    fs::write(&path, b"part, then the whole of it").unwrap();
+    home.refresh(&mut index, "burst/lorem-1.txt");
+    let disk = record_of(Path::new(&path), &home.root).unwrap();
+    assert_eq!(index.get(&path).unwrap().unwrap(), disk);
+    assert_eq!(count(&index, "SELECT size FROM extract_queue"), disk.size, "queued as it is now");
+}

@@ -307,13 +307,8 @@ struct Stat {
 
 impl Stat {
     fn of(meta: &std::fs::Metadata) -> Stat {
-        let (modified, modified_ns) = crate::index::crawl::mtime(meta);
-        Stat {
-            modified,
-            modified_ns,
-            size: if meta.is_dir() { 0 } else { meta.len() as i64 },
-            exact: meta.modified().ok(),
-        }
+        let (modified, modified_ns, size) = store::time_and_size(meta);
+        Stat { modified, modified_ns, size, exact: meta.modified().ok() }
     }
 }
 
@@ -532,22 +527,27 @@ impl<'a> Runner<'a> {
             return Ok(Ok(Finished::Clear(job)));
         }
         let stat = Stat::of(&meta);
-        let read: Option<(String, u32, i64, i64, Option<i64>)> = index
+        let read: Option<(String, u32, i64, i64, Option<i64>, bool)> = index
             .conn
             .query_row(
-                "SELECT reader, version, modified, size, modified_ns FROM extracts WHERE file_id = ?1",
+                "SELECT e.reader, e.version, e.modified, e.size, e.modified_ns,
+                        f.modified IS e.modified AND f.size IS e.size AND f.modified_ns IS e.modified_ns
+                 FROM extracts e JOIN files f ON f.id = e.file_id WHERE e.file_id = ?1",
                 params![job.file_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
             )
             .optional()?;
         // Queued again with the same second and size: what was read is
-        // current only if known to be from this nanosecond too.
-        if let Some((id, version, modified, size, modified_ns)) = read {
+        // current only if known to be from this nanosecond too. Under a
+        // files row that disagrees (the watcher missed a write), it is read
+        // again, and the write corrects the row.
+        if let Some((id, version, modified, size, modified_ns, agrees)) = read {
             if id == reader.id()
                 && version >= reader.version()
                 && modified == stat.modified
                 && size == stat.size
                 && modified_ns == Some(stat.modified_ns)
+                && agrees
             {
                 return Ok(Ok(Finished::Drop(job)));
             }

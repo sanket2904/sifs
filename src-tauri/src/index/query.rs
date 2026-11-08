@@ -35,7 +35,7 @@ pub struct Query {
 }
 
 impl Query {
-    pub fn parse(typed: &str, tokenizer: &Tokenizer) -> Result<Query> {
+    pub fn parse(typed: &str, tokenizer: &mut Tokenizer) -> Result<Query> {
         let mut cut = MAX_BYTES.min(typed.len());
         while !typed.is_char_boundary(cut) {
             cut -= 1;

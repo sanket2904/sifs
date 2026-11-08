@@ -245,6 +245,11 @@ pub fn write_results(index: &mut Index, results: &[Finished], now: i64) -> Resul
             "UPDATE extract_queue SET attempts = MAX(attempts - 1, 0)
              WHERE file_id = ?1 AND modified = ?2 AND size = ?3 AND modified_ns IS ?4",
         )?;
+        let mut drop_queued = tx.prepare_cached("DELETE FROM extract_queue WHERE file_id = ?1")?;
+        let mut sync_file = tx.prepare_cached(
+            "UPDATE files SET modified = ?2, size = ?3, modified_ns = ?4
+             WHERE id = ?1 AND NOT (modified IS ?2 AND size IS ?3 AND modified_ns IS ?4)",
+        )?;
         let mut path_of = tx.prepare_cached("SELECT path FROM files WHERE id = ?1")?;
         let mut clear_contents = tx.prepare_cached("DELETE FROM contents WHERE file_id = ?1")?;
         let mut clear_facts = tx.prepare_cached("DELETE FROM facts WHERE file_id = ?1")?;
@@ -283,6 +288,16 @@ pub fn write_results(index: &mut Index, results: &[Finished], now: i64) -> Resul
                     dequeue.execute(params![job.file_id, job.modified, job.size, job.modified_ns])?;
                 }
                 Finished::Read(job, extract) => {
+                    // Checked again under the writer lock: a file changed
+                    // since it was read stays queued, and a newer time and
+                    // size the watcher wrote meanwhile are kept.
+                    if on_disk(&job.path) != Some((extract.modified, extract.modified_ns, extract.size)) {
+                        unclaim.execute(params![job.file_id, job.modified, job.size, job.modified_ns])?;
+                        continue;
+                    }
+                    // The files row takes the time and size read, if the
+                    // watcher missed them, so search finds what was read.
+                    sync_file.execute(params![job.file_id, extract.modified, extract.size, extract.modified_ns])?;
                     clear_contents.execute(params![job.file_id])?;
                     clear_facts.execute(params![job.file_id])?;
                     for part in &extract.parts {
@@ -304,13 +319,25 @@ pub fn write_results(index: &mut Index, results: &[Finished], now: i64) -> Resul
                         now,
                         extract.modified_ns
                     ])?;
-                    dequeue.execute(params![job.file_id, job.modified, job.size, job.modified_ns])?;
+                    drop_queued.execute(params![job.file_id])?;
                 }
             }
         }
     }
     tx.commit()?;
     Ok(held.elapsed())
+}
+
+/// A file's time (seconds, nanoseconds) and size as the worker records
+/// them.
+pub(crate) fn time_and_size(meta: &std::fs::Metadata) -> (i64, i64, i64) {
+    let (modified, modified_ns) = crate::index::crawl::mtime(meta);
+    (modified, modified_ns, if meta.is_dir() { 0 } else { meta.len() as i64 })
+}
+
+/// time_and_size of the file at path now; None if it is gone.
+fn on_disk(path: &str) -> Option<(i64, i64, i64)> {
+    std::fs::symlink_metadata(path).ok().map(|meta| time_and_size(&meta))
 }
 
 pub fn progress(index: &Index) -> Result<Progress> {

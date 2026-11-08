@@ -360,11 +360,11 @@ fn matching_parts_are_found_without_reading_their_text() {
 #[test]
 fn looking_for_a_snippet_stops_at_the_deadline() {
     let (_dir, index) = db();
-    let tokenizer = Tokenizer::contents(&index.conn).unwrap();
-    let query = Query::parse("tapir", &tokenizer).unwrap();
+    let mut tokenizer = Tokenizer::contents(&index.conn).unwrap();
+    let query = Query::parse("tapir", &mut tokenizer).unwrap();
     let text = format!("{}tapir", "word ".repeat(100_000));
-    assert!(snippet(&tokenizer, &text, &query, &Until::after(Duration::from_secs(60))).unwrap().is_some());
-    assert_eq!(snippet(&tokenizer, &text, &query, &Until::after(Duration::ZERO)).unwrap(), None);
+    assert!(snippet(&mut tokenizer, &text, &query, &Until::after(Duration::from_secs(60))).unwrap().is_some());
+    assert_eq!(snippet(&mut tokenizer, &text, &query, &Until::after(Duration::ZERO)).unwrap(), None);
 }
 
 #[test]
@@ -536,3 +536,6 @@ fn a_reader_sees_each_commit_and_the_writer_commits_during_its_reads() {
 
 #[path = "find_review_tests.rs"]
 mod review_round2;
+
+#[path = "find_round3_tests.rs"]
+mod review_round3;

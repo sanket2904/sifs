@@ -124,8 +124,8 @@ struct Candidate {
 /// the index, and stops when until passes.
 pub fn search_all(index: &Index, typed: &str, limit: usize, now: i64, until: &Until) -> Result<Results> {
     let conn = &index.conn;
-    let tokenizer = Tokenizer::contents(conn)?;
-    let query = Query::parse(typed, &tokenizer)?;
+    let mut tokenizer = Tokenizer::contents(conn)?;
+    let query = Query::parse(typed, &mut tokenizer)?;
     // A caller already in a transaction has its snapshot.
     let _snapshot = if conn.is_autocommit() { Some(conn.unchecked_transaction()?) } else { None };
     let _stop = Stop::at(conn, until);
@@ -163,9 +163,15 @@ pub fn search_all(index: &Index, typed: &str, limit: usize, now: i64, until: &Un
         };
         candidates.push(Candidate { prior: hit.prior, file: hit.file, by, score, part });
     }
+    // A name that matches too but was not among the names kept keeps its
+    // tier and the bonus.
     for (file, score, part) in by_contents.into_values() {
         let prior = kind_prior(file.is_dir, &file.ext) + place_prior(&file.path);
-        candidates.push(Candidate { prior, file, by: By::Contents, score, part: Some(part) });
+        let (by, score) = match search::name_score(&file, &query.terms, prior, now) {
+            Some(name) => (By::Name, name + BOTH),
+            None => (By::Contents, score),
+        };
+        candidates.push(Candidate { prior, file, by, score, part: Some(part) });
     }
     candidates.sort_by(|a, b| {
         b.prior
@@ -180,7 +186,7 @@ pub fn search_all(index: &Index, typed: &str, limit: usize, now: i64, until: &Un
         let found = match c.part {
             None => None,
             Some(part) => {
-                let (found, late) = found_in(conn, &tokenizer, part, &query, until)?;
+                let (found, late) = found_in(conn, &mut tokenizer, part, &query, until)?;
                 timed_out |= late;
                 Some(found)
             }
@@ -204,12 +210,10 @@ pub fn search_all(index: &Index, typed: &str, limit: usize, now: i64, until: &Un
 fn matching_parts(conn: &Connection, fts: &str) -> Result<Option<ContentMatches>> {
     // Parts are found through contents_owner, never their rows: a part's
     // row holds its text, so reading thousands of them is thousands of
-    // pages read from disk. A time to the nanosecond not known on one side
-    // (written before migration 3) is compared to the second.
+    // pages read from disk.
     let sql = format!(
         "SELECT f.path, f.root, f.name, f.ext, f.is_dir, f.size, f.modified, f.inode, f.modified_ns, g.part, g.file_id, g.parts,
-                e.modified IS f.modified AND e.size IS f.size
-                    AND (e.modified_ns IS f.modified_ns OR e.modified_ns IS NULL OR f.modified_ns IS NULL) AND {NOT_REMOVING}
+                e.modified IS f.modified AND e.size IS f.size AND e.modified_ns IS f.modified_ns AND {NOT_REMOVING}
          FROM (SELECT c.file_id, c.id AS part, MIN(m.rank) AS rank, COUNT(*) AS parts
                FROM (SELECT rowid, rank FROM contents_fts WHERE contents_fts MATCH ?1 LIMIT {CONTENT_PARTS}) m
                JOIN contents c INDEXED BY contents_owner ON c.id = m.rowid GROUP BY c.file_id) g
@@ -239,7 +243,7 @@ fn matching_parts(conn: &Connection, fts: &str) -> Result<Option<ContentMatches>
 /// A shown part's label and snippet, read together, and whether the time
 /// ran out first. Read by part and file: a part id is reused once deleted.
 /// A part not there gives neither, and is no timeout.
-fn found_in(conn: &Connection, tokenizer: &Tokenizer, part: Part, query: &Query, until: &Until) -> Result<(Found, bool)> {
+fn found_in(conn: &Connection, tokenizer: &mut Tokenizer, part: Part, query: &Query, until: &Until) -> Result<(Found, bool)> {
     if until.passed() {
         return Ok((Found::default(), true));
     }
@@ -266,7 +270,7 @@ fn found_in(conn: &Connection, tokenizer: &Tokenizer, part: Part, query: &Query,
 /// left out. Words are the index's own (tokenizer), and hits are positions
 /// found here, never marks inside the text, so the file's own characters
 /// can't pose as one. None if until passed while looking.
-fn snippet(tokenizer: &Tokenizer, text: &str, query: &Query, until: &Until) -> Result<Option<Vec<Segment>>> {
+fn snippet(tokenizer: &mut Tokenizer, text: &str, query: &Query, until: &Until) -> Result<Option<Vec<Segment>>> {
     let mut first = None;
     let mut late = false;
     let mut n = 0;
@@ -334,7 +338,7 @@ fn snippet(tokenizer: &Tokenizer, text: &str, query: &Query, until: &Until) -> R
 
 /// Where the words of text[within] are, in text, and whether each is one
 /// the query looks for.
-fn words_in(tokenizer: &Tokenizer, query: &Query, text: &str, within: Range<usize>) -> Result<Vec<(Range<usize>, bool)>> {
+fn words_in(tokenizer: &mut Tokenizer, query: &Query, text: &str, within: Range<usize>) -> Result<Vec<(Range<usize>, bool)>> {
     let mut words = Vec::new();
     let offset = within.start;
     tokenizer.words(&text[within], |word, at| {

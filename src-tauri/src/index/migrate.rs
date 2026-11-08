@@ -133,13 +133,19 @@ const CONTENT_OWNERS: &str = "CREATE INDEX contents_owner ON contents(id, file_i
 /// Version 3: file times to the nanosecond, so an edit within the same
 /// second that keeps the size is a change: the file is read again, and its
 /// old words are not found meanwhile. NULL is a time written before this
-/// version, not known to the nanosecond: filling it in queues nothing (the
-/// first scan after the upgrade does it for every file), and it compares
-/// to the second, as before.
+/// version, not known to the nanosecond. Every file read before it is read
+/// once more (no released build has read contents), and until then its
+/// contents count as current only while the file's time is unknown too.
+/// So filling in the files' times (the first scan after the upgrade does it
+/// for every file) queues nothing more.
 const NANOSECONDS: &str = r#"
 ALTER TABLE files ADD COLUMN modified_ns INTEGER;
 ALTER TABLE extracts ADD COLUMN modified_ns INTEGER;
 ALTER TABLE extract_queue ADD COLUMN modified_ns INTEGER;
+
+INSERT OR IGNORE INTO extract_queue (file_id, priority, modified, size, attempts, modified_ns)
+SELECT e.file_id, COALESCE(k.priority, 3), f.modified, f.size, 0, NULL
+FROM extracts e JOIN files f ON f.id = e.file_id LEFT JOIN extract_kinds k ON k.ext = f.ext;
 
 DROP TRIGGER files_ai_extract;
 CREATE TRIGGER files_ai_extract AFTER INSERT ON files BEGIN
@@ -149,12 +155,17 @@ CREATE TRIGGER files_ai_extract AFTER INSERT ON files BEGIN
     FROM extract_kinds k WHERE k.ext = new.ext AND (new.is_dir = 0 OR k.packages = 1);
 END;
 DROP TRIGGER files_au_extract;
+-- An upsert of files (the crawler's and the watcher's) runs its update
+-- with ABORT, which overrides a trigger's OR REPLACE: a file still queued
+-- would fail to update. ON CONFLICT here is not overridden.
 CREATE TRIGGER files_au_extract AFTER UPDATE OF modified, size, modified_ns ON files
 WHEN new.modified IS NOT old.modified OR new.size IS NOT old.size
     OR (old.modified_ns IS NOT NULL AND new.modified_ns IS NOT old.modified_ns) BEGIN
-    INSERT OR REPLACE INTO extract_queue (file_id, priority, modified, size, attempts, modified_ns)
+    INSERT INTO extract_queue (file_id, priority, modified, size, attempts, modified_ns)
     SELECT new.id, 0, new.modified, new.size, 0, new.modified_ns
-    FROM extract_kinds k WHERE k.ext = new.ext AND (new.is_dir = 0 OR k.packages = 1);
+    FROM extract_kinds k WHERE k.ext = new.ext AND (new.is_dir = 0 OR k.packages = 1)
+    ON CONFLICT (file_id) DO UPDATE SET priority = 0, modified = excluded.modified, size = excluded.size,
+        attempts = 0, modified_ns = excluded.modified_ns;
 END;
 DROP TRIGGER files_au_unread;
 CREATE TRIGGER files_au_unread AFTER UPDATE OF is_dir, modified, size, modified_ns ON files

@@ -51,7 +51,20 @@ impl<'conn> Tokenizer<'conn> {
     /// keeps it (possibly empty: a word of marks that fold to nothing), and
     /// where it is in text, in bytes. Stops when each breaks. Ok(false) if
     /// it did.
-    pub fn words(&self, text: &str, mut each: impl FnMut(&str, Range<usize>) -> ControlFlow<()>) -> Result<bool> {
+    ///
+    /// SQLite keeps the word in the tokenizer's own buffer, so each can't
+    /// use the tokenizer it is called from:
+    ///
+    /// ```compile_fail
+    /// # use std::ops::ControlFlow;
+    /// # let conn = rusqlite::Connection::open_in_memory().unwrap();
+    /// let mut tokenizer = sifs_lib::index::tokenize::Tokenizer::contents(&conn).unwrap();
+    /// tokenizer.words("outer", |_, _| {
+    ///     tokenizer.words("inner", |_, _| ControlFlow::Continue(())).unwrap();
+    ///     ControlFlow::Continue(())
+    /// }).unwrap();
+    /// ```
+    pub fn words(&mut self, text: &str, mut each: impl FnMut(&str, Range<usize>) -> ControlFlow<()>) -> Result<bool> {
         let Ok(length) = c_int::try_from(text.len()) else { bail!("text too long to tokenize: {} bytes", text.len()) };
         let mut call = Call { each: &mut each, broke: false, panic: None, bad_word: false };
         let Some(tokenize) = self.methods.xTokenize else { bail!("the tokenizer has no xTokenize") };

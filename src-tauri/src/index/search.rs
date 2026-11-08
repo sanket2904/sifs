@@ -51,7 +51,7 @@ pub fn search(index: &Index, query: &str, limit: usize, now: i64) -> Result<Vec<
 
 /// search, stopping when until passes, with what it found.
 pub fn search_until(index: &Index, query: &str, limit: usize, now: i64, until: &Until) -> Result<Vec<Hit>> {
-    let query = Query::parse(query, &Tokenizer::contents(&index.conn)?)?;
+    let query = Query::parse(query, &mut Tokenizer::contents(&index.conn)?)?;
     let _stop = Stop::at(&index.conn, until);
     let mut hits = matches(index, &query, now, until, Order::Score)?.hits;
     hits.truncate(limit);
@@ -138,6 +138,18 @@ pub(crate) fn matches(index: &Index, query: &Query, now: i64, until: &Until, ord
     }
     let (hits, capped) = best.into_sorted();
     Ok(Names { hits, capped, timed_out })
+}
+
+/// The score a file whose name contains every term has in the name search;
+/// None if it doesn't. For a file found another way, which may be one of
+/// many names left out of the CANDIDATES best.
+pub(crate) fn name_score(file: &FileRecord, terms: &[String], prior: f64, now: i64) -> Option<f64> {
+    let name = file.name.to_lowercase();
+    if terms.is_empty() || !terms.iter().all(|t| name.contains(t.as_str())) {
+        return None;
+    }
+    let fields = Fields { path: &file.path, name: &file.name, ext: &file.ext, is_dir: file.is_dir, modified: file.modified };
+    Some(rank(fields, terms, &terms.join(" "), prior, now))
 }
 
 /// The keep best matches offered, in memory for at most twice as many.
