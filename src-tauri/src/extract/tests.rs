@@ -433,11 +433,11 @@ fn claim_order(index: &mut Index) -> Vec<String> {
 }
 
 #[test]
-fn the_queue_takes_recent_files_then_documents_then_images_then_code() {
+fn the_queue_takes_recent_files_then_documents_then_code_then_images() {
     let (home, registry) = ordered_home();
     let mut index = home.scanned(&registry);
     // Within a priority, the most recently modified first.
-    assert_eq!(claim_order(&mut index), vec!["recent.rs", "notes.txt", "older.md", "photo.png", "code.rs"]);
+    assert_eq!(claim_order(&mut index), vec!["recent.rs", "notes.txt", "older.md", "code.rs", "photo.png"]);
 }
 
 #[test]

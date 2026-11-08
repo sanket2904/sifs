@@ -23,8 +23,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// Where a reader's files wait in the queue: documents first, then images,
-/// then the rest (code, data).
+/// Where a reader's files wait in the queue: documents first, then the rest
+/// (code, data), then images (OCR is the slow step).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Class {
     Document,
@@ -36,8 +36,8 @@ impl Class {
     pub fn priority(self) -> i64 {
         match self {
             Class::Document => 1,
-            Class::Image => 2,
             Class::Other => 3,
+            Class::Image => 4,
         }
     }
 }
