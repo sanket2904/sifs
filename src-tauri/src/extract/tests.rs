@@ -322,7 +322,6 @@ fn a_phase_1_index_is_migrated_and_its_files_are_queued() {
     let registry = Registry::platform();
     store::register_kinds(&mut index, &registry).unwrap();
     let stats = run(&mut index, &registry);
-    // The photo has a reader only on macOS, where images are read.
     let readable = if cfg!(target_os = "macos") { 3 } else { 2 };
     assert_eq!(stats.reconciled, readable, "the text and HTML files and the photo; not the folders");
     let mut ferry = found(&index, "ferry");

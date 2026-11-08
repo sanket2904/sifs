@@ -1,8 +1,8 @@
 //! Images and screenshots: the words in them, through Vision's text
 //! recognition, and when, where and with what they were taken. Each image
 //! is read by a helper process (helper.rs) that stays running between
-//! images, because Vision takes 0.2 s to start in each new process and
-//! most images take less to read (plan, step 4). SIFS kills the helper past
+//! images, because Vision loads its models in each new process, which
+//! takes longer than most images (plan, step 4). SIFS kills the helper past
 //! an image's processor time, memory or output cap, at the time limit, or
 //! when its output ends early, and keeps the facts it had sent.
 
@@ -63,7 +63,7 @@ impl Default for Caps {
     }
 }
 
-/// Images are opened up to this size; the owner's largest is 57 MB.
+/// Images are opened up to this size.
 pub const MAX_BYTES: u64 = 256 * MB;
 
 /// The time limit, by the clock. The processor time cap stops an image

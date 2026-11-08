@@ -72,7 +72,8 @@ pub(super) fn taken(date: &str, offset: Option<&str>) -> Option<String> {
     Some(format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}{offset}"))
 }
 
-/// "+09:00" or "-03:30", as written, if it is an offset any clock uses.
+/// "+09:00" or "-03:30", as written, if its hours are 14 or less and its
+/// minutes 59 or less.
 fn utc_offset(offset: &str) -> Option<String> {
     let offset = offset.trim_matches(|c: char| c.is_whitespace() || c == '\0');
     let b = offset.as_bytes();
@@ -107,8 +108,8 @@ pub(super) fn coordinate(degrees: f64, reference: Option<&str>, max: f64) -> Opt
     Some(if negative { -degrees.abs() } else { degrees })
 }
 
-/// Latitude and longitude, six decimals each. Exactly 0, 0 is what a
-/// camera without a fix writes: no position.
+/// Latitude and longitude, six decimals each. Exactly 0, 0 is taken as no
+/// position: a placeholder is far likelier than a photo taken there.
 pub(super) fn position(
     latitude: (Option<f64>, Option<&str>),
     longitude: (Option<f64>, Option<&str>),

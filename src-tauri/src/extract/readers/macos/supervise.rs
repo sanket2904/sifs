@@ -63,9 +63,9 @@ impl Drop for Process {
 /// How a helper's output ended before its last frame.
 #[derive(Debug)]
 pub(super) enum Ended {
-    /// It was still running, and was killed.
+    /// It ended on SIGKILL: SIFS's kill, as a rule.
     Killed,
-    /// It ended on a signal of its own.
+    /// It ended on another signal.
     Crashed,
     Exited(ExitStatus),
     Lost(std::io::Error),
@@ -117,9 +117,10 @@ impl Process {
         usage(self.0.id())
     }
 
-    /// Hands what the helper sends to take until take says stop, checking
-    /// the clock, processor time and memory on every turn, whatever the pipe
-    /// says. Its output ending first kills and reaps it at once.
+    /// Hands what the helper sends to take until take says stop. The clock,
+    /// processor time and memory are checked between reads, whether or not
+    /// output came; the output cap bounds a run of reads. Its output ending
+    /// first kills and reaps it at once.
     pub(super) fn watch<S>(&mut self, watch: &Watch, take: impl FnMut(&[u8]) -> Option<S>) -> Watched<S> {
         let mut stdout = self.0.stdout.take().unwrap();
         let watched = self.watch_output(&mut stdout, watch, take);
@@ -164,8 +165,8 @@ impl Process {
         }
     }
 
-    /// The output ended before the helper's last frame: killed and reaped
-    /// at once, so it can't go on unwatched. Its stdin stays open until it
+    /// Kills and reaps a helper whose output ended before its last frame,
+    /// or that can't take a request, so it can't go on unwatched. Its stdin stays open until it
     /// is reaped (wait would close it first): a closed stdin can end the
     /// helper on its own before the kill lands, hiding that it was killed.
     pub(super) fn ended_early(&mut self) -> Ended {
@@ -196,8 +197,8 @@ pub(super) fn encode(tag: u8, body: &[u8]) -> Vec<u8> {
 pub(super) struct Decoder<F> {
     marker: &'static [u8],
     decode: fn(u8, &[u8]) -> Result<F, String>,
-    /// A frame claiming to be longer is an error as soon as its length
-    /// comes, before any of it is kept.
+    /// A frame claiming to be longer is an error as soon as its length is
+    /// read, without waiting for the rest of it.
     max: usize,
     buf: Vec<u8>,
     /// Where the next frame starts in buf.

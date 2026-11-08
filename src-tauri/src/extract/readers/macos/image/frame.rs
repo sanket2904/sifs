@@ -12,12 +12,12 @@ use std::path::PathBuf;
 
 pub(super) const MARKER: &[u8] = b"\0SIFS-IMAGE-1\0";
 
-/// A request is an id, four numbers and a path, which macOS keeps under
-/// 1,024 bytes.
+/// A request is four numbers (its id among them) and a path, which macOS
+/// keeps under 1,024 bytes.
 const MAX_REQUEST: usize = 64 * 1024;
 
-/// The longest frame the helper may send: text at the character cap, four
-/// bytes a character.
+/// The longest frame the helper may send: text at the character cap, at
+/// four bytes a character, and 64 bytes for the rest.
 pub(super) fn max_frame(chars: usize) -> usize {
     chars.saturating_mul(4).saturating_add(64)
 }
@@ -169,8 +169,7 @@ impl Frame {
 
 pub(super) type Decoder = supervise::Decoder<Frame>;
 
-/// Frames on the helper's stdout, none longer than text of chars
-/// characters.
+/// Frames on the helper's stdout, none longer than max_frame(chars).
 pub(super) fn decoder(chars: usize) -> Decoder {
     Decoder::new(MARKER, decode, max_frame(chars))
 }

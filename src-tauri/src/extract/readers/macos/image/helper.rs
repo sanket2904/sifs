@@ -222,13 +222,13 @@ fn read(request: &Request, send: &mut Send) -> std::io::Result<Outcome> {
     Ok(Outcome::Read)
 }
 
-/// The lines Vision finds, top to bottom.
+/// The lines Vision finds, in its order.
 fn recognize(image: &CGImage) -> Result<Vec<String>, String> {
     let handler = unsafe { VNImageRequestHandler::initWithCGImage_options(VNImageRequestHandler::alloc(), image, &NSDictionary::new()) };
     let request = VNRecognizeTextRequest::new();
     request.setRecognitionLevel(VNRequestTextRecognitionLevel::Accurate);
     request.setUsesLanguageCorrection(true);
-    // Every language Vision reads, none preferred.
+    // Vision picks the language; no list is fixed, so none is preferred.
     request.setAutomaticallyDetectsLanguage(true);
     let requests: Retained<NSArray<VNRequest>> =
         NSArray::from_retained_slice(&[Retained::into_super(Retained::into_super(request.clone()))]);
