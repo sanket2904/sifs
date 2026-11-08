@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 fn main() -> anyhow::Result<()> {
+    sifs_lib::extract::serve_helper_if_asked();
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let split = args.iter().position(|a| a == "--").unwrap_or(args.len());
     let contents = match args[..split].iter().position(|a| a == "--contents") {
