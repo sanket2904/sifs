@@ -507,4 +507,16 @@ Images are drawn in the tests (Core Text into a bitmap, written as PNG, JPEG, HE
 
 ### Measuring
 
-A scratch program (in the orchestration notes) calls the reader as the worker does over the owner's images, and prints counts and times only (no text, paths or places): per image median and p95, the helper's peak memory, SIFS's own, how many have a date and a place, and the projected time for the library. The results are added here.
+A scratch program (in the orchestration notes) calls the reader as the worker does over the owner's images, and prints counts and times only (no text, paths or places).
+
+**Measured on the owner's Mac (2026-11-08),** the reader as built, over all 25,397 images, one after another, at a load average of 5 to 8 from other programs:
+
+| | Images |
+|---|---|
+| text found | 18,831 (median 26 characters, p95 1,275, most 11,312; 4.0 million in all) |
+| no text | 6,540 |
+| damaged, or not an image macOS can read (failed) | 26 |
+| stopped by a limit, or crashed | 0 |
+| with the date taken / a GPS position / a camera model | 188 / 11 / 17 |
+
+Per image: median **32 ms**, p95 **231 ms**, p99 462 ms, most 4.9 s; **28 minutes** for all of them. The helper's peak footprint was **688 MB**; SIFS's side (the scratch program) peaked at 6 MB. With every core busy (`yes` on each), 200 of them took 209 s in place of 13.5 s, a median of 756 ms and at most 5.3 s each, none stopped: about **7.4 hours** for the library at that load, at low priority.
