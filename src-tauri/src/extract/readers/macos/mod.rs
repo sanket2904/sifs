@@ -1,6 +1,8 @@
-//! Readers that use macOS frameworks (PDFKit, Vision, AVFoundation, AppKit)
-//! register here. None yet: they come in later steps.
+pub mod pdf;
 
 use crate::extract::Registry;
+use std::sync::Arc;
 
-pub fn register(_registry: &mut Registry) {}
+pub fn register(registry: &mut Registry) {
+    registry.register(Arc::new(pdf::Pdf::default()));
+}

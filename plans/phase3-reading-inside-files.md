@@ -24,7 +24,7 @@ The name index stays as it is. Three additions to the same SQLite file:
 | Kind | How | Notes |
 |---|---|---|
 | Text, markdown, code, CSV, JSON, HTML | read directly; HTML tags stripped | capped at a few MB |
-| PDF | PDFKit (macOS), page by page | no text layer → OCR the page images (below) |
+| PDF | PDFKit (macOS), page by page, in a helper process (step 2b) | no text layer → OCR the page images (below) |
 | Word, Excel, PowerPoint (`docx`, `xlsx`, `pptx`) | they're zip files of XML: read the document, sheet and slide XML | Excel: one part per sheet, cells as rows |
 | Pages, Numbers, Keynote | the preview image inside the bundle, through OCR | their own format is a private binary; the preview is good enough to start |
 | RTF, old `doc` | AppKit's text import | |
@@ -264,3 +264,120 @@ The reviewers' tests are kept as `office/review.rs` to `review7.rs`. The reports
 ### Left for a Mac session
 
 PDF through PDFKit, page by page (labels `page 1`…, from the PDF's page index), and its tests; real Office sample files saved by Word, Excel, PowerPoint, Pages and LibreOffice, to check the page marks and the facts against what the apps write.
+
+## Step 2b in detail: PDF through PDFKit
+
+Step 2's second half. One reader, `pdf`, macOS only, registered in `readers/macos`. PDFKit reads each page's text; each PDF is read in a **helper process** (SIFS's own program, started again in a reader mode), which SIFS kills when it uses too much processor time or memory, or runs past the time limit. Linux has no PDF reader yet, and still builds.
+
+### In one process, or in a helper: what the measurements decided
+
+PDFKit runs in the process that calls it, and one call (`PDFPage.string`, a page's text) can't be interrupted. Before choosing, both shapes were measured (the prototype and its scripts are outside the repo, in the orchestration notes for this step: `phase4/p3-pdf/`). Each generated file below was read by PDFKit with no page or time cap, one file per process, killed at 120 s.
+
+| Generated file | What PDFKit did |
+|---|---|
+| a page whose content stream inflates to 1 GB of `q Q` (1 MB file) | `string` on that page took **37 s** |
+| a page of 2 million text operators (5 MB) | **48 s** for that page |
+| a page of 400 MB of text operators, compressed (1.3 MB) | **20 s** for that page |
+| form XObjects ten deep, each drawing the next ten times (3 KB) | never returned: **30 GB** of memory (14 GB resident) when killed at 120 s |
+| 10,000 pages; 100,000 pages (16 MB) | 5.3 s; not finished at 120 s |
+| a self-drawing XObject; a 12,000 × 12,000 image page | 25 ms; 170 ms, no text |
+| damaged: cut in half, no xref, 40 flipped bytes, random bytes after `%PDF`, zero bytes, a page tree that contains itself, arrays nested 500,000 deep, `/Count 2000000000` | PDFKit refuses to open each in under 70 ms; no crash, no hang |
+| a user password; an owner password only (copying not allowed) | opens locked in 75 ms; opens and reads normally |
+
+So in one process, one page can hold the reader for tens of seconds or take the Mac's memory, and the worker can only abandon its thread (step 1's risk), which keeps running. **macOS doesn't enforce memory limits on a process:** a child with `RLIMIT_AS` and `RLIMIT_DATA` at 512 MB (setrlimit refused both) allocated and touched 4 GB. A limit has to be enforced by watching: the XObject file, read by a helper that SIFS polled and killed at a 1 GB footprint, was killed 2.8 s in, at 1,036 MB.
+
+**The owner's PDFs.** Spotlight lists 2,698 under `~`; 75 are iCloud placeholders (not opened), and 2,623 were read, one helper process per file, a 10 s limit, no page cap, a 1 GB memory kill:
+
+| | Count |
+|---|---|
+| text found | 1,718 (7 reached the million-character cap) |
+| no text in any page (scans) | 896 |
+| some pages without text | 67 files, 307 pages |
+| password needed | 3 |
+| PDFKit wouldn't open | 6 (4 empty files, 2 cut short at 512 KB) |
+| opened, owner password only | 25 (read normally) |
+| stopped by time or memory, or crashed | 0 |
+
+Per file, in a helper: median **34 ms**, p95 110 ms, p99 422 ms, max 1.44 s. The helper's peak resident memory: median 19 MB, p99 86 MB, max 276 MB (a 588-page file at the character cap). The most pages was 973; the median page took 2.75 ms (files of more than 20 pages). The largest file (207 MB) is a scan with no text.
+
+The same files in one long-lived process: median 5.2 ms per file, 65 s in all against the helper's 138 s; the process peaked at 539 MB resident and still held 153 MB after the last file. The difference is PDFKit starting in each new process: opening a document took a median of 21 ms in a fresh helper and 0.7 ms in a warm process (the spawn itself, about 6 ms). Over 400 of the files, alternating the two shapes five times on a loaded machine (a load average of 15 to 36 on 18 cores, from other builds), one process took a median of 13.4 s (8.8 to 22.4) and a helper per file 27.7 s (17.7 to 41.3): about twice as long in every pair (1.8 to 2.7 times).
+
+**Decision: a helper process per PDF.** It bounds time and memory whatever the file is, a crash in PDFKit costs one file instead of SIFS, and PDFKit's caches leave with the helper. It costs about 30 ms per file: about 75 s of background time over the owner's PDFs, read once. This departs from decision 8 of step 1 ("Mac framework readers run in-process first; a helper process if crashes show up"): the measurements above show hangs and unbounded memory without any crash. A helper that serves many files in turn would save most of the 30 ms but needs a request loop and a rule for when to replace it; left for when step 6's measurements ask for it.
+
+**Processor time, not the clock, stops a page that never ends.** The helper runs at "utility" priority, so a busy Mac runs it last. The first full run of the reader over the owner's PDFs, with the worker's 10 s limit by the clock, was made while other programs kept 18 cores at a load average of 100 to 320: 4 files that take 0.15 to 1.1 s alone were stopped at 10 s, and would not be read again until they changed. A page that never ends uses the processor the whole time; a starved helper hardly uses it. So the helper is stopped at **10 s of processor time**, and the clock limit for PDFs is **60 s**. The second run, at a load average of 300 to 780, stopped no file; the slowest took 18.5 s by the clock.
+
+### The helper
+
+- **Starting it:** the reader runs the program SIFS is running (`std::env::current_exe`) with `SIFS_PDF_HELPER` set. The program's `main` (the app, and `sifs-bench`) first calls `extract::serve_helper_if_asked()`, which reads the one PDF and exits, never starting the app. The PDF's path and its limits are in the environment. The test binary is its own helper, through an ignored test that calls the same function.
+- **Talking to it:** the helper writes a marker, then frames on stdout: the page count, the facts, each page as it finishes (its text with its index, or its index alone when it has no text), then an end frame (or "password needed", "can't open"). Anything before the marker is ignored (the test binary prints a line first). A frame cut short is dropped.
+- **Trusting it no further than the protocol:** SIFS takes one page count before any page, then page indexes strictly increasing, below the count and the page cap. Anything else stops the read as output that makes no sense, keeping the pages before it, so no text is labelled with a page that can't exist or comes out of order. Every whole frame that has arrived is taken before a broken frame or the output cap stops the read, however the pipe splits the bytes. SIFS counts the pages without text itself and records `textless_pages` once, when the read ends however it ends.
+- **Output that ends early:** if stdout closes before the end frame, SIFS kills the helper at once and reaps it, so it can't go on using the processor or memory unwatched.
+- **SIFS going away:** the helper's stdin is a pipe from SIFS that is never written. When it closes (SIFS quit or crashed), the helper exits. It also exits a second after SIFS's deadline, if SIFS has not killed it.
+- **Priority:** the helper runs at macOS's "utility" quality of service, like the worker. The worker runs at most two reads at a time, so at most two helpers. The tests' helper keeps the test's priority: at "utility", with every core busy, a three-page read took 13 s alone and over 30 s in the full suite.
+- **Always reaped:** however a read ends, the helper is killed if still running and waited for, so none is left behind.
+
+### Limits
+
+| Limit | Value | Enforced by | Past it |
+|---|---|---|---|
+| file size | 512 MB (owner's largest: 207 MB) | the worker | skipped, never opened |
+| processor time | 10 s, polled every 20 ms | SIFS kills the helper | the pages read are kept, with `truncated`; with none, failed ("used more than 10 s of processor time") |
+| time | 60 s by the clock, the worker's limit for this reader | SIFS kills the helper at the deadline | the same; with no pages, failed ("took longer than 60 s") |
+| memory | 1 GB physical footprint, polled every 20 ms | SIFS kills the helper | the same, "used more than 1024 MB of memory" |
+| output | 8 MB read from the helper | SIFS stops reading and kills it | the same, "sent more than 8 MB" |
+| a crash | | the helper ends on a signal | the same, "PDFKit crashed reading it"; output that makes no sense is treated the same way |
+| output ends early | | the helper closes stdout before its end frame | SIFS kills and reaps it at once; the same, "the PDF reader closed its output early" if it was still running, or how it ended |
+| pages | 10,000, in order | the helper | the rest left out, `truncated` |
+| characters | 1,000,000 | the helper cuts each page to what is left; the sink keeps the cap too | `truncated`, unless the text ends exactly at the cap with no page left |
+
+Keeping the pages read before a stop departs from the other readers, which record a timeout as failed with nothing kept: a 900-page file whose page 600 stalls is still found by its first 599 pages. Pages without text count as read: a scan whose page 3 stalls is recorded `empty` with `textless_pages` 2, so OCR still finds it. Why it stopped is kept as a `stopped` fact. Such a file is not read again until it changes.
+
+A file that doesn't start with `%PDF-` in its first 1,024 bytes (where PDFKit looks) is skipped as "not a PDF" without starting a helper; an empty file is recorded empty. A PDF that PDFKit can't open is failed ("damaged, or not a PDF PDFKit can read").
+
+### Labels
+
+One part per page with text, labelled `page 1`, `page 2`, … from the page's index in the document (the first page is `page 1`), not the labels a PDF may give its pages (`iv`, `A-3`): the index is what a viewer's page number shows by default and goes to. Pages without text cost nothing (the sink drops empty parts), so a part's number is not its page; its label is.
+
+### Encrypted and image-only PDFs
+
+- **A password needed to open** (a user password): skipped as "password-protected", as for Office. Not retried until the file changes.
+- **An owner password only** (opens freely, with copying or printing restricted): read. The text is the owner's, on the owner's Mac, and Preview shows it.
+- **No text in any page** (a scan): recorded `empty`, with nothing in `contents`, and the facts `pages` and `textless_pages` (equal). **Pages without text** in a file that has some: the file is read and `textless_pages` counts them. Step 4's OCR finds its work with `facts` where `key = 'textless_pages'`; it will raise the reader's version or add its own, which re-reads them. **No migration is needed:** `extracts` already has `empty`, and `facts` holds any key. SIFS PR #5's migration 2 is not touched.
+
+### Facts
+
+`pages` (the document's page count), `title` and `author` (the document's attributes, when set), `textless_pages` (when any), `stopped` (when the helper was stopped: why, and at which page).
+
+### Dependencies
+
+macOS only, under `[target.'cfg(target_os = "macos")'.dependencies]`, all pinned, default features off:
+- `objc2-pdf-kit` **0.3.2** (new), features `PDFDocument` and `PDFPage`.
+- `objc2-foundation` **0.3.2** and `objc2` **0.6.5**: already in the tree through Tauri; named directly for `NSString`, `NSURL` and `NSDictionary`.
+- `libc` (already a dependency) for `poll`, `proc_pid_rusage` (the helper's footprint and processor time) and the helper's priority. `mach_timebase_info` is declared in the reader (libc's binding is deprecated): the processor times are in Mach ticks, which are not nanoseconds on Apple silicon.
+
+### Tests
+
+The PDFs are written byte by byte in the tests (a small PDF writer in the test module; Unicode text through a `ToUnicode` map, which PDFKit reads without the font), and the encrypted ones by PDFKit itself, saving a generated PDF with a password. No binary fixtures are committed. Each limit's test is checked to fail with the limit removed (the mutation scripts are in the orchestration notes).
+- **Reading:** three pages labelled `page 1` to `page 3` in order; a blank page in the middle (no part, the third page still `page 3`); Hindi, Japanese, "résumé" and emoji found by `match_contents` with the page; the facts.
+- **Encrypted:** a user password is skipped "password-protected"; an owner password only is read.
+- **No text:** an image-only PDF is `empty` with `textless_pages` equal to `pages`; a mixed one keeps its text pages and counts the other.
+- **Not a PDF, damaged:** no `%PDF-` (skipped, no helper started); an empty file (empty); a truncated file (failed).
+- **Limits:** a page that never ends (form XObjects ten deep, ending in nothing) is killed at a lowered processor time cap, and within 0.75 s of a short clock deadline; with text pages before it, those are kept with `truncated` and `stopped`; the same forms ending in text are killed at a lowered memory cap; the clock limit is a minute; the page cap (lowered, `truncated`); the helper's character cap (its frames, read in the test process); the output cap (a test helper that floods); a test helper that crashes after a page, at once, or sends nonsense; a test helper that closes stdout and keeps running is killed and reaped at once, its page kept; a missing helper program; the helper ends when its stdin closes and a second after its deadline; no helper is left running or unreaped, including when making its stdout nonblocking fails (an interposed `fcntl`; an interrupted one is retried).
+- **The protocol:** a page past the count or the page cap, out of order, twice, or before the count, and a second count, stop the read with the pages before kept; `textless_pages` is counted once and kept when the read stops; the scan before a stalled page stays marked for OCR. Each case is fed whole, a byte at a time and in sevens, with the same result.
+- **The decoder:** what comes before the marker is passed over, frames arriving a byte at a time are put back together, an unknown frame ends the output after the frames before it, and the frames within the output cap are taken before it stops the read.
+- **Through the worker:** a PDF is read by `run_until_empty` and found by "resume", a Hindi word and a Japanese word on its second page, labelled `page 2`; a scan is `empty` with `textless_pages`; a file that isn't a PDF is skipped; a 5 MB PDF is read and one over 512 MB is skipped; the platform registry reads `pdf` on macOS.
+
+### Measured on the owner's Mac (2026-11-07)
+
+The reader as built, over the 2,698 PDFs Spotlight lists under `~`, one after another, each with its limits (a scratch program calling `Pdf::read` as the worker does; the same program serves as the helper):
+
+| | Files |
+|---|---|
+| read, text found | 1,718 (7 cut at the million-character cap) |
+| empty (no text in any page, or an empty file) | 900 (896 scans, 4 empty files) |
+| password needed (skipped) | 3 |
+| damaged (failed) | 2 |
+| iCloud placeholders (skipped, not opened) | 75 |
+| stopped by a limit, or crashed | 0 |
+
+27,526 pages; 43.8 million characters kept; 969 files have pages without text, marked for OCR. At a load average of 300 to 780 from other programs: 601 s in all, median 56 ms per file, p95 810 ms, max 18.5 s; the helpers used 108 s of processor time in all. SIFS's side peaked at 14 MB resident; the largest helper at 275 MB. Starting the helper from the app's own binary took a median of 50 ms against 47 ms from the small scratch program (15 runs each, alternating), so the app's size adds little to each start.
