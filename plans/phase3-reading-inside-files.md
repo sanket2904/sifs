@@ -428,9 +428,9 @@ Spotlight lists 100,917 images under `~`. What SIFS would read, after its ignore
 
 ### Languages
 
-Vision on macOS 26.4 recognizes 30 languages: English and the main European languages, Chinese, Cantonese, Japanese, Korean, Russian, Ukrainian, Thai, Vietnamese, Arabic, Turkish, Indonesian and Malay. **It does not read Hindi** or any Indian script: an image of Hindi text gives no text at all (no wrong text either). The newer Swift-only requests (`RecognizeTextRequest`, `RecognizeDocumentsRequest`) list the same 30. So the owner's Hindi images are found by their facts and names only. **This is a known limit, by the owner's decision (2026-11-08):** OCR uses Apple's Vision only (`VNRecognizeTextRequest`, accurate), with no Tesseract or other installed engine; it is revisited only if step 6's measurement on the real home folder shows a real need. If Apple adds Hindi, the text appears once the reader's version is raised.
+Vision on macOS 26.4 recognizes 30 languages: English and the main European languages, Chinese, Cantonese, Japanese, Korean, Russian, Ukrainian, Thai, Vietnamese, Arabic, Turkish, Indonesian and Malay. The newer Swift-only requests (`RecognizeTextRequest`, `RecognizeDocumentsRequest`) list the same 30. **A language outside them gives no text** (no wrong text either): measured with Hindi, which is among the owner's files and which Vision does not read (nor any other Devanagari or Indic script). Such images are found by their facts and names only. **This is a known limit, by the owner's decision (2026-11-08):** OCR uses Apple's Vision only (`VNRecognizeTextRequest`, accurate), with no Tesseract or other installed engine; it is revisited only if step 6's measurement on the real home folder shows a real need. When Apple adds a language, its text appears once the reader's version is raised.
 
-The request uses **automatic language detection** (revision 3) rather than a fixed list: with English alone, a line of Japanese next to English was dropped; with detection, both were found ("Résumé café naïve" and "東京駅 新幹線"). Recognition is **accurate** with **language correction** on: the fast level missed a shop sign in a photo and halved the time on screenshots only.
+The request uses **automatic language detection** (revision 3) over every language Vision supports, rather than a fixed list (SIFS is used worldwide, so no language is preferred): with English alone, a line of Japanese next to English was dropped; with detection, both were found ("Résumé café naïve" and "東京駅 新幹線"). Recognition is **accurate** with **language correction** on: the fast level missed a shop sign in a photo and halved the time on screenshots only.
 
 ### The reader
 
@@ -447,13 +447,15 @@ The request uses **automatic language detection** (revision 3) rather than a fix
 
 The text found is **one part per image**, unlabelled, in `contents` and so in `contents_fts`, as Vision orders the lines (top to bottom), one line each. No migration: `contents` and `facts` take it as they are.
 
+**Facts are stored the same way everywhere:** ISO 8601 times with the camera's own offset, WGS 84 decimal degrees, pixels. Nothing is turned into a local format or a place name here. Naming a place from its coordinates (from a worldwide source) and showing dates and units in the user's locale are left for later phases.
+
 **Facts come first:** the helper reads them from the image's properties (no decoding) and sends them before it decodes the picture. If recognition is then stopped, the image keeps its date and place.
 
 | Key | Value | From |
 |---|---|---|
-| `taken` | When it was taken, ISO 8601 in the camera's local time: `2025-12-24T18:30:05`, or with the offset when the file has one: `2025-12-24T18:30:05+05:30` | EXIF `DateTimeOriginal` with `OffsetTimeOriginal`, else `DateTimeDigitized` with `OffsetTimeDigitized`. Not TIFF `DateTime` (when it was last edited). A date that isn't one (`0000:00:00 00:00:00`, month 13) gives no fact. |
+| `taken` | When it was taken, ISO 8601 in the camera's local time: `2025-12-24T18:30:05`, or with the offset when the file has one: `2025-12-24T18:30:05-05:00` | EXIF `DateTimeOriginal` with `OffsetTimeOriginal`, else `DateTimeDigitized` with `OffsetTimeDigitized`. Not TIFF `DateTime` (when it was last edited). A date that isn't one (`0000:00:00 00:00:00`, month 13) gives no fact. |
 | `camera_make`, `camera_model` | as written: `Apple`, `iPhone 15 Pro` | TIFF `Make`, `Model` |
-| `latitude`, `longitude` | decimal degrees, WGS 84, north and east positive, six decimals (about 0.1 m): `15.299300`, `-74.124000` | GPS `Latitude` and `LatitudeRef`, `Longitude` and `LongitudeRef`. Outside ±90 and ±180, not a finite number, or exactly 0, 0 (what a camera without a fix writes): no fact. |
+| `latitude`, `longitude` | decimal degrees, WGS 84, north and east positive, six decimals (about 0.1 m): `-33.856800`, `151.215300` | GPS `Latitude` and `LatitudeRef`, `Longitude` and `LongitudeRef`. Outside ±90 and ±180, not a finite number, or exactly 0, 0 (what a camera without a fix writes): no fact. |
 | `orientation` | EXIF orientation, `1` to `8` (`1` upright, `6` turned 90° clockwise to view) | `Orientation` |
 | `width`, `height` | pixels, as stored (before orientation) | `PixelWidth`, `PixelHeight` |
 | `stopped` | why the text wasn't read, or was read only in part (the same key as the PDF reader's) | the helper or SIFS |
@@ -497,7 +499,7 @@ macOS only, pinned, default features off, beside step 2b's: `objc2-image-io` **0
 ### Tests
 
 Images are drawn in the tests (Core Text into a bitmap, written as PNG, JPEG, HEIC, TIFF and GIF with `CGImageDestination`, with EXIF and GPS properties where needed). No binary fixtures are committed. Each limit's and failure path's test is checked to fail with that limit or path removed (the mutation script and its results are in the orchestration notes, `phase4/p3-ocr/`).
-- **Reading:** a screenshot's words are found by `match_contents`; a photo's sign; JPEG, HEIC, TIFF, a GIF's first frame; "résumé"; Japanese next to English; a Hindi image gives no text and keeps its facts.
+- **Reading:** a screenshot's words are found by `match_contents`; a photo's sign; JPEG, HEIC, TIFF, a GIF's first frame; "résumé"; Japanese next to English; Arabic and Chinese next to English; an image in a script Vision doesn't read (Devanagari) gives no text and keeps its facts.
 - **Facts:** `taken` with and without an offset, from `DateTimeDigitized` when there's no original, none from a bad date; latitude and longitude with south and west negative, none at 0, 0 or out of range; camera, orientation, size. The date and coordinate parsing are pure functions with tests of their own.
 - **Limits:** a picture over the pixel cap keeps its facts and has `stopped`; a tiny one is read without OCR; a test helper that spins is killed at a lowered processor time cap, one that allocates at a lowered memory cap, one that sleeps at a short clock deadline, one that floods at the output cap; facts sent before each stop are kept; the character cap.
 - **The helper's protocol:** a test helper that closes its output and then spins or allocates is killed at once; frames for another id, text twice, a fact after text, an unknown tag; whole frames before a bad frame or the cap are kept; the guard reaps a helper whose setup fails; a crash after the facts, and before them; the idle exit retried once and only once; the helper ends when its stdin closes and a second after its deadline; the same helper serves several images (its process id is unchanged) and is replaced after a stop; none is left running or unreaped.
