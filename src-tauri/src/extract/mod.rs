@@ -97,6 +97,20 @@ pub mod fact {
     pub const TEXTLESS_PAGES: &str = "textless_pages";
     /// Why reading stopped part way, keeping the pages read before.
     pub const STOPPED: &str = "stopped";
+    /// When a photo was taken, ISO 8601 in the camera's local time, with
+    /// the offset when the file has one: "2025-12-24T18:30:05-05:00".
+    pub const TAKEN: &str = "taken";
+    pub const CAMERA_MAKE: &str = "camera_make";
+    pub const CAMERA_MODEL: &str = "camera_model";
+    /// Where a photo was taken: decimal degrees, WGS 84, north and east
+    /// positive, six decimals.
+    pub const LATITUDE: &str = "latitude";
+    pub const LONGITUDE: &str = "longitude";
+    /// EXIF orientation, 1 (upright) to 8.
+    pub const ORIENTATION: &str = "orientation";
+    /// An image's size in pixels, as stored (before orientation).
+    pub const WIDTH: &str = "width";
+    pub const HEIGHT: &str = "height";
 }
 
 /// Some readers run in a helper process: SIFS's own program, started again.
@@ -104,7 +118,10 @@ pub mod fact {
 /// a helper it does the helper's work and exits, otherwise it returns.
 pub fn serve_helper_if_asked() {
     #[cfg(target_os = "macos")]
-    readers::macos::pdf::serve_if_asked();
+    {
+        readers::macos::pdf::serve_if_asked();
+        readers::macos::image::serve_if_asked();
+    }
 }
 
 pub trait Reader: Send + Sync + 'static {

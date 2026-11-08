@@ -38,7 +38,7 @@ pub(super) type Decoder = supervise::Decoder<Frame>;
 
 impl Default for Decoder {
     fn default() -> Decoder {
-        Decoder::new(MARKER, decode)
+        Decoder::new(MARKER, decode, u32::MAX as usize)
     }
 }
 

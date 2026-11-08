@@ -196,6 +196,9 @@ pub(super) fn encode(tag: u8, body: &[u8]) -> Vec<u8> {
 pub(super) struct Decoder<F> {
     marker: &'static [u8],
     decode: fn(u8, &[u8]) -> Result<F, String>,
+    /// A frame claiming to be longer is an error as soon as its length
+    /// comes, before any of it is kept.
+    max: usize,
     buf: Vec<u8>,
     /// Where the next frame starts in buf.
     at: usize,
@@ -203,8 +206,8 @@ pub(super) struct Decoder<F> {
 }
 
 impl<F> Decoder<F> {
-    pub(super) fn new(marker: &'static [u8], decode: fn(u8, &[u8]) -> Result<F, String>) -> Decoder<F> {
-        Decoder { marker, decode, buf: Vec::new(), at: 0, synced: marker.is_empty() }
+    pub(super) fn new(marker: &'static [u8], decode: fn(u8, &[u8]) -> Result<F, String>, max: usize) -> Decoder<F> {
+        Decoder { marker, decode, max, buf: Vec::new(), at: 0, synced: marker.is_empty() }
     }
 
     pub(super) fn push(&mut self, bytes: &[u8]) {
@@ -234,12 +237,20 @@ impl<F> Decoder<F> {
             return Ok(None);
         }
         let len = u32::from_le_bytes(rest[1..5].try_into().unwrap()) as usize;
+        if len > self.max {
+            return Err(format!("a frame too long to be one ({len} bytes)"));
+        }
         if rest.len() - 5 < len {
             return Ok(None);
         }
         let frame = (self.decode)(rest[0], &rest[5..5 + len])?;
         self.at += 5 + len;
         Ok(Some(frame))
+    }
+
+    /// Whether nothing past the marker is waiting, whole or not.
+    pub(super) fn is_empty(&self) -> bool {
+        !self.synced || self.at == self.buf.len()
     }
 }
 
@@ -263,6 +274,11 @@ pub(super) struct Intake<F> {
 impl<F> Intake<F> {
     pub(super) fn new(decoder: Decoder<F>) -> Intake<F> {
         Intake { decoder, bytes: 0 }
+    }
+
+    /// Counts the cap from here: a helper that lives on has it per request.
+    pub(super) fn restart(&mut self) {
+        self.bytes = 0;
     }
 
     /// Hands each whole frame within the output cap to handle, until it
