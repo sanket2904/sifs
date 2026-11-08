@@ -1,4 +1,5 @@
 pub mod pdf;
+mod supervise;
 
 use crate::extract::Registry;
 use std::sync::Arc;

@@ -1,7 +1,7 @@
-//! What the helper sends SIFS on its stdout: a marker, then frames of a
-//! tag byte, a little-endian u32 length and that many bytes. The marker
-//! lets SIFS pass over anything printed before it (the test binary, run as
-//! the helper, prints a line first).
+//! What the helper sends SIFS on its stdout: a marker, then frames (see
+//! supervise.rs).
+
+use crate::extract::readers::macos::supervise;
 
 pub(super) const MARKER: &[u8] = b"\0SIFS-PDF-1\0";
 
@@ -30,57 +30,15 @@ impl Frame {
             Frame::Unopenable => (b'u', Vec::new()),
             Frame::End => (b'e', Vec::new()),
         };
-        let mut out = Vec::with_capacity(5 + body.len());
-        out.push(tag);
-        out.extend_from_slice(&(body.len() as u32).to_le_bytes());
-        out.extend_from_slice(&body);
-        out
+        supervise::encode(tag, &body)
     }
 }
 
-/// Frames from the helper's output, in whatever pieces the pipe gives it.
-#[derive(Default)]
-pub(super) struct Decoder {
-    buf: Vec<u8>,
-    /// Where the next frame starts in buf.
-    at: usize,
-    synced: bool,
-}
+pub(super) type Decoder = supervise::Decoder<Frame>;
 
-impl Decoder {
-    pub(super) fn push(&mut self, bytes: &[u8]) {
-        self.buf.drain(..self.at);
-        self.at = 0;
-        self.buf.extend_from_slice(bytes);
-        if self.synced {
-            return;
-        }
-        match self.buf.windows(MARKER.len()).position(|w| w == MARKER) {
-            Some(at) => {
-                self.at = at + MARKER.len();
-                self.synced = true;
-            }
-            None => {
-                let keep = self.buf.len().min(MARKER.len() - 1);
-                self.buf.drain(..self.buf.len() - keep);
-            }
-        }
-    }
-
-    /// The next whole frame, if it has all come. A frame that can't be
-    /// decoded is an error, after every frame before it.
-    pub(super) fn next_frame(&mut self) -> Result<Option<Frame>, String> {
-        let rest = &self.buf[self.at..];
-        if !self.synced || rest.len() < 5 {
-            return Ok(None);
-        }
-        let len = u32::from_le_bytes(rest[1..5].try_into().unwrap()) as usize;
-        if rest.len() - 5 < len {
-            return Ok(None);
-        }
-        let frame = decode(rest[0], &rest[5..5 + len])?;
-        self.at += 5 + len;
-        Ok(Some(frame))
+impl Default for Decoder {
+    fn default() -> Decoder {
+        Decoder::new(MARKER, decode)
     }
 }
 
