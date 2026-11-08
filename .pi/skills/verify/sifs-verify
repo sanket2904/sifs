@@ -59,10 +59,10 @@ cmd_build() {
 		id=${sha:0:7}
 		if [[ $dirty == yes ]]; then id+=-dirty; fi
 	fi
-	# Commits from before the background hook get it, so no test instance
-	# ever takes focus. The build records that it was added.
-	if ! grep -q SIFS_VERIFY_BACKGROUND "$src/src-tauri/src/app.rs"; then
-		[[ -n $ref ]] || die "$src has no SIFS_VERIFY_BACKGROUND hook; build it with --ref so the hook can be added to a copy"
+	# Commits from before the verification support get it from the patch, so
+	# no test instance takes focus or adds a folder outside its fake home.
+	if [[ ! -f $src/src-tauri/src/verification.rs ]]; then
+		[[ -n $ref ]] || die "$src has no verification support (src-tauri/src/verification.rs); build it with --ref so it can be added to a copy"
 		(cd "$src" && patch -p1 --forward --silent <"$skill/verify-support.patch") || die "verify-support.patch doesn't apply to $sha"
 		patched=yes
 	fi

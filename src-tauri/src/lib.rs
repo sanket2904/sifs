@@ -1,5 +1,6 @@
 pub mod extract;
 pub mod index;
+pub mod verification;
 
 #[cfg(feature = "app")]
 mod app;

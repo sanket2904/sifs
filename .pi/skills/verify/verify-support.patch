@@ -1,30 +1,40 @@
 diff --git a/src-tauri/src/app.rs b/src-tauri/src/app.rs
-index f574755..ef81553 100644
+index f574755..abb751e 100644
 --- a/src-tauri/src/app.rs
 +++ b/src-tauri/src/app.rs
-@@ -176,11 +176,29 @@ fn folder_event(app: &AppHandle, reading: &OnceLock<Waker>, event: Event) {
-     }
+@@ -7,6 +7,7 @@ use crate::index::folders::{Event, Folders};
+ use crate::index::ignore::Rules;
+ use crate::index::search::{self, Hit};
+ use crate::index::watch::Watch;
++use crate::verification;
+ use serde::Serialize;
+ use std::sync::{Arc, Mutex, OnceLock};
+ use std::time::{Duration, SystemTime, UNIX_EPOCH};
+@@ -94,6 +95,7 @@ fn content_failures(state: State<AppState>, limit: Option<usize>) -> Result<Vec<
+ #[tauri::command]
+ fn add_folder(state: State<AppState>, path: String) -> Result<(), String> {
+     let path = std::fs::canonicalize(&path).map_err(err)?.to_str().ok_or("the folder's path is not valid UTF-8")?.to_string();
++    verification::check_folder(verification::instance(), &state.home, std::path::Path::new(&path))?;
+     let inside = state.folders.add(&mut state.reader.lock().unwrap(), &path, now()).map_err(err)?;
+     let mut watched = Ok(());
+     if let Some(watch) = state.watch.lock().unwrap().as_mut() {
+@@ -177,10 +179,23 @@ fn folder_event(app: &AppHandle, reading: &OnceLock<Waker>, event: Event) {
  }
  
-+/// Verification support (.pi/skills/verify): an instance started with
-+/// SIFS_VERIFY_BACKGROUND=1 never takes focus from the person using the Mac.
-+/// It doesn't activate at launch, stays out of the Dock and opens its window
-+/// behind other apps' windows, where accessibility and screenshots still reach it.
-+fn background_for_verification() -> bool {
-+    std::env::var_os("SIFS_VERIFY_BACKGROUND").is_some_and(|v| v == "1")
-+}
-+
  pub fn run() {
 -    tauri::Builder::default()
 +    let builder = tauri::Builder::default();
++    // A verification instance doesn't activate at launch. It stays out of the
++    // Dock and opens its window behind other apps' windows, where
++    // accessibility still reaches it.
 +    #[cfg(target_os = "macos")]
-+    let builder = builder.activate_ignoring_other_apps(!background_for_verification());
++    let builder = builder.activate_ignoring_other_apps(!verification::instance());
 +    builder
          .plugin(tauri_plugin_dialog::init())
          .plugin(tauri_plugin_opener::init())
          .setup(|app| {
 +            #[cfg(target_os = "macos")]
-+            if background_for_verification() {
++            if verification::instance() {
 +                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 +                if let Some(window) = app.get_webview_window("main") {
 +                    window.set_always_on_bottom(true)?;
@@ -33,3 +43,97 @@ index f574755..ef81553 100644
              let home = std::env::var("HOME").unwrap_or_default();
              let data = app.path().app_data_dir()?;
              std::fs::create_dir_all(&data)?;
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index 7f934e8..b9abf9c 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -1,5 +1,6 @@
+ pub mod extract;
+ pub mod index;
++pub mod verification;
+ 
+ #[cfg(feature = "app")]
+ mod app;
+diff --git a/src-tauri/src/verification.rs b/src-tauri/src/verification.rs
+new file mode 100644
+index 0000000..a643c17
+--- /dev/null
++++ b/src-tauri/src/verification.rs
+@@ -0,0 +1,77 @@
++//! Verification support (.pi/skills/verify). `sifs-verify launch` starts a
++//! test instance with SIFS_VERIFY_BACKGROUND=1 and a fake HOME. Without that
++//! variable nothing here changes what SIFS does.
++
++use std::path::Path;
++
++/// Whether this process is a test instance the verify skill started.
++pub fn instance() -> bool {
++    std::env::var_os("SIFS_VERIFY_BACKGROUND").is_some_and(|v| v == "1")
++}
++
++/// A test instance searches only inside its fake home. The system folder
++/// picker opens in the real home whatever HOME says, so a folder picked there
++/// by mistake is refused before anything scans it.
++pub fn check_folder(instance: bool, home: &str, folder: &Path) -> Result<(), String> {
++    if !instance {
++        return Ok(());
++    }
++    let home = std::fs::canonicalize(home).map_err(|e| format!("verification instance: its HOME {home:?}: {e}"))?;
++    let folder = std::fs::canonicalize(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
++    if folder.starts_with(&home) {
++        Ok(())
++    } else {
++        Err(format!(
++            "{} is outside {}: a verification instance searches only inside its fake home",
++            folder.display(),
++            home.display()
++        ))
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::check_folder;
++    use std::fs;
++    use std::path::PathBuf;
++
++    struct Dirs {
++        _tmp: tempfile::TempDir,
++        home: PathBuf,
++        outside: PathBuf,
++    }
++
++    fn dirs() -> Dirs {
++        let tmp = tempfile::tempdir().unwrap();
++        let home = tmp.path().join("home");
++        let outside = tmp.path().join("Documents");
++        fs::create_dir_all(home.join("Documents")).unwrap();
++        fs::create_dir_all(&outside).unwrap();
++        fs::create_dir_all(tmp.path().join("home-other")).unwrap();
++        std::os::unix::fs::symlink(&outside, home.join("link")).unwrap();
++        Dirs { _tmp: tmp, home, outside }
++    }
++
++    #[test]
++    fn a_verification_instance_adds_only_folders_inside_its_home() {
++        let d = dirs();
++        let home = d.home.to_str().unwrap();
++        assert_eq!(check_folder(true, home, &d.home.join("Documents")), Ok(()));
++        assert_eq!(check_folder(true, home, &d.home), Ok(()));
++        let refused = [
++            d.outside.clone(),
++            d.home.with_file_name("home-other"),
++            d.home.join("link"),
++            d.home.join("..").join("Documents"),
++        ];
++        for folder in refused {
++            assert!(check_folder(true, home, &folder).is_err(), "{} was accepted", folder.display());
++        }
++    }
++
++    #[test]
++    fn a_normal_instance_adds_any_folder() {
++        let d = dirs();
++        assert_eq!(check_folder(false, d.home.to_str().unwrap(), &d.outside), Ok(()));
++    }
++}
