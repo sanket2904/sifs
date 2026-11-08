@@ -56,7 +56,8 @@ cmd_build() {
 		src=${src:-$repo}
 		sha=$(git -C "$src" rev-parse HEAD)
 		[[ -n $(git -C "$src" status --porcelain -- src src-tauri package.json package-lock.json) ]] && dirty=yes
-		id=${sha:0:7}$([[ $dirty == yes ]] && echo "-dirty")
+		id=${sha:0:7}
+		if [[ $dirty == yes ]]; then id+=-dirty; fi
 	fi
 	# Commits from before the background hook get it, so no test instance
 	# ever takes focus. The build records that it was added.
