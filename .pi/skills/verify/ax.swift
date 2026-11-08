@@ -98,21 +98,191 @@ func verify(_ run: Run) {
     }
 }
 
-func bind(_ dir: String, _ pid: pid_t) {
-    for _ in 0..<100 {
-        if let now = identity(pid), now.exe == dir + "/sifs", now.home == dir + "/home" {
-            print(now.start)
-            return
-        }
-        usleep(100_000)
+func errnoText() -> String { String(cString: strerror(errno)) }
+
+let controlSocket = "control.sock"
+
+func withAddress<T>(_ path: String, _ body: (UnsafePointer<sockaddr>, socklen_t) -> T) -> T {
+    var address = sockaddr_un()
+    address.sun_family = sa_family_t(AF_UNIX)
+    address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+    withUnsafeMutableBytes(of: &address.sun_path) { buffer in
+        for (i, byte) in path.utf8.enumerated() { buffer[i] = byte }
     }
-    refuse("process \(pid) is not \(dir)/sifs with HOME \(dir)/home")
+    return withUnsafePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { body($0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+    }
 }
 
-func attr(_ element: AXUIElement, _ name: String) -> AnyObject? {
+func readAll(_ fd: Int32) -> String {
+    var bytes: [UInt8] = []
+    var buffer = [UInt8](repeating: 0, count: 512)
+    while true {
+        let n = Darwin.read(fd, &buffer, buffer.count)
+        if n < 0 && errno == EINTR { continue }
+        if n <= 0 { break }
+        bytes += buffer[0..<n]
+        if bytes.count > 4096 { break }
+    }
+    return String(decoding: bytes, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+func send(_ fd: Int32, _ text: String) {
+    let bytes = Array((text + "\n").utf8)
+    _ = bytes.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
+}
+
+/// The child stays a zombie until waitpid reaps it. WNOWAIT looks without
+/// reaping, so its pid can't go to another process.
+func exited(_ pid: pid_t) -> Bool {
+    var info = siginfo_t()
+    return waitid(P_PID, id_t(pid), &info, WEXITED | WNOHANG | WNOWAIT) == 0 && info.si_pid == pid
+}
+
+func stopChild(_ pid: pid_t) -> String {
+    if exited(pid) {
+        waitpid(pid, nil, 0)
+        return "stopped pid \(pid): it had already exited"
+    }
+    kill(pid, SIGTERM)
+    for _ in 0..<25 {
+        if waitpid(pid, nil, WNOHANG) == pid { return "stopped pid \(pid) with TERM" }
+        usleep(200_000)
+    }
+    kill(pid, SIGKILL)
+    waitpid(pid, nil, 0)
+    return "stopped pid \(pid): it ignored TERM for 5 s, so it got KILL"
+}
+
+/// Reaps the child only on a stop request, so until then the app's pid,
+/// alive or exited, can't name another process. Once control.sock is gone,
+/// deleted with the run folder, nothing can reach it, so it stops the child
+/// and exits.
+func supervise(_ dir: String, _ childArgs: [String]) -> Never {
+    signal(SIGHUP, SIG_IGN)
+    signal(SIGPIPE, SIG_IGN)
+    _ = setsid()
+    guard chdir(dir) == 0 else { fail("can't enter \(dir): \(errnoText())") }
+    let server = socket(AF_UNIX, SOCK_STREAM, 0)
+    guard server >= 0, fcntl(server, F_SETFD, FD_CLOEXEC) == 0,
+        withAddress(controlSocket, { Darwin.bind(server, $0, $1) }) == 0, listen(server, 8) == 0
+    else { fail("can't listen on \(dir)/\(controlSocket): \(errnoText())") }
+    var bound = stat()
+    guard lstat(controlSocket, &bound) == 0 else { fail("can't stat \(dir)/\(controlSocket): \(errnoText())") }
+    func socketGone() -> Bool {
+        var now = stat()
+        return lstat(controlSocket, &now) != 0 || now.st_dev != bound.st_dev || now.st_ino != bound.st_ino
+    }
+
+    let exe = dir + "/sifs", home = dir + "/home"
+    var env = ProcessInfo.processInfo.environment
+    let spy = env.removeValue(forKey: "SIFS_VERIFY_SPY")
+    env["DYLD_INSERT_LIBRARIES"] = spy
+    env["HOME"] = home
+    env["CFFIXED_USER_HOME"] = home
+    env["SIFS_VERIFY_BACKGROUND"] = "1"
+    var actions: posix_spawn_file_actions_t?
+    posix_spawn_file_actions_init(&actions)
+    posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+    posix_spawn_file_actions_addopen(&actions, 1, "app.log", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+    posix_spawn_file_actions_adddup2(&actions, 1, 2)
+    let argv = ([exe] + childArgs).map { strdup($0) } + [nil]
+    let envp = env.map { strdup("\($0.key)=\($0.value)") } + [nil]
+    var pid: pid_t = 0
+    let spawned = posix_spawn(&pid, exe, &actions, nil, argv, envp)
+    guard spawned == 0 else { fail("starting \(exe): \(String(cString: strerror(spawned)))") }
+    guard let started = identity(pid), started.exe == exe, started.home == home else {
+        print(stopChild(pid))
+        fail("process \(pid) didn't start as \(exe) with HOME \(home)")
+    }
+
+    while true {
+        var ready = pollfd(fd: server, events: Int16(POLLIN), revents: 0)
+        let polled = poll(&ready, 1, 1000)
+        if polled <= 0 {
+            if polled == 0 && socketGone() {
+                _ = stopChild(pid)
+                exit(0)
+            }
+            continue
+        }
+        let client = accept(server, nil, nil)
+        guard client >= 0 else {
+            if errno == EINTR { continue }
+            fail("accept: \(errnoText())")
+        }
+        var buffer = [UInt8](repeating: 0, count: 16)
+        let n = Darwin.read(client, &buffer, buffer.count)
+        switch String(decoding: buffer[0..<max(n, 0)], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "status":
+            send(client, "\(exited(pid) ? "exited" : "running") \(pid) \(started.start)")
+        case "stop":
+            let how = stopChild(pid)
+            unlink(controlSocket)
+            send(client, how)
+            close(client)
+            exit(0)
+        default:
+            send(client, "unknown request")
+        }
+        close(client)
+    }
+}
+
+func ask(_ dir: String, _ request: String) -> String? {
+    guard chdir(dir) == 0 else { return nil }
+    let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+    guard fd >= 0, withAddress(controlSocket, { connect(fd, $0, $1) }) == 0 else { return nil }
+    send(fd, request)
+    let reply = readAll(fd)
+    close(fd)
+    return reply.isEmpty ? nil : reply
+}
+
+#if SIFS_AX_TEST
+enum FakeTree {
+    static let nodes: [String: [String: Any]] = {
+        guard let path = ProcessInfo.processInfo.environment["SIFS_AX_TEST_TREE"],
+            let data = FileManager.default.contents(atPath: path),
+            let tree = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]]
+        else { fail("the test build needs SIFS_AX_TEST_TREE, a JSON accessibility tree") }
+        return tree
+    }()
+    static let names = nodes.keys.filter { $0 != "app" }.sorted()
+    static func element(_ name: String) -> AXUIElement {
+        guard let i = names.firstIndex(of: name) else { fail("the fake tree has no node \(name)") }
+        return AXUIElementCreateApplication(pid_t(1_000_000 + i))
+    }
+    static func node(_ element: AXUIElement) -> [String: Any] {
+        var pid: pid_t = 0
+        AXUIElementGetPid(element, &pid)
+        let i = Int(pid) - 1_000_000
+        return names.indices.contains(i) ? nodes[names[i]]! : nodes["app"] ?? [:]
+    }
+}
+
+func copyAttribute(_ element: AXUIElement, _ name: String) -> (AXError, AnyObject?) {
+    switch FakeTree.node(element)[name] {
+    case nil: return (.attributeUnsupported, nil)
+    case let value as [String: Any]:
+        if let code = value["error"] as? Int { return (AXError(rawValue: Int32(code))!, nil) }
+        if let name = value["el"] as? String { return (.success, FakeTree.element(name)) }
+        if let names = value["els"] as? [String] { return (.success, names.map(FakeTree.element) as NSArray) }
+        fail("bad fake value for \(name)")
+    case let value: return (.success, value as AnyObject)
+    }
+}
+#else
+func copyAttribute(_ element: AXUIElement, _ name: String) -> (AXError, AnyObject?) {
     var value: AnyObject?
-    guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
-    return value
+    let result = AXUIElementCopyAttributeValue(element, name as CFString, &value)
+    return (result, value)
+}
+#endif
+
+func attr(_ element: AXUIElement, _ name: String) -> AnyObject? {
+    let (result, value) = copyAttribute(element, name)
+    return result == .success ? value : nil
 }
 
 func string(_ element: AXUIElement, _ name: String) -> String {
@@ -336,54 +506,102 @@ enum Input {
 /// While a native dialog is open only Escape and the dialog's Cancel get
 /// through. The folder picker opens in the owner's real home, so Return, a
 /// typed newline or a press there could add his real folders.
-func refusal(_ input: Input, dialogOpen: Bool) -> String? {
-    guard dialogOpen else { return nil }
+func refusal(_ input: Input, dialog: String?) -> String? {
+    guard let dialog else { return nil }
     if case .cancelDialog = input { return nil }
     if case let .key(code, flags) = input, code == keys["escape"], flags.isEmpty { return nil }
-    return "a native dialog is open on the SIFS window; until it closes only dialog-tree, cancel-dialog and key escape work"
+    return "a native dialog is open on the SIFS window, or one can't be ruled out (\(dialog)); "
+        + "until that changes only dialog-tree, cancel-dialog and key escape work"
 }
 
-#if SIFS_AX_TEST
-func dialogOpen(_ pid: pid_t) -> Bool { ProcessInfo.processInfo.environment["SIFS_AX_TEST_DIALOG"] == "open" }
-#else
-/// A native dialog (the Add a folder… picker, an alert) shows as a sheet on
-/// the SIFS window or as a window of its own. A read that fails counts as a
-/// dialog.
-func dialogOpen(_ pid: pid_t) -> Bool {
-    func read(_ element: AXUIElement, _ name: String) -> AnyObject? {
-        var value: AnyObject?
-        let result = AXUIElementCopyAttributeValue(element, name as CFString, &value)
-        guard result == .success || result == .noValue else {
-            refuse("reading \(name) of process \(pid) failed (\(result.rawValue)), so a dialog could be open unseen")
-        }
-        return value
-    }
-    let app = AXUIElementCreateApplication(pid)
-    let all = ((read(app, kAXWindowsAttribute) as? [AXUIElement]) ?? [])
-        + [kAXMainWindowAttribute, kAXFocusedWindowAttribute].compactMap { read(app, $0) }.map { $0 as! AXUIElement }
-    guard all.contains(where: { string($0, kAXTitleAttribute) == "SIFS" }) else {
-        refuse("process \(pid) shows no SIFS window to accessibility, so a dialog could be open unseen")
-    }
-    return all.contains {
-        role($0) != kAXWindowRole || string($0, kAXTitleAttribute) != "SIFS"
-            || ((read($0, kAXChildrenAttribute) as? [AXUIElement]) ?? []).contains { role($0) == kAXSheetRole }
+enum Checked {
+    case value(AnyObject)
+    case absent
+    case failed(String)
+}
+
+func checked(_ element: AXUIElement, _ name: String) -> Checked {
+    let (result, value) = copyAttribute(element, name)
+    switch result {
+    case .success: return value.map { .value($0) } ?? .absent
+    case .noValue, .attributeUnsupported: return .absent
+    default: return .failed("reading \(name) failed (\(result.rawValue))")
     }
 }
-#endif
+
+func asElement(_ value: AnyObject) -> AXUIElement? {
+    CFGetTypeID(value) == AXUIElementGetTypeID() ? (value as! AXUIElement) : nil
+}
+
+func asElements(_ value: AnyObject) -> [AXUIElement]? {
+    guard let list = value as? [AnyObject] else { return nil }
+    let elements = list.compactMap(asElement)
+    return elements.count == list.count ? elements : nil
+}
+
+/// Why a native dialog is open or can't be ruled out; nil when none is. A
+/// dialog (the Add a folder… picker, an alert) shows as a sheet on the SIFS
+/// window or as a window of its own.
+func dialogOpen(_ pid: pid_t) -> String? {
+    let app = AXUIElementCreateApplication(pid)
+    var windows: [AXUIElement] = []
+    for name in [kAXWindowsAttribute, kAXMainWindowAttribute, kAXFocusedWindowAttribute] {
+        switch checked(app, name) {
+        case .absent: continue
+        case let .failed(why): return why
+        case let .value(value):
+            guard let found = name == kAXWindowsAttribute ? asElements(value) : asElement(value).map({ [$0] }) else {
+                return "\(name) is not a window list"
+            }
+            windows += found
+        }
+    }
+    guard !windows.isEmpty else { return "the app shows no window to accessibility" }
+    for window in windows {
+        guard case let .value(roleValue) = checked(window, kAXRoleAttribute), let windowRole = roleValue as? String,
+            case let .value(titleValue) = checked(window, kAXTitleAttribute), let title = titleValue as? String
+        else { return "a window's role or title can't be read" }
+        guard windowRole == kAXWindowRole, title == "SIFS" else { return "a window other than SIFS is open: \(windowRole) \(title.debugDescription)" }
+        guard case let .value(childList) = checked(window, kAXChildrenAttribute), let children = asElements(childList) else {
+            return "the SIFS window's children can't be read"
+        }
+        for child in children {
+            guard case let .value(childRole) = checked(child, kAXRoleAttribute), let role = childRole as? String else {
+                return "a child of the SIFS window has no readable role"
+            }
+            var subrole = ""
+            switch checked(child, kAXSubroleAttribute) {
+            case .absent: break
+            case let .failed(why): return why
+            case let .value(value):
+                guard let text = value as? String else { return "a child of the SIFS window has a subrole that isn't text" }
+                subrole = text
+            }
+            if role == kAXSheetRole || [kAXDialogSubrole, kAXSystemDialogSubrole].contains(subrole) {
+                return "\([role, subrole].filter { !$0.isEmpty }.joined(separator: " ")) is on the SIFS window"
+            }
+        }
+    }
+    return nil
+}
 
 /// Only admit makes one, and every function that sends input takes one.
 struct Admitted { let run: Run }
 
 func admit(_ run: Run, _ input: Input) -> Admitted {
     verify(run)
-    if let why = refusal(input, dialogOpen: dialogOpen(run.pid)) { refuse(why) }
+    if let why = refusal(input, dialog: dialogOpen(run.pid)) { refuse(why) }
     return Admitted(run: run)
 }
 
 func perform(_ admitted: Admitted, _ element: AXUIElement, _ what: String) {
     verify(admitted.run)
+    #if SIFS_AX_TEST
+    print("pressed \(what)")
+    #else
     let result = AXUIElementPerformAction(element, kAXPressAction as CFString)
     guard result == .success else { fail("pressing \(what) failed: \(result.rawValue)") }
+    #endif
 }
 
 /// Presses the n-th button with this title, or with `after`, the first one
@@ -427,8 +645,12 @@ func cancelDialog(_ admitted: Admitted) {
 
 func focus(_ admitted: Admitted, _ element: AXUIElement, _ what: String) {
     verify(admitted.run)
+    #if SIFS_AX_TEST
+    print("focused \(what)")
+    #else
     let result = AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
     guard result == .success else { fail("focusing \(what) failed: \(result.rawValue)") }
+    #endif
 }
 
 /// CGEvent.postToPid delivers to this process only, whichever app is in
@@ -515,10 +737,12 @@ let args = Array(CommandLine.arguments.dropFirst())
 let usage = """
     usage: sifs-ax <command> <run> [args]
     <run> is a run folder, <workspace>/runs/<id>, as sifs-verify passes it. Every
-    command refuses unless the run's pid is still the process the run started.
-      bind <run> <pid>              at launch: wait until pid runs the run's binary and HOME, print its start time
+    command but supervise, status and stop refuses unless the run's pid is still
+    the process the run started.
+      supervise <run> [args]        start <run>/sifs as a child, hold it, and serve status and stop
+      status <run>                  the supervisor's answer: running|exited <pid> <start>
+      stop <run>                    ask the supervisor to stop its child; nothing is signalled without one
       check <run>                   the run's process, if it is still the one the run started
-      signal <run> TERM|KILL        signal that process
       wininfo <run>                 window number and on-screen flag (window server only)
       tree <run>                    the window's accessibility tree
       read <run>                    query, rows, footer and every page line as JSON
@@ -536,10 +760,15 @@ let usage = """
     """
 guard args.count >= 2 else { fail(usage) }
 let command = args[0]
-if command == "bind" {
-    guard args.count == 3, isDigits(Substring(args[2])), let pid = pid_t(args[2]) else { fail(usage) }
-    bind(runDir(args[1]), pid)
+switch command {
+case "supervise":
+    supervise(runDir(args[1]), Array(args.dropFirst(2)))
+case "status", "stop":
+    let dir = runDir(args[1])
+    guard let reply = ask(dir, command) else { refuse("no supervisor answers for \(dir), so nothing was signalled") }
+    print(reply)
     exit(0)
+default: break
 }
 let run = loadRun(args[1])
 verify(run)
@@ -548,10 +777,6 @@ var input: Input?
 switch command {
 case "check":
     print("pid \(run.pid), started \(run.start), runs \(run.expected.exe) with HOME \(run.expected.home!)")
-    exit(0)
-case "signal":
-    guard args.count == 3, let signal = ["TERM": SIGTERM, "KILL": SIGKILL][args[2]] else { fail(usage) }
-    guard kill(run.pid, signal) == 0 else { fail("signalling \(run.pid): \(String(cString: strerror(errno)))") }
     exit(0)
 case "wininfo":
     guard let (id, onscreen) = windowInfo(run.pid) else { fail("process \(run.pid) has no SIFS window") }
@@ -569,7 +794,9 @@ case "focus-search", "focus-textarea": input = .focus
 case "cancel-dialog": input = .cancelDialog
 default: break
 }
+#if !SIFS_AX_TEST
 guard AXIsProcessTrusted() else { fail("this terminal lacks Accessibility permission (System Settings > Privacy & Security > Accessibility)") }
+#endif
 let admitted = input.map { admit(run, $0) }
 
 switch (command, admitted) {

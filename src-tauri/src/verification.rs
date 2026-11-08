@@ -2,6 +2,7 @@
 //! test instance with SIFS_VERIFY_BACKGROUND=1 and a fake HOME. Without that
 //! variable nothing here changes what SIFS does.
 
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
 /// Whether this process is a test instance the verify skill started.
@@ -11,22 +12,21 @@ pub fn instance() -> bool {
 
 /// A test instance searches only inside its fake home. The system folder
 /// picker opens in the real home whatever HOME says, so a folder picked there
-/// by mistake is refused before anything scans it.
+/// by mistake is refused before anything scans it. Ancestors are compared by
+/// device and inode, so case and /System/Volumes/Data spellings agree.
 pub fn check_folder(instance: bool, home: &str, folder: &Path) -> Result<(), String> {
     if !instance {
         return Ok(());
     }
-    let home = std::fs::canonicalize(home).map_err(|e| format!("verification instance: its HOME {home:?}: {e}"))?;
+    let id = |path: &Path| std::fs::metadata(path).map(|m| (m.dev(), m.ino()));
+    let home_id = id(Path::new(home)).map_err(|e| format!("verification instance: its HOME {home:?}: {e}"))?;
     let folder = std::fs::canonicalize(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
-    if folder.starts_with(&home) {
-        Ok(())
-    } else {
-        Err(format!(
-            "{} is outside {}: a verification instance searches only inside its fake home",
-            folder.display(),
-            home.display()
-        ))
+    for ancestor in folder.ancestors() {
+        if id(ancestor).map_err(|e| format!("{}: {e}", ancestor.display()))? == home_id {
+            return Ok(());
+        }
     }
+    Err(format!("{} is outside {home}: a verification instance searches only inside its fake home", folder.display()))
 }
 
 #[cfg(test)]
@@ -66,6 +66,29 @@ mod tests {
         ];
         for folder in refused {
             assert!(check_folder(true, home, &folder).is_err(), "{} was accepted", folder.display());
+        }
+    }
+
+    #[test]
+    fn every_spelling_of_a_folder_inside_the_home_gets_the_same_answer() {
+        let d = dirs();
+        let home = fs::canonicalize(&d.home).unwrap();
+        let documents = home.join("Documents");
+        let mut spellings = vec![];
+        let upper = PathBuf::from(documents.to_str().unwrap().to_uppercase());
+        if upper.exists() {
+            spellings.push(upper);
+        }
+        let data = PathBuf::from(format!("/System/Volumes/Data{}", documents.display()));
+        if data.exists() {
+            spellings.push(data);
+        }
+        for folder in &spellings {
+            assert_eq!(check_folder(true, home.to_str().unwrap(), folder), Ok(()), "{} was refused", folder.display());
+        }
+        let outside = PathBuf::from(format!("/System/Volumes/Data{}", fs::canonicalize(&d.outside).unwrap().display()));
+        if outside.exists() {
+            assert!(check_folder(true, home.to_str().unwrap(), &outside).is_err());
         }
     }
 

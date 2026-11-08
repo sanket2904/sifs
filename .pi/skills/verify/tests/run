@@ -5,17 +5,23 @@ unset CDPATH SIFS_VERIFY_RUN
 skill=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 V=$skill/sifs-verify
 S=$skill/seed-home.sh
-t=$(mktemp -d /private/tmp/sifs-verify-tests.XXXXXX)
+t=$(mktemp -d "${SIFS_VERIFY_TESTS_TMP:-/private/tmp}/sifs-verify-tests.XXXXXX")
 t=$(cd "$t" && pwd -P)
-started=()
+root=$t/ws
+AX=$root/bin/sifs-ax
+supervised=()
+# Supervised stand-ins stop through their supervisor; the few started
+# directly exit on their own.
 finish() {
-	for pid in ${started[@]+"${started[@]}"}; do kill -9 "$pid" 2>/dev/null; done
-	pkill -9 -f "^$t/"
+	local run
+	for run in ${supervised[@]+"${supervised[@]}"}; do
+		if [[ -S $run/control.sock ]]; then "$AX" stop "$run" >/dev/null 2>&1; fi
+	done
 	chmod -R u+rwx "$t" 2>/dev/null
 	rm -rf "$t"
 }
 trap finish EXIT
-export SIFS_VERIFY_DIR=$t/ws SIFS_VERIFY_EVIDENCE=$t/evidence
+export SIFS_VERIFY_DIR=$root SIFS_VERIFY_EVIDENCE=$t/evidence
 
 failed=0
 ok() { echo "ok    $1"; }
@@ -39,9 +45,17 @@ refused() {
 		ok "$name"
 	fi
 }
-alive() { kill -0 "$1" 2>/dev/null; }
+state() { ps -o stat= -p "$1" 2>/dev/null | tr -d ' '; }
+alive() {
+	local s
+	s=$(state "$1")
+	[[ -n $s && $s != Z* ]]
+}
 gone() {
-	for _ in $(seq 1 20); do alive "$1" || return 0; sleep 0.1; done
+	for _ in $(seq 1 20); do
+		[[ -z $(state "$1") ]] && return 0
+		sleep 0.1
+	done
 	return 1
 }
 
@@ -53,11 +67,15 @@ cat >"$t/stand-in.c" <<'EOF'
 #include <unistd.h>
 static void become_sleep(int sig) { (void)sig; execl("/bin/sleep", "sleep", "30", (char *)0); }
 int main(int argc, char **argv) {
-    if (argc > 1 && strcmp(argv[1], "ignore-term") == 0) signal(SIGTERM, SIG_IGN);
-    if (argc > 1 && strcmp(argv[1], "sleep-on-term") == 0) signal(SIGTERM, become_sleep);
+    const char *mode = argc > 1 ? argv[1] : "";
+    alarm(120);
+    if (strcmp(mode, "ignore-term") == 0) signal(SIGTERM, SIG_IGN);
+    if (strcmp(mode, "exec-on-term") == 0) signal(SIGTERM, become_sleep);
     char ready[4096];
     snprintf(ready, sizeof ready, "%s/ready", getenv("HOME"));
     fclose(fopen(ready, "w"));
+    if (strcmp(mode, "exit") == 0) return 0;
+    if (strcmp(mode, "exit-soon") == 0) { sleep(15); return 0; }
     for (;;) pause();
 }
 EOF
@@ -73,30 +91,76 @@ int main(int argc, char **argv) {
 }
 EOF
 clang -O "$t/start-of.c" -o "$t/start-of" || exit 1
+clang -dynamiclib -fobjc-arc -framework AppKit "$skill/open-spy.m" -o "$t/open-spy.dylib" || exit 1
 
 "$V" cleanup >/dev/null 2>&1 || { echo "FAIL  sifs-verify can't create its workspace"; exit 1; }
-root=$t/ws
 mkdir -p "$root/bin"
-swiftc -O "$skill/ax.swift" -o "$root/bin/sifs-ax" || exit 1
-swiftc -D SIFS_AX_TEST "$skill/ax.swift" -o "$t/sifs-ax-test" || exit 1
-AX=$root/bin/sifs-ax
+swiftc -O "$skill/ax.swift" -o "$t/sifs-ax-production" || exit 1
+swiftc -D SIFS_AX_TEST "$skill/ax.swift" -o "$AX" || exit 1
+
+mkdir "$t/trees"
+python3 - "$t/trees" <<'EOF'
+import json, sys, copy
+base = {
+    "app": {"AXWindows": {"els": ["win"]}, "AXMainWindow": {"el": "win"}, "AXFocusedWindow": {"error": -25212}},
+    "win": {"AXRole": "AXWindow", "AXTitle": "SIFS", "AXChildren": {"els": ["scroll"]}},
+    "scroll": {"AXRole": "AXScrollArea", "AXChildren": {"els": ["area"]}},
+    "area": {"AXRole": "AXWebArea", "AXChildren": {"els": ["box", "label"]}},
+    "box": {"AXRole": "AXTextField", "AXPlaceholderValue": "Search your files", "AXValue": ""},
+    "label": {"AXRole": "AXStaticText", "AXValue": "No folders yet"},
+}
+def variant(name, change):
+    tree = copy.deepcopy(base)
+    change(tree)
+    json.dump(tree, open(f"{sys.argv[1]}/{name}.json", "w"))
+def sheet(t):
+    t["win"]["AXChildren"] = {"els": ["scroll", "sheet"]}
+    t["sheet"] = {"AXRole": "AXSheet", "AXChildren": {"els": ["cancel"]}}
+    t["cancel"] = {"AXRole": "AXButton", "AXTitle": "Cancel"}
+def both(*changes):
+    return lambda t: [c(t) for c in changes]
+variant("closed", lambda t: None)
+variant("sheet", sheet)
+variant("sheet-role-error", both(sheet, lambda t: t["sheet"].update(AXRole={"error": -25204})))
+variant("children-error", lambda t: t["win"].update(AXChildren={"error": -25204}))
+variant("children-no-value", lambda t: t["win"].update(AXChildren={"error": -25212}))
+variant("child-role-not-text", lambda t: t["scroll"].update(AXRole=5))
+variant("child-subrole-dialog", lambda t: t["scroll"].update(AXSubrole="AXDialog"))
+variant("child-subrole-error", lambda t: t["scroll"].update(AXSubrole={"error": -25204}))
+variant("windows-error", lambda t: t["app"].update(AXWindows={"error": -25204}))
+variant("title-error", lambda t: t["win"].update(AXTitle={"error": -25204}))
+def other(t):
+    t["app"]["AXWindows"] = {"els": ["win", "panel"]}
+    t["panel"] = {"AXRole": "AXWindow", "AXTitle": "Open", "AXChildren": {"els": []}}
+variant("other-window", other)
+variant("no-window", lambda t: t.update(app={"AXWindows": {"els": []}}))
+variant("main-window-only", lambda t: t.update(app={"AXMainWindow": {"el": "win"}, "AXFocusedWindow": {"error": -25212}}))
+EOF
+export SIFS_AX_TEST_TREE=$t/trees/closed.json
+
+listed() { echo "$(stat -f '%d %i' "$1") ${1#"$root"/}" >>"$root/.sifs-verify-manifest"; }
 
 start_stand_in() {
+	local status
 	run=$root/runs/$1
-	mkdir -p "$run/home"
+	mkdir -p "$root/runs"
+	mkdir "$run" && listed "$run"
+	mkdir "$run/home"
 	cp "$t/stand-in" "$run/sifs"
-	HOME="$run/home" "$run/sifs" ${2:-} >/dev/null 2>&1 &
-	pid=$!
-	disown
-	started+=("$pid")
-	local begun
+	mkdir -p "$t/evidence"
+	mkdir "$t/evidence/$1"
+	echo "$(stat -f '%d %i' "$t/evidence/$1") ." >"$run/evidence.files"
+	(cd "$run" && exec "$AX" supervise "$run" ${2:-}) >"$run/supervisor.log" 2>&1 </dev/null &
+	supervised+=("$run")
+	for _ in $(seq 1 50); do status=$("$AX" status "$run" 2>/dev/null) && break; sleep 0.1; done
 	for _ in $(seq 1 50); do [[ -e $run/home/ready ]] && break; sleep 0.1; done
-	begun=$("$AX" bind "$run" "$pid") || {
-		bad "bind the stand-in for $1"
+	if ! [[ ${status:-} =~ ^(running|exited)\ ([0-9]+)\ ([0-9]+\.[0-9]{6})$ ]]; then
+		bad "start the stand-in $1 under a supervisor ($(cat "$run/supervisor.log"))"
 		return 1
-	}
-	printf '%s\n' "RUN=$1" "PID=$pid" "START=$begun" STARTED_AT=2026-01-01T00:00:00Z FRONT_BEFORE=1 BUILD=b SHA="$(printf '%040d' 0)" \
-		DIRTY=no PATCHED=no BINARY_SHA256="$(shasum -a 256 "$run/sifs" | cut -d' ' -f1)" >"$run/run.env"
+	fi
+	pid=${BASH_REMATCH[2]}
+	printf '%s\n' "RUN=$1" "PID=$pid" "START=${BASH_REMATCH[3]}" STARTED_AT=2026-01-01T00:00:00Z FRONT_BEFORE=1 BUILD=b \
+		SHA="$(printf '%040d' 0)" DIRTY=no PATCHED=no BINARY_SHA256="$(shasum -a 256 "$run/sifs" | cut -d' ' -f1)" >"$run/run.env"
 }
 
 echo "# seed-home.sh"
@@ -116,20 +180,44 @@ expect "seed-home seeds a new absolute folder, mode 700" \
 	test -f "$t/seeded/Documents/quarterly-budget.xlsx" -a "$(stat -f %Lp "$t/seeded")" = 700
 
 echo "# workspace"
-expect "a new workspace is mode 700 with its marker" test "$(stat -f %Lp "$root")" = 700 -a -f "$root/.sifs-verify-workspace"
+expect "a new workspace is mode 700 and its manifest names it" \
+	test "$(stat -f %Lp "$root")" = 700 -a "$(head -1 "$root/.sifs-verify-manifest")" = "$(stat -f '%d %i' "$root") ."
+mkdir -m 700 "$t/personal" && : >"$t/personal/.sifs-verify-workspace"
 mkdir -p "$t/personal/builds/keep" "$t/personal/src/keep"
-refused "a folder sifs-verify didn't create is refused" "not created by sifs-verify" \
+refused "a folder with a workspace marker but no manifest is refused" "not created by sifs-verify" \
 	env SIFS_VERIFY_DIR="$t/personal" "$V" cleanup --builds
 expect "its builds and src survive" test -d "$t/personal/builds/keep" -a -d "$t/personal/src/keep"
+mkdir -m 700 "$t/copied" && head -1 "$root/.sifs-verify-manifest" >"$t/copied/.sifs-verify-manifest"
+refused "a manifest copied from another workspace is refused" "not created by sifs-verify" env SIFS_VERIFY_DIR="$t/copied" "$V" cleanup
 refused "a relative SIFS_VERIFY_DIR is refused" "absolute path" env SIFS_VERIFY_DIR=ws "$V" cleanup
 ln -s "$root" "$t/ws-link"
 refused "a symlinked SIFS_VERIFY_DIR is refused" "not a folder" env SIFS_VERIFY_DIR="$t/ws-link" "$V" cleanup
-mkdir -m 755 "$t/ws755" && : >"$t/ws755/.sifs-verify-workspace"
+mkdir -m 755 "$t/ws755" && echo "$(stat -f '%d %i' "$t/ws755") ." >"$t/ws755/.sifs-verify-manifest"
 refused "a workspace that isn't mode 700 is refused" "mode 700" env SIFS_VERIFY_DIR="$t/ws755" "$V" cleanup
 refused "evidence inside the workspace is refused" "outside the workspace" env SIFS_VERIFY_EVIDENCE="$root/evidence" "$V" cleanup
 
+echo "# cleanup deletes only what sifs-verify created"
+mkdir -p "$root/builds/personal" "$root/src/personal"
+echo keep >"$root/builds/personal/keep"
+echo keep >"$root/src/personal/keep"
+mkdir "$root/builds/made" && listed "$root/builds/made"
+mkdir "$root/src/made" && listed "$root/src/made"
+mkdir "$root/builds/swapped" && listed "$root/builds/swapped"
+rmdir "$root/builds/swapped" && mkdir "$root/builds/swapped" && echo keep >"$root/builds/swapped/keep"
+out=$("$V" cleanup --builds 2>&1)
+expect "cleanup --builds deletes the build and source folders it created" test ! -e "$root/builds/made" -a ! -e "$root/src/made"
+expect "it leaves builds and src entries it didn't create" test -f "$root/builds/personal/keep" -a -f "$root/src/personal/keep"
+expect "it leaves a listed folder that was replaced since" test -f "$root/builds/swapped/keep"
+expect "and it names what it left alone" grep -q "left alone.*builds/personal" <<<"$out"
+rm -rf "$root/builds/personal" "$root/src/personal" "$root/builds/swapped"
+mkdir -p "$root/runs/handmade/home"
+"$V" cleanup --run handmade >/dev/null 2>&1
+expect "cleanup leaves a run folder it didn't create" test -d "$root/runs/handmade/home"
+rm -rf "$root/runs/handmade"
+
 echo "# names"
-mkdir -p "$root/builds/b"
+mkdir -p "$root/builds"
+mkdir "$root/builds/b" && listed "$root/builds/b"
 cp "$t/stand-in" "$root/builds/b/sifs"
 printf '%s\n' BUILD=b SHA="$(printf '%040d' 0)" DIRTY=no PATCHED=no BINARY_SHA256="$(printf '%064d' 0)" >"$root/builds/b/build.env"
 refused "launch refuses a run name with ../" "run name" "$V" launch --build b --name ../../escaped
@@ -156,13 +244,37 @@ mv "$root/runs" "$t/victim/real-runs" && ln -s "$t/victim/real-runs" "$root/runs
 refused "launch refuses to write through a symlinked runs folder" "symlink" "$V" launch --build b --name x
 expect "nothing was written there" test -z "$(ls -A "$t/victim/real-runs")"
 rm "$root/runs" && mkdir "$root/runs"
-mkdir -p "$t/victim/builds-target/keep" && mv "$root/builds" "$t/victim/builds-real" && ln -s "$t/victim/builds-target" "$root/builds"
+mkdir -p "$t/victim/builds-target/b" && mv "$root/builds" "$t/victim/builds-real" && ln -s "$t/victim/builds-target" "$root/builds"
 refused "cleanup --builds refuses a symlinked builds folder" "symlink" "$V" cleanup --builds
-expect "its target survives" test -d "$t/victim/builds-target/keep"
+expect "its target survives" test -d "$t/victim/builds-target/b"
 rm "$root/builds" && mv "$t/victim/builds-real" "$root/builds"
+
+echo "# cached source copies"
+sha=$(git -C "$skill" rev-parse HEAD)
+mkdir -p "$t/shim" "$t/victim-checkout/src-tauri/src" "$root/src"
+: >"$t/victim-checkout/src-tauri/src/app.rs"
+echo 'secret' >"$t/victim-checkout/notes.txt"
+for tool in patch npm npx; do printf '#!/bin/sh\necho "%s in $PWD" >>"%s/ran"\nexit 1\n' "$tool" "$t" >"$t/shim/$tool"; done
+chmod +x "$t/shim/"*
+build_ref() { env PATH="$t/shim:$PATH" "$V" build --ref "$sha"; }
+ln -s "$t/victim-checkout" "$root/src/$sha"
+refused "build --ref refuses a source copy that is a symlink" "symlink" build_ref
+rm "$root/src/$sha" && mkdir -p "$root/src/$sha/src-tauri/src"
+refused "build --ref refuses a source copy it didn't create" "not a source copy sifs-verify created" build_ref
+rm -rf "$root/src/$sha" && mkdir "$root/src/$sha" && listed "$root/src/$sha"
+mkdir -p "$root/src/$sha/src-tauri/src" "$root/src/$sha/src"
+: >"$root/src/$sha/src-tauri/src/app.rs"
+ln -s "$t/victim-checkout/notes.txt" "$root/src/$sha/src/notes.txt"
+refused "build --ref refuses a source copy that holds a symlink" "holds symlinks" build_ref
+rm "$root/src/$sha/src/notes.txt"
+ln -s "$t/victim-checkout" "$root/src/$sha/node_modules"
+refused "build --ref refuses a symlinked node_modules in a source copy" "symlink" build_ref
+expect "no patch, npm or build ran for any of them" test ! -e "$t/ran"
+rm -rf "${root:?}/src/$sha"
 
 echo "# run.env is data"
 start_stand_in meta
+cp "$run/run.env" "$t/meta.env"
 printf 'RUN=meta\nPID=$(touch %s/pwned-pid)\n' "$t" >"$run/run.env"
 refused "doctor refuses a run.env with \$(...) as a value" "bad PID" "$V" doctor meta
 printf 'RUN=meta\n$(touch %s/pwned-line)\n' "$t" >"$run/run.env"
@@ -177,91 +289,153 @@ refused "a repeated key is refused" "repeats PID" "$V" doctor meta
 refused "sifs-ax refuses a repeated key" "malformed" "$AX" check "$run"
 printf 'PID=%s\nSTART=%s\n' "$pid" '$(touch '"$t"'/pwned-ax)' >"$run/run.env"
 refused "sifs-ax refuses a bad START" "no valid PID and START" "$AX" check "$run"
-kill -9 "$pid"
+cp "$t/meta.env" "$run/run.env"
+"$V" cleanup --run meta >/dev/null 2>&1
 
 echo "# sifs-ax acts only on the process the run started"
 start_stand_in ours
-expect "check accepts the run's own process" bash -c '"$1" check "$2" >/dev/null' _ "$AX" "$run"
-point_run_env_at() { sed -i '' -e "s/^PID=.*/PID=$1/" -e "s/^START=.*/START=$("$t/start-of" "$1")/" "$run/run.env"; }
-sed -i '' 's/^START=.*/START=1.000000/' "$run/run.env"
-refused "another start time is refused (read)" "not the one" "$AX" read "$run"
-refused "another start time is refused (key)" "not the one" "$AX" key "$run" down
-HOME="$run/home" "$t/stand-in" >/dev/null 2>&1 &
-started+=("$!")
-disown
-point_run_env_at "${started[${#started[@]} - 1]}"
-refused "another binary is refused" "not the one" "$AX" key "$run" down
-HOME="$t/victim" "$run/sifs" >/dev/null 2>&1 &
-started+=("$!")
-disown
-refused "the run's binary with another HOME doesn't bind" "refused" "$AX" bind "$run" "${started[${#started[@]} - 1]}"
-point_run_env_at "${started[${#started[@]} - 1]}"
-refused "the run's binary with another HOME is refused" "not the one" "$AX" type "$run" x
+ours=$run ours_pid=$pid
+expect "check accepts the run's own process" bash -c '"$1" check "$2" >/dev/null' _ "$AX" "$ours"
+point_run_env_at() { sed -i '' -e "s/^PID=.*/PID=$1/" -e "s/^START=.*/START=$("$t/start-of" "$1")/" "$ours/run.env"; }
+sed -i '' 's/^START=.*/START=1.000000/' "$ours/run.env"
+refused "another start time is refused (read)" "not the one" "$AX" read "$ours"
+refused "another start time is refused (key)" "not the one" "$AX" key "$ours" down
+rm "$ours/home/ready"
+HOME="$ours/home" "$t/stand-in" exit-soon >/dev/null 2>&1 &
+for _ in $(seq 1 50); do [[ -e $ours/home/ready ]] && break; sleep 0.1; done
+point_run_env_at $!
+refused "another binary with the run's HOME is refused" "not the one" "$AX" key "$ours" down
+HOME="$t/victim" "$ours/sifs" exit-soon >/dev/null 2>&1 &
+for _ in $(seq 1 50); do [[ -e $t/victim/ready ]] && break; sleep 0.1; done
+point_run_env_at $!
+refused "the run's binary with another HOME is refused" "not the one" "$AX" type "$ours" x
 point_run_env_at $$
-refused "this test's own shell is refused" "not the one" "$AX" key "$run" return
-point_run_env_at "$pid"
-kill -9 "$pid" && gone "$pid"
-refused "a pid that is gone is refused" "is gone" "$AX" read "$run"
+refused "this test's own shell is refused" "not the one" "$AX" key "$ours" return
+point_run_env_at "$ours_pid"
+start_stand_in exits exit
+refused "a process that has exited is refused" "is gone" "$AX" read "$run"
 refused "a pid in place of a run folder is refused" "not a run folder" "$AX" read "$$"
 refused "a run folder through .. is refused" "not a run folder" "$AX" read "$root/runs/../runs/ours"
-mkdir -p "$t/elsewhere/runs" && ln -s "$run" "$t/elsewhere/runs/ours"
+mkdir -p "$t/elsewhere/runs" && ln -s "$ours" "$t/elsewhere/runs/ours"
 refused "a run folder through a symlink is refused" "not a run folder" "$AX" read "$t/elsewhere/runs/ours"
 "$V" cleanup --all >/dev/null 2>&1
 
 echo "# a native dialog lets only Escape and Cancel through"
 start_stand_in dialog
-dialog_refuses() {
-	local name=$1 out
+with_tree() {
+	local tree=$1
 	shift
-	out=$(SIFS_AX_TEST_DIALOG=open "$t/sifs-ax-test" "$1" "$run" "${@:2}" 2>&1)
-	if [[ $out == *"refused: a native dialog is open"* && $out != *sent* ]]; then ok "dialog open: $name is refused"; else bad "dialog open: $name (said: $out)"; fi
+	SIFS_AX_TEST_TREE=$t/trees/$tree.json "$AX" "$1" "$run" "${@:2}" 2>&1
 }
-dialog_refuses "Return" key return
-dialog_refuses "Cmd-Return" key return --cmd
-dialog_refuses "Down" key down
-dialog_refuses "typing" type a
-dialog_refuses "a typed newline" type $'\n'
-dialog_refuses "a typed carriage return" type $'\r'
-dialog_refuses "a press" press Open
-dialog_refuses "focusing the search box" focus-search
-dialog_refuses "focusing the text area" focus-textarea
-dialog_refuses "a search" search q
-out=$(SIFS_AX_TEST_DIALOG=open "$t/sifs-ax-test" key "$run" escape 2>&1)
+dialog_refuses() {
+	local tree=$1 name=$2 out
+	shift 2
+	out=$(with_tree "$tree" "$@")
+	if [[ $out == *"refused: a native dialog is open"* && $out != *sent* && $out != *pressed* && $out != *focused* ]]; then
+		ok "dialog open ($tree): $name is refused"
+	else
+		bad "dialog open ($tree): $name (said: $out)"
+	fi
+}
+dialog_refuses sheet "Return" key return
+dialog_refuses sheet "Cmd-Return" key return --cmd
+dialog_refuses sheet "Down" key down
+dialog_refuses sheet "typing" type a
+dialog_refuses sheet "a typed newline" type $'\n'
+dialog_refuses sheet "a typed carriage return" type $'\r'
+dialog_refuses sheet "a press" press Open
+dialog_refuses sheet "focusing the search box" focus-search
+dialog_refuses sheet "focusing the text area" focus-textarea
+dialog_refuses sheet "a search" search q
+out=$(with_tree sheet key escape)
 if [[ $out == "sent key 53 flags 0" ]]; then ok "dialog open: Escape is sent"; else bad "dialog open: Escape (said: $out)"; fi
-out=$(SIFS_AX_TEST_DIALOG=open "$t/sifs-ax-test" cancel-dialog "$run" 2>&1)
-if [[ $out != *refused* ]]; then ok "dialog open: cancel-dialog gets past the gate"; else bad "dialog open: cancel-dialog (said: $out)"; fi
-out=$(SIFS_AX_TEST_DIALOG=closed "$t/sifs-ax-test" key "$run" return 2>&1)
+out=$(with_tree sheet cancel-dialog)
+if [[ $out == "pressed the dialog's Cancel" ]]; then ok "dialog open: cancel-dialog presses the dialog's Cancel"; else bad "dialog open: cancel-dialog (said: $out)"; fi
+for tree in sheet-role-error children-error children-no-value child-role-not-text child-subrole-dialog child-subrole-error \
+	windows-error title-error other-window no-window; do
+	dialog_refuses "$tree" "Return" key return
+done
+out=$(with_tree closed key return)
 if [[ $out == "sent key 36 flags 0" ]]; then ok "no dialog: Return is sent"; else bad "no dialog: Return (said: $out)"; fi
-out=$(SIFS_AX_TEST_DIALOG=closed "$t/sifs-ax-test" type "$run" $'a\nb' 2>&1)
+out=$(with_tree main-window-only key return)
+if [[ $out == "sent key 36 flags 0" ]]; then ok "no dialog, no focused window: Return is sent"; else bad "no dialog, no focused window: Return (said: $out)"; fi
+out=$(with_tree closed type $'a\nb')
 if [[ $out == $'sent key 0 flags 0 text a\nsent key 36 flags 0\nsent key 0 flags 0 text b' ]]; then ok "no dialog: a newline is typed as Return"; else bad "no dialog: type (said: $out)"; fi
 sed -i '' 's/^START=.*/START=1.000000/' "$run/run.env"
-refused "the process check comes first, dialog or not" "not the one" env SIFS_AX_TEST_DIALOG=closed "$t/sifs-ax-test" key "$run" escape
+refused "the process check comes first, dialog or not" "not the one" env SIFS_AX_TEST_TREE="$t/trees/sheet.json" "$AX" key "$run" escape
 "$V" cleanup --all >/dev/null 2>&1
 
-echo "# cleanup signals only the process the run started"
+echo "# only the run's supervisor signals its process"
 start_stand_in term
-"$V" cleanup --run term >/dev/null 2>&1
-expect "cleanup stops the run's process" gone "$pid"
+out=$("$V" cleanup --run term 2>&1)
+expect "cleanup stops the run's process through its supervisor" gone "$pid"
+expect "and says so" grep -q "stopped pid $pid with TERM" <<<"$out"
 expect "and deletes the run's folder" test ! -e "$root/runs/term"
 start_stand_in stubborn ignore-term
-err=$("$V" cleanup --run stubborn 2>&1)
-expect "a process that ignores TERM gets KILL" grep -q "ignored TERM; sent KILL" <<<"$err"
-expect "and is gone" gone "$pid"
-start_stand_in reused sleep-on-term
-err=$("$V" cleanup --run reused 2>&1)
-expect "a pid that stops being the run's process after TERM gets no KILL" alive "$pid"
-expect "and cleanup says why" grep -q "no KILL: refused: process $pid is not the one" <<<"$err"
-kill -9 "$pid"
-start_stand_in stale
-sed -i '' 's/^START=.*/START=1.000000/' "$run/run.env"
-"$V" cleanup --run stale >/dev/null 2>&1
-expect "a pid with another start time gets no signal at all" alive "$pid"
-kill -9 "$pid"
-start_stand_in direct
-sed -i '' 's/^START=.*/START=1.000000/' "$run/run.env"
-refused "sifs-ax signal refuses it too" "not the one" "$AX" signal "$run" KILL
-expect "and the process lives" alive "$pid"
-kill -9 "$pid"
+out=$("$V" cleanup --run stubborn 2>&1)
+expect "a process that ignores TERM gets KILL" grep -q "ignored TERM for 5 s, so it got KILL" <<<"$out"
+expect "and the process that ignored TERM is gone" gone "$pid"
+start_stand_in changed exec-on-term
+out=$("$V" cleanup --run changed 2>&1)
+expect "a process that runs another program after TERM is still the run's, and gets KILL" grep -q "got KILL" <<<"$out"
+expect "and the process that ran another program is gone" gone "$pid"
+start_stand_in decoy
+decoy=$pid
+start_stand_in target
+target=$pid
+sed -i '' -e "s/^PID=.*/PID=$decoy/" -e "s/^START=.*/START=$("$t/start-of" "$decoy")/" "$run/run.env"
+"$V" cleanup --run target >/dev/null 2>&1
+expect "cleanup stops the supervisor's own child, not the pid run.env names" gone "$target"
+expect "the process run.env names instead is untouched" alive "$decoy"
+start_stand_in folder-deleted
+rm -rf "$run"
+expect "a supervisor whose run folder is deleted stops its process" bash -c 'for _ in $(seq 1 40); do [[ -z $(ps -o stat= -p "$1") ]] && exit 0; sleep 0.1; done; exit 1' _ "$pid"
+expect "and exits" bash -c 'for _ in $(seq 1 20); do pgrep -f "supervise $1\$" >/dev/null || exit 0; sleep 0.1; done; exit 1' _ "$run"
+run=$root/runs/orphan
+mkdir "$run" && listed "$run"
+mkdir "$run/home"
+cp "$t/stand-in" "$run/sifs"
+HOME="$run/home" "$run/sifs" exit-soon >/dev/null 2>&1 &
+orphan=$!
+for _ in $(seq 1 50); do [[ -e $run/home/ready ]] && break; sleep 0.1; done
+python3 -c 'import os, socket, sys; os.chdir(sys.argv[1]); socket.socket(socket.AF_UNIX).bind("control.sock")' "$run"
+printf '%s\n' RUN=orphan "PID=$orphan" "START=$("$t/start-of" "$orphan")" >"$run/run.env"
+out=$("$V" cleanup --run orphan 2>&1)
+expect "without a live supervisor cleanup signals nothing" alive "$orphan"
+expect "and keeps the run, saying why" test -d "$run" -a -n "$(grep "left running" <<<"$out")"
+start_stand_in zombie exit
+"$AX" status "$run" >/dev/null
+expect "a process that exits stays unreaped, so its pid can't go to another process" bash -c '[[ $(ps -o stat= -p "$1") == Z* ]]' _ "$pid"
+expect "its supervisor reports it exited" grep -q "^exited $pid " <<<"$("$AX" status "$run")"
+"$V" cleanup --run zombie >/dev/null 2>&1
+expect "cleanup reaps it" gone "$pid"
+"$V" cleanup --all >/dev/null 2>&1
+
+echo "# evidence goes only into files the run created"
+start_stand_in ev
+ev=$t/evidence/ev
+SIFS_VERIFY_RUN=ev "$V" read >/dev/null 2>&1
+expect "read logs into the run's transcript" grep -q "No folders yet" "$ev/transcript.md"
+mv "$ev/transcript.md" "$t/transcript.md"
+echo unrelated >"$t/victim-document"
+ln -s "$t/victim-document" "$ev/transcript.md"
+refused "a transcript.md that became a symlink is refused" "refusing to write" env SIFS_VERIFY_RUN=ev "$V" read
+expect "and its target is untouched" test "$(cat "$t/victim-document")" = unrelated
+rm "$ev/transcript.md" && echo planted >"$ev/transcript.md"
+refused "a transcript.md this run didn't create is refused" "didn't create it" env SIFS_VERIFY_RUN=ev "$V" read
+expect "and is not written" test "$(cat "$ev/transcript.md")" = planted
+rm "$ev/transcript.md"
+mv "$ev" "$t/evidence-moved" && ln -s "$t/evidence-moved" "$ev"
+refused "an evidence folder that became a symlink is refused" "not the evidence folder this run created" env SIFS_VERIFY_RUN=ev "$V" read
+rm "$ev" && mkdir "$ev"
+refused "an evidence folder replaced by another is refused" "not the evidence folder this run created" env SIFS_VERIFY_RUN=ev "$V" read
+expect "nothing was written into either" test -z "$(ls -A "$ev")" -a -z "$(ls -A "$t/evidence-moved")"
+: >"$t/spy.log"
+SIFS_VERIFY_SPY=$t/open-spy.dylib SIFS_VERIFY_OPEN_LOG=$t/spy.log start_stand_in spy
+expect "the open spy loads into the app alone" test "$(cat "$t/spy.log")" = "spy loaded"
+ln -s "$t/victim-document" "$t/spy-link.log"
+SIFS_VERIFY_SPY=$t/open-spy.dylib SIFS_VERIFY_OPEN_LOG=$t/spy-link.log start_stand_in spylink
+expect "the open spy doesn't write through a symlinked log" test "$(cat "$t/victim-document")" = unrelated
 "$V" cleanup --all >/dev/null 2>&1
 
 echo "# doctor's folder check"
@@ -282,14 +456,31 @@ expect "a folder outside fails" grep -q "^FAIL" <<<"$(folder_check "$run/home/Do
 expect "a sibling with the home's name as prefix fails" grep -q "^FAIL" <<<"$(folder_check "$run/home-other")"
 expect "a symlink in the home that leads outside fails" grep -q "^FAIL" <<<"$(folder_check "$run/home/link")"
 expect "an index that can't be read fails" grep -q "^FAIL" <<<"$(folder_check corrupt)"
+upper=$(tr '[:lower:]' '[:upper:]' <<<"$run/home/Documents")
+if [[ -d $upper ]]; then
+	expect "the home spelled in another case passes" grep -q "^ok" <<<"$(folder_check "$upper")"
+fi
+if [[ -d /System/Volumes/Data$run ]]; then
+	expect "the home spelled through /System/Volumes/Data passes" grep -q "^ok" <<<"$(folder_check "/System/Volumes/Data$run/home/Documents")"
+	expect "and an outside folder spelled that way fails" grep -q "^FAIL" <<<"$(folder_check "/System/Volumes/Data$t/outside")"
+fi
+folder_check "$run/home/Documents" >/dev/null
+expect "doctor checks the supervisor holds the run's process" grep -q "^ok    its supervisor holds it" <<<"$("$V" doctor folders 2>/dev/null)"
 
 echo "# other SIFS processes"
-mkdir -p "$t/shim"
-printf '#!/bin/sh\nexit 1\n' >"$t/shim/pgrep" && chmod +x "$t/shim/pgrep"
+mkdir -p "$t/pgrep-shim"
+printf '#!/bin/sh\nexit 1\n' >"$t/pgrep-shim/pgrep" && chmod +x "$t/pgrep-shim/pgrep"
 expect "no other SIFS process is an empty list, not an abort" \
-	grep -q "other SIFS processes (not ours, never touched): none" <<<"$(PATH=$t/shim:$PATH "$V" doctor folders 2>/dev/null)"
-printf '#!/bin/sh\nexit 3\n' >"$t/shim/pgrep"
-refused "a pgrep that errors stops doctor" "pgrep failed" env PATH="$t/shim:$PATH" "$V" doctor folders
+	grep -q "other SIFS processes (not ours, never touched): none" <<<"$(PATH=$t/pgrep-shim:$PATH "$V" doctor folders 2>/dev/null)"
+printf '#!/bin/sh\nexit 3\n' >"$t/pgrep-shim/pgrep"
+refused "a pgrep that errors stops doctor" "pgrep failed" env PATH="$t/pgrep-shim:$PATH" "$V" doctor folders
+"$V" cleanup --all >/dev/null 2>&1
+
+echo "# opened"
+start_stand_in opened
+printf 'spy loaded\nopen\t/x/report.txt\n' >"$t/evidence/opened/open-requests.log"
+expect "opened prints the captured requests" grep -q "report.txt" <<<"$(SIFS_VERIFY_RUN=opened "$V" opened 2>/dev/null)"
+expect "and logs them in the transcript" grep -q "opened" "$t/evidence/opened/transcript.md"
 "$V" cleanup --all >/dev/null 2>&1
 
 echo "# builds carry the folder guard"
@@ -298,14 +489,25 @@ mkdir -p "$t/unwired/src-tauri/src"
 echo 'let builder = builder.activate_ignoring_other_apps(!verification::instance());' >"$t/unwired/src-tauri/src/app.rs"
 git -C "$t/unwired" init -q && git -C "$t/unwired" add -A && git -C "$t/unwired" -c user.name=t -c user.email=t@t commit -qm t
 refused "build refuses source whose add_folder skips the folder guard" "doesn't wire in the verification support" "$V" build --src "$t/unwired"
+mkdir -p "$t/wired/src-tauri/src"
+: >"$t/wired/src-tauri/src/verification.rs"
+printf '%s\n' 'activate_ignoring_other_apps(!verification::instance())' 'verification::check_folder' >"$t/wired/src-tauri/src/app.rs"
+git -C "$t/wired" init -q && git -C "$t/wired" add -A && git -C "$t/wired" -c user.name=t -c user.email=t@t commit -qm t
+wired=$(git -C "$t/wired" rev-parse HEAD | cut -c1-7)
+mkdir -p "$root/builds/$wired" && cp "$t/stand-in" "$root/builds/$wired/sifs" && echo keep >"$root/builds/$wired/build.env"
+refused "build refuses to reuse or replace a builds folder it didn't create" "didn't create" env PATH="$t/shim:$PATH" "$V" build --src "$t/wired"
+expect "and leaves it" test "$(cat "$root/builds/$wired/build.env")" = keep
 mkdir -p "$t/decoy/unwired"
 refused "build --src resolves a relative folder from here, whatever CDPATH says" "$t/unwired/src-tauri/src/app.rs doesn't wire" \
 	env CDPATH="$t/decoy" bash -c 'cd "$1" && "$2" build --src unwired' _ "$t" "$V"
 
-echo "# no mouse, no activation"
+echo "# no mouse, no activation, no signals by number"
 forbidden='mouseEventSource|MouseDown|MouseUp|MouseMoved|MouseDragged|scrollWheel|CGWarpMouseCursorPosition|CGDisplayMoveCursor|CGAssociateMouse|\.activate\(|activateIgnoringOtherApps|activateWithOptions|kAXRaiseAction|AXRaise|kAXFrontmostAttribute|AXFrontmost|kAXMainAttribute|AXMain"|setFrontProcess|SetFrontProcess|openApplication|launchApplication'
 expect "ax.swift posts no mouse event and activates nothing" bash -c '! grep -nE "$1" "$2"' _ "$forbidden" "$skill/ax.swift"
 expect "the scripts drive no other app" bash -c '! grep -nE "tell application|System Events|keystroke|key code|cliclick|click at|\.activate\(|open -a" "$1" "$2"' _ "$V" "$S"
+expect "only the supervisor's stopChild sends signals" \
+	bash -c '[[ $(grep -c "kill(" "$1") == $(sed -n "/^func stopChild/,/^}/p" "$1" | grep -c "kill(") ]]' _ "$skill/ax.swift"
+expect "the scripts send no signals" bash -c '! grep -nwE "kill|pkill|killall" "$1" "$2"' _ "$V" "$S"
 
 echo
 if ((failed)); then echo "$failed failed"; exit 1; fi

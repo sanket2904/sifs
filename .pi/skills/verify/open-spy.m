@@ -5,16 +5,18 @@
 // and reports success without opening anything.
 #import <AppKit/AppKit.h>
 #import <objc/runtime.h>
+#include <fcntl.h>
 #include <spawn.h>
 #include <string.h>
+#include <unistd.h>
 
 static void record(NSString *line) {
     const char *path = getenv("SIFS_VERIFY_OPEN_LOG");
     if (!path) return;
-    FILE *log = fopen(path, "a");
-    if (!log) return;
-    fprintf(log, "%s\n", line.UTF8String);
-    fclose(log);
+    int log = open(path, O_WRONLY | O_APPEND | O_NOFOLLOW_ANY);
+    if (log < 0) return;
+    dprintf(log, "%s\n", line.UTF8String);
+    close(log);
 }
 
 static int spy_spawn(pid_t *pid, const char *path, const posix_spawn_file_actions_t *actions,
