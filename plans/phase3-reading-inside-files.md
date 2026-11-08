@@ -38,7 +38,7 @@ Calling PDFKit, Vision and AVFoundation from Rust uses the `objc2` framework cra
 ## Doing the work without getting in the way
 
 - **A background worker** goes through the queue at low priority (macOS "utility"), a few files at a time, one OCR at a time.
-- **Queue order:** first the files the user opened or changed recently, then documents (PDF, Office, text), then images, then the rest. The order is kept in the database, so a restart picks up where it left off.
+- **Queue order:** first the files the user opened or changed recently, then documents (PDF, Office, text), then the rest, then images (OCR, the slow step; step 4 measured why). The order is kept in the database, so a restart picks up where it left off.
 - **When a file changes,** the watcher marks its extract stale, and the worker reads it again.
 - **Limits:** files over a size cap are skipped; a reader that takes too long or fails is recorded and not retried until the file changes. Settings show progress (read, waiting, failed).
 
@@ -381,3 +381,142 @@ The reader as built, over the 2,698 PDFs Spotlight lists under `~`, one after an
 | stopped by a limit, or crashed | 0 |
 
 27,526 pages; 43.8 million characters kept; 969 files have pages without text, marked for OCR. At a load average of 300 to 780 from other programs: 601 s in all, median 56 ms per file, p95 810 ms, max 18.5 s; the helpers used 108 s of processor time in all. SIFS's side peaked at 14 MB resident; the largest helper at 275 MB. Starting the helper from the app's own binary took a median of 50 ms against 47 ms from the small scratch program (15 runs each, alternating), so the app's size adds little to each start.
+
+## Step 4 in detail: images
+
+Step 4 is split. **Part A** (this section) reads images and screenshots: the words in them, through Vision's text recognition (OCR), and when, where and with what they were taken, from their EXIF. **Part B** reads the scanned pages of PDFs (the `textless_pages` that step 2b records) and comes after the PDF reader is merged. Email, RTF, iWork previews and media tags stay in step 5.
+
+One reader, `image`, macOS only, registered in `readers/macos`. Each image is read by a **helper process that stays running** between images: SIFS's own program, started again in a helper mode, which reads one image at a time on request. SIFS stops it when an image uses too much processor time or memory or runs past the time limit, and the helper exits by itself once no image has come for 30 s. Linux has no image reader and still builds.
+
+### In one process, a helper per image, or one helper for many: what the measurements decided
+
+A prototype (outside the repo, in the orchestration notes for this step: `phase4/p3-ocr/`) read generated images and a sample of the owner's in each shape. It used the same calls as the reader: ImageIO for the facts and a decoded copy at most 4,096 pixels on its longest side, then `VNRecognizeTextRequest` (accurate, language correction, automatic language detection). The Mac is an M5 Pro with 18 cores and macOS 26.4; other programs kept the load average at 8 to 25 during the runs.
+
+| | One process | A process per image |
+|---|---|---|
+| 200 of the owner's images, three runs each, alternating | 13.1, 15.4, 15.0 s | 77.1, 60.2, 59.3 s |
+| per image (one run) | median 36 ms, p95 342 ms | median 260 ms, p95 550 ms |
+
+**A process per image is about four times slower.** Vision loads its recognition models in each new process (the first image in a process takes 200 to 280 ms, later ones a median of 30 ms), and most of the owner's images are small. Over his library that is 2 to 2.7 hours of background work in place of about half an hour. PDFs could afford a helper per file (30 ms each); images cannot.
+
+**One process keeps Vision's memory in SIFS.** After reading images in the prototype's own process, its footprint stayed at 200 to 250 MB once idle (measured for 20 s after the last image), and peaked at 465 MB over 1,000 of the owner's images. SIFS would carry that from its first image until it quits.
+
+**The clock cannot tell a starved read from a stuck one.** With every core busy (`yes` on each), at "utility" priority, a 5K screenshot took 12.9 s by the clock and 1.3 s of processor time; 200 of the owner's images took 215 s in place of 15 s. Only a separate process gives a count of the processor time one image used: Vision does its work on threads of its own.
+
+**Hostile images, for ImageIO and Vision:** 43 generated files, each in its own process with no limit, timed and watched for memory.
+
+| Generated file | What happened |
+|---|---|
+| PNG of 30,000 × 30,000 (0.9 MB file) | decoded to a 4,096 copy in 3.0 s; 162 MB |
+| PNG of 60,000 × 60,000 in colour (10 MB file) | **26.5 s** to decode; 400 MB |
+| PNG and JPEG declaring 60,000 × 60,000 and 2³¹ × 2³¹ with no data; 200 KB of random bytes named `png`, `jpg`, `heic`, `tiff`, `gif`, `webp`; an empty file | refused in under 15 ms |
+| cut short (JPEG, HEIC, PNG); 20 bytes flipped in each of five JPEG, HEIC, PNG, GIF and TIFF files, five times | read or refused, no crash, no hang, at most 296 MB |
+| TIFF of 20,000 × 20,000; a 500-page TIFF; a 200-frame GIF | 0.86 s; 0.12 s (first page); 0.14 s (first frame) |
+| 4,096 and 8,192 pixel pages of small text | at most 0.6 s: Vision reads at a resolution of its own, so a larger picture costs it little more |
+
+`VNRequest.cancel` stops a recognition already running within 3 to 32 ms, so Vision itself could be stopped in SIFS's process. ImageIO has no call that stops a decode: only the size checked before decoding (below) bounds it.
+
+**Decision: one helper process, kept for many images.** It costs what one process costs per image, plus about 0.2 s to load Vision's models each time a helper starts. It keeps Vision's 200 to 470 MB out of SIFS and gives it back 30 s after the last image. Processor time and memory are measured for exactly one image, so a starved read is never mistaken for a stuck one, and a crash in one of ImageIO's 60 formats costs one image, not SIFS. This keeps step 2b's departure from decision 8 of step 1 (framework readers in-process first), for the measured reasons above, and does what step 2b left for later ("a helper that serves many files in turn").
+
+### The owner's images
+
+Spotlight lists 100,917 images under `~`. What SIFS would read, after its ignore rules (hidden folders, `~/Library`, `node_modules` and the rest; the Photos library is a package and is not read), and the extensions below: **25,397**, 8.9 GB. None is an iCloud placeholder. 23,743 are PNG, then 736 `jpg`, 388 `jpeg`, 167 GIF, 138 WebP, 86 HEIC, 86 TIFF, and 53 others. The median is 20 KB and 0.25 megapixels; the largest is 57 MB and 57.9 megapixels; 4,590 have a side of 128 pixels or less (icons).
+
+**Facts (counts only):** 153 have the date they were taken, 11 a GPS position, 17 a camera model. His photos are in the Photos library, which SIFS doesn't open.
+
+**OCR** (the prototype, one process, "utility" priority, 1,000 of them chosen at random): 756 have some text (median 23 characters, p95 1,384, most 4,663). Per image: median 31 ms, p95 243 ms, p99 404 ms, most 637 ms; processor time per image: median 23 ms, p99 1.2 s, most 2.8 s. All 1,000 took 62 s, so all 25,397 would take about **26 minutes** at that load. With every core busy, the same 200 images took 14 times as long: about **7.6 hours** for the library, at low priority, without slowing what is in front.
+
+### Languages
+
+Vision on macOS 26.4 recognizes 30 languages: English and the main European languages, Chinese, Cantonese, Japanese, Korean, Russian, Ukrainian, Thai, Vietnamese, Arabic, Turkish, Indonesian and Malay. The newer Swift-only requests (`RecognizeTextRequest`, `RecognizeDocumentsRequest`) list the same 30. **A language outside them gives no text** (no wrong text either): measured with Hindi, which is among the owner's files and which Vision does not read (nor any other Devanagari or Indic script). Such images are found by their facts and names only. **This is a known limit, by the owner's decision (2026-11-08):** OCR uses Apple's Vision only (`VNRecognizeTextRequest`, accurate), with no Tesseract or other installed engine; it is revisited only if step 6's measurement on the real home folder shows a real need. When Apple adds a language, its text appears once the reader's version is raised.
+
+The request uses **automatic language detection** (revision 3) over every language Vision supports, rather than a fixed list (SIFS is used worldwide, so no language is preferred): with English alone, a line of Japanese next to English was dropped; with detection, both were found ("Résumé café naïve" and "東京駅 新幹線"). Recognition is **accurate** with **language correction** on: the fast level missed a shop sign in a photo and halved the time on screenshots only.
+
+### The reader
+
+| | |
+|---|---|
+| Extensions | `jpg`, `jpeg`, `jpe`, `png`, `gif`, `heic`, `heif`, `hif`, `heics`, `avif`, `webp`, `tiff`, `tif`, `bmp`, `dib`, `jp2`, `jxl`, `psd`, and camera raw: `dng`, `cr2`, `cr3`, `crw`, `nef`, `nrw`, `arw`, `srf`, `sr2`, `raf`, `rw2`, `orf`, `pef`, `srw`, `erf`, `dcr`, `iiq`, `3fr`, `fff`, `mos`, `mrw`, `rwl`. Not icons (`ico`, `icns`), textures (`dds`, `ktx`, `astc`, `pvr`), `exr`, `hdr`, DICOM or `svg`: they hold no photos or screenshots, and `svg`'s words are its XML (a text reader's job, later). |
+| Class | images: **after everything else** in the queue (priority 4; documents are 1 and the rest 3). A file changed in the last week still comes first (priority 0), so a new screenshot is read soon. |
+| Exclusive | yes: one image at a time, as the plan says for OCR. |
+| Which image | the primary one (`CGImageSourceGetPrimaryImageIndex`): a GIF's first frame, a TIFF's first page, a HEIC's main picture. |
+
+**Queue order, measured:** the other readers take about 1 ms a file; an image takes 30 ms to a few seconds. Images before code would hold the code files back by the whole OCR (26 minutes to hours); code before images holds images back by minutes. This follows the readers table ("queued behind everything else") and changes step 1's queue order, which had images before the rest; the test that pins the order changes with it.
+
+### Where text and facts go
+
+The text found is **one part per image**, unlabelled, in `contents` and so in `contents_fts`, as Vision orders the lines (top to bottom), one line each. No migration: `contents` and `facts` take it as they are.
+
+**Facts are stored the same way everywhere:** ISO 8601 times with the camera's own offset, WGS 84 decimal degrees, pixels. Nothing is turned into a local format or a place name here. Naming a place from its coordinates (from a worldwide source) and showing dates and units in the user's locale are left for later phases.
+
+**Facts come first:** the helper reads them from the image's properties (no decoding) and sends them before it decodes the picture. If recognition is then stopped, the image keeps its date and place.
+
+| Key | Value | From |
+|---|---|---|
+| `taken` | When it was taken, ISO 8601 in the camera's local time: `2025-12-24T18:30:05`, or with the offset when the file has one: `2025-12-24T18:30:05-05:00` | EXIF `DateTimeOriginal` with `OffsetTimeOriginal`, else `DateTimeDigitized` with `OffsetTimeDigitized`. Not TIFF `DateTime` (when it was last edited). A date that isn't one (`0000:00:00 00:00:00`, month 13) gives no fact. |
+| `camera_make`, `camera_model` | as written: `Apple`, `iPhone 15 Pro` | TIFF `Make`, `Model` |
+| `latitude`, `longitude` | decimal degrees, WGS 84, north and east positive, six decimals (about 0.1 m): `-33.856800`, `151.215300` | GPS `Latitude` and `LatitudeRef`, `Longitude` and `LongitudeRef`. Outside ±90 and ±180, not a finite number, or exactly 0, 0 (what a camera without a fix writes): no fact. |
+| `orientation` | EXIF orientation, `1` to `8` (`1` upright, `6` turned 90° clockwise to view) | `Orientation` |
+| `width`, `height` | pixels, as stored (before orientation) | `PixelWidth`, `PixelHeight` |
+| `stopped` | why the text wasn't read, or was read only in part (the same key as the PDF reader's) | the helper or SIFS |
+| `truncated` | `1` when text was cut at the cap | the sink |
+
+### Limits
+
+| Limit | Value | Enforced by | Past it |
+|---|---|---|---|
+| file size | 256 MB (owner's largest: 57 MB) | the worker | skipped, never opened |
+| pixels | 200 megapixels, from the header before decoding (owner's largest: 57.9; a 60,000² PNG took 26.5 s) | the helper | facts kept, no text, `stopped` ("larger than 200 megapixels") |
+| small | a side under 8 pixels: no letter fits (Vision fails on a side of 2 or less) | the helper | facts kept, no text, nothing recorded as stopped |
+| decoding | a copy at most 4,096 pixels on its longest side (ImageIO's thumbnail). A 5K screenshot gave the same lines at 4,096 and 8,192. | the helper | |
+| processor time | 10 s per image, polled every 20 ms (owner's most: 2.8 s) | SIFS kills the helper | facts kept, `stopped` ("used more than 10 s of processor time"); with no facts yet, failed with that reason |
+| time | 60 s by the clock, the worker's limit for this reader | SIFS kills the helper at the deadline | the same, "took longer than 60 s" |
+| memory | 1 GB physical footprint, polled every 20 ms (largest seen: 465 MB) | SIFS kills the helper | the same, "used more than 1024 MB of memory" |
+| a crash | | the helper ends on a signal, or its output ends early | the same, "the image reader crashed" |
+| output | 1 MB per image from the helper | SIFS stops reading and kills it | the same, "sent more than 1 MB" |
+| characters | 100,000 per image (owner's most: 4,663) | the helper cuts; the sink keeps the cap too | `truncated` |
+| idle | 30 s without an image | the helper exits | the next image starts a new one |
+| memory kept | above 512 MB after an image | SIFS replaces the helper before the next | |
+
+A file ImageIO can't open, or one with no image in it, is failed ("damaged, or not an image macOS can read") and not retried until it changes. A recognition that Vision reports as failed keeps the facts, with `stopped` ("text recognition failed: …").
+
+### The helper
+
+- **Starting it:** the reader runs the program SIFS is running (`std::env::current_exe`) with `SIFS_IMAGE_HELPER` set. `main` (the app, and `sifs-bench`) first calls `extract::serve_helper_if_asked()`, which serves images and exits, never starting the app. In the tests, the test binary is the helper, through an ordinary test that serves when that variable is set and passes at once when it isn't (no test is ignored).
+- **One shared helper:** the reader holds it behind a lock; the worker reads one image at a time. Its stdin carries requests (an id, the path, the time it has, the caps); its stdout carries frames back. Anything before a marker is passed over (the test harness prints a line first).
+- **Frames for each image, in this order:** facts (any number, each key once, only known keys), then text (at most once), then an end with the outcome. Every frame names the request's id. Anything else (a frame for another id, text twice, a fact after the text, a frame too long to be one, an unknown tag) is a broken helper: it is killed, and the frames before are kept.
+- **One supervisor for both readers.** The PDF reader's supervision (step 2b, with its review fixes) moves to `readers/macos/supervise.rs` and both readers use it: the program to start and its guard (made before any setup that can fail, so a helper is always killed and reaped), non-blocking output retried when interrupted, processor time and footprint from `proc_pid_rusage`, the marker and the frames (a tag, a length, a body; whole frames handed on before a bad one or the output cap), and the loop that checks the clock, processor time and memory on every turn whatever the pipe says, and kills the helper at once when its output ends early. What differs stays in each reader: its frames and the order it allows them in, its caps, and what a stop means. For images, processor time is counted from the start of each image, since the helper lives on. The PDF reader's behaviour and its tests don't change.
+- **Image frames are checked against the protocol** before anything reaches the sink (ids, order, each kind's count), so a broken helper can't put text where it doesn't belong. **Facts are sent as they are read**, before the slow part, so a stop never loses them; `truncated` is set only when text was left out.
+- **An image interrupted by the idle exit:** if the helper exits by itself (its idle code) before sending anything for the image, a new helper reads it, once.
+- **SIFS going away:** the helper's stdin closes, and it exits. It also exits by itself a second after an image's deadline if SIFS hasn't killed it.
+- **Priority:** "utility", as the worker. The tests' helper keeps the test's priority (step 2b found "utility" helpers too slow for the suite on a busy Mac).
+- **Always reaped:** however a read ends, a helper that is to go is killed and waited for; dropping the reader does the same.
+
+### Dependencies
+
+macOS only, pinned, default features off, beside step 2b's: `objc2-image-io` **0.3.2** (`CGImageSource`, `CGImageProperties`), `objc2-vision` **0.3.2** (`VNRecognizeTextRequest`, `VNRequestHandler`, `VNObservation`, `VNRequest`), `objc2-core-graphics` **0.3.2** and `objc2-core-foundation` **0.3.2** (already in the tree through Tauri). The tests draw their images with Core Text and write them with `CGImageDestination`: `objc2-core-text` **0.3.2** as a macOS dev-dependency.
+
+### Tests
+
+Images are drawn in the tests (Core Text into a bitmap, written as PNG, JPEG, HEIC, TIFF and GIF with `CGImageDestination`, with EXIF and GPS properties where needed). No binary fixtures are committed. Each limit's and failure path's test is checked to fail with that limit or path removed (the mutation script and its results are in the orchestration notes, `phase4/p3-ocr/`).
+- **Reading:** a screenshot's words are found by `match_contents`; a photo's sign; JPEG, HEIC, TIFF, a GIF's first frame; "résumé"; Japanese next to English; Arabic and Chinese next to English; an image in a script Vision doesn't read (Devanagari) gives no text and keeps its facts.
+- **Facts:** `taken` with and without an offset, from `DateTimeDigitized` when there's no original, none from a bad date; latitude and longitude with south and west negative, none at 0, 0 or out of range; camera, orientation, size. The date and coordinate parsing are pure functions with tests of their own.
+- **Limits:** a picture over the pixel cap keeps its facts and has `stopped`; a tiny one is read without OCR; a test helper that spins is killed at a lowered processor time cap, one that allocates at a lowered memory cap, one that sleeps at a short clock deadline, one that floods at the output cap; facts sent before each stop are kept; the character cap.
+- **The helper's protocol:** a test helper that closes its output and then spins or allocates is killed at once; frames for another id, text twice, a fact after text, an unknown tag; whole frames before a bad frame or the cap are kept; the guard reaps a helper whose setup fails; a crash after the facts, and before them; the idle exit retried once and only once; the helper ends when its stdin closes and a second after its deadline; the same helper serves several images (its process id is unchanged) and is replaced after a stop; none is left running or unreaped.
+- **Through the worker:** images are read by `run_until_empty` and found by their words; a damaged image is failed; one over 256 MB is skipped; images are claimed after code; the platform registry reads `png` and `heic` on macOS.
+
+### Measuring
+
+A scratch program (in the orchestration notes) calls the reader as the worker does over the owner's images, and prints counts and times only (no text, paths or places).
+
+**Measured on the owner's Mac (2026-11-08),** the reader as built, over all 25,397 images, one after another, at a load average of 5 to 8 from other programs:
+
+| | Images |
+|---|---|
+| text found | 18,831 (median 26 characters, p95 1,275, most 11,312; 4.0 million in all) |
+| no text | 6,540 |
+| damaged, or not an image macOS can read (failed) | 26 |
+| stopped by a limit, or crashed | 0 |
+| with the date taken / a GPS position / a camera model | 188 / 11 / 17 |
+
+Per image: median **32 ms**, p95 **231 ms**, p99 462 ms, most 4.9 s; **28 minutes** for all of them. The helper's peak footprint was **688 MB**; SIFS's side (the scratch program) peaked at 6 MB. With every core busy (`yes` on each), 200 of them took 209 s in place of 13.5 s, a median of 756 ms and at most 5.3 s each, none stopped: about **7.4 hours** for the library at that load, at low priority.

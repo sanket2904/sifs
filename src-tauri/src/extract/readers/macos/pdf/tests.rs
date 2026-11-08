@@ -8,7 +8,9 @@ use crate::extract::{Part, Registry, WorkerOptions};
 use crate::index::crawl::scan;
 use crate::index::db::Index;
 use crate::index::ignore::Rules;
+use std::ffi::OsString;
 use std::fs;
+use std::process::Command;
 use std::sync::Arc;
 
 const HELPER_TEST: &str = "extract::readers::macos::pdf::tests::helper";
@@ -73,7 +75,7 @@ fn helper() {
 type Read = Result<(Vec<Part>, Vec<(String, String)>), ReadError>;
 
 fn reader(caps: Caps, misbehave: Option<&str>) -> Pdf {
-    let mut helper = Helper::default();
+    let mut helper = Pdf::default().helper;
     if let Some(how) = misbehave {
         helper.env.push((MISBEHAVE.into(), how.into()));
     }
@@ -355,7 +357,7 @@ fn no_helper_is_left_running() {
     let path = dir.path().join("hang.pdf");
     fs::write(&path, sample::pdf(&[Page::Hang])).unwrap();
     let deadline = Instant::now() + Duration::from_secs(1);
-    let mut run = Run::start(&Helper::default(), &path, Caps::default(), 1000, deadline).unwrap();
+    let mut run = Run::start(&Pdf::default().helper, &path, Caps::default(), 1000, deadline).unwrap();
     let pid = run.child.id();
     let mut sink = Sink::new(1000, deadline);
     assert_eq!(run.supervise(&mut sink, Caps::default()), Stop::Time);
@@ -369,7 +371,7 @@ fn the_helper_ends_when_sifs_goes_away() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("hang.pdf");
     fs::write(&path, sample::pdf(&[Page::Hang])).unwrap();
-    let mut run = Run::start(&Helper::default(), &path, Caps::default(), 1000, Instant::now() + Duration::from_secs(120))
+    let mut run = Run::start(&Pdf::default().helper, &path, Caps::default(), 1000, Instant::now() + Duration::from_secs(120))
         .unwrap();
     drop(run.child.stdin.take());
     let mut status = None;
@@ -385,7 +387,7 @@ fn the_helper_ends_itself_a_second_after_its_deadline() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("hang.pdf");
     fs::write(&path, sample::pdf(&[Page::Hang])).unwrap();
-    let mut run = Run::start(&Helper::default(), &path, Caps::default(), 1000, Instant::now()).unwrap();
+    let mut run = Run::start(&Pdf::default().helper, &path, Caps::default(), 1000, Instant::now()).unwrap();
     let mut status = None;
     crate::index::tests::eventually("the helper to end", || {
         status = run.child.try_wait().unwrap();
@@ -611,7 +613,7 @@ fn start_under_a_failing_fcntl() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("hang.pdf");
     fs::write(&path, sample::pdf(&[Page::Hang])).unwrap();
-    let started = Run::start(&Helper::default(), &path, Caps::default(), 1000, Instant::now() + Duration::from_secs(20));
+    let started = Run::start(&Pdf::default().helper, &path, Caps::default(), 1000, Instant::now() + Duration::from_secs(20));
     assert!(std::env::var_os(FAIL_FCNTL).is_none(), "the interposer failed an fcntl");
     assert_eq!(started.is_ok(), errno == libc::EINTR, "an interrupted fcntl is retried; another error fails the start");
     drop(started);
