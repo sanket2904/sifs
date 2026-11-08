@@ -7,6 +7,7 @@ use crate::index::folders::{Event, Folders};
 use crate::index::ignore::Rules;
 use crate::index::search::{self, Hit};
 use crate::index::watch::Watch;
+use crate::verification;
 use serde::Serialize;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -94,6 +95,7 @@ fn content_failures(state: State<AppState>, limit: Option<usize>) -> Result<Vec<
 #[tauri::command]
 fn add_folder(state: State<AppState>, path: String) -> Result<(), String> {
     let path = std::fs::canonicalize(&path).map_err(err)?.to_str().ok_or("the folder's path is not valid UTF-8")?.to_string();
+    verification::check_folder(verification::instance(), &state.home, std::path::Path::new(&path))?;
     let inside = state.folders.add(&mut state.reader.lock().unwrap(), &path, now()).map_err(err)?;
     let mut watched = Ok(());
     if let Some(watch) = state.watch.lock().unwrap().as_mut() {
@@ -177,10 +179,23 @@ fn folder_event(app: &AppHandle, reading: &OnceLock<Waker>, event: Event) {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // A verification instance doesn't activate at launch. It stays out of the
+    // Dock and opens its window behind other apps' windows, where
+    // accessibility still reaches it.
+    #[cfg(target_os = "macos")]
+    let builder = builder.activate_ignoring_other_apps(!verification::instance());
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            if verification::instance() {
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                if let Some(window) = app.get_webview_window("main") {
+                    window.set_always_on_bottom(true)?;
+                }
+            }
             let home = std::env::var("HOME").unwrap_or_default();
             let data = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data)?;

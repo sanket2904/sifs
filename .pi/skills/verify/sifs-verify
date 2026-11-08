@@ -1,0 +1,626 @@
+#!/bin/bash
+# Builds, launches, checks, drives and tears down isolated SIFS instances for
+# verification. Run with no arguments for usage. See SKILL.md.
+set -euo pipefail
+# > refuses an existing regular file. A file is changed only by replace_with.
+set -C
+unset CDPATH
+
+skill=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+repo=$(git -C "$skill" rev-parse --show-toplevel)
+real_data="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory | awk '{print $2}')/Library/Application Support/com.sanket2904.sifs"
+manifest=.sifs-verify-manifest
+
+die() { echo "sifs-verify: $*" >&2; exit 1; }
+say() { echo "sifs-verify: $*" >&2; }
+
+valid_id() {
+	local LC_ALL=C
+	[[ $1 =~ ^[A-Za-z0-9-]{1,64}$ ]]
+}
+need_id() { valid_id "$2" || die "a $1 name is 1 to 64 letters, digits or '-', not: $2"; }
+
+# Device and inode, without following a symlink.
+file_id() { stat -f '%d %i' "$1"; }
+
+# rename(2) replaces whatever is at $2, a symlink or a hard link included,
+# without following it, and fails on a folder.
+rename_over() {
+	perl -e 'rename($ARGV[0], $ARGV[1]) or die "$!\n"' "$1" "$2" || { rm -f "$1"; die "can't replace $2"; }
+}
+
+# Replaces $1 with stdin without opening anything already at $1 for writing.
+replace_with() {
+	local tmp
+	tmp=$(mktemp "$1.XXXXXXXX") || die "can't create a file beside $1"
+	cat >|"$tmp" || { rm -f "$tmp"; die "can't write $tmp"; }
+	rename_over "$tmp" "$1"
+}
+
+# The manifest is the workspace's one state file. Lines are
+# "<device> <inode> <name>": "." is the workspace, "runs/<id>", "builds/<id>"
+# and "src/<id>" are folders sifs-verify created in it, "evidence:<run>" is a
+# run's evidence folder and "evidence:<run>/<file>" each file the run wrote
+# there.
+open_workspace() {
+	local dir=${SIFS_VERIFY_DIR:-/private/tmp/sifs-verify-$(id -u)}
+	[[ $dir == /* ]] || die "SIFS_VERIFY_DIR must be an absolute path, not: $dir"
+	if mkdir -m 700 "$dir" 2>/dev/null; then
+		echo "$(file_id "$dir") ." >"$dir/$manifest"
+	fi
+	[[ -d $dir && ! -L $dir ]] || die "$dir can't be created, or is not a folder"
+	[[ $(stat -f %u "$dir") == "$(id -u)" && $(stat -f %Lp "$dir") == 700 ]] || die "$dir must be yours, mode 700"
+	root=$(cd "$dir" && pwd -P)
+	check_manifest
+}
+
+check_manifest() {
+	local m=$root/$manifest
+	[[ -f $m && ! -L $m && $(stat -f %u "$m") == "$(id -u)" && $(head -1 "$m") == "$(file_id "$root") ." ]] ||
+		die "$root was not created by sifs-verify (its $manifest isn't your file naming it); set SIFS_VERIFY_DIR to a path that doesn't exist yet"
+}
+
+listed() {
+	check_manifest
+	grep -qxF "$1" "$root/$manifest"
+}
+
+# Drops the lines matching the glob $1 (none if empty) and adds the other
+# arguments as lines. The lock keeps concurrent commands from losing lines.
+manifest_edit() {
+	local drop=$1 m=$root/$manifest line first=yes kept=()
+	shift
+	exec 8<"$root"
+	lockf -s -t 60 8 || die "the workspace $root stayed locked for 60 s"
+	check_manifest
+	while IFS= read -r line; do
+		if [[ $first == yes || -z $drop || $line != $drop ]]; then kept+=("$line"); fi
+		first=no
+	done <"$m"
+	printf '%s\n' "${kept[@]}" "$@" | replace_with "$m"
+	exec 8<&-
+}
+
+open_evidence() {
+	local dir=${SIFS_VERIFY_EVIDENCE:-$repo/verify-evidence}
+	[[ $dir == /* ]] || die "SIFS_VERIFY_EVIDENCE must be an absolute path, not: $dir"
+	mkdir -p "$dir"
+	evidence_root=$(cd "$dir" && pwd -P)
+	[[ $evidence_root != "$root" && $evidence_root != "$root"/* ]] ||
+		die "the evidence folder $evidence_root must be outside the workspace $root, which cleanup deletes from"
+}
+
+# Dies unless $1 is inside the workspace with no symlink on the way, $1
+# itself included.
+in_workspace() {
+	local rest=${1#"$root"/} part path=$root
+	[[ $1 == "$root"/* ]] || die "refusing to touch $1: it is outside the workspace $root"
+	while [[ -n $rest ]]; do
+		part=${rest%%/*}
+		if [[ $part == "$rest" ]]; then rest=""; else rest=${rest#*/}; fi
+		[[ -n $part && $part != . && $part != .. && ! -L $path/$part ]] ||
+			die "refusing to touch $1: $path/$part is a symlink or not a plain name"
+		path+=/$part
+	done
+}
+ws_mkdir() { in_workspace "$1" && mkdir -p "$1"; }
+
+ws_create() {
+	in_workspace "$1"
+	mkdir "$1" || die "can't create $1; it must not exist yet"
+	manifest_edit "" "$(file_id "$1") ${1#"$root"/}"
+}
+
+fresh_dir() {
+	local dir
+	ws_mkdir "$1"
+	dir=$(mktemp -d "$1/$2-XXXXXXXX") || die "can't create a folder in $1"
+	manifest_edit "" "$(file_id "$dir") ${dir#"$root"/}"
+	echo "$dir"
+}
+
+created() {
+	in_workspace "$1"
+	[[ -d $1 && ! -L $1 && $(stat -f %u "$1") == "$(id -u)" ]] && listed "$(file_id "$1") ${1#"$root"/}"
+}
+
+ws_remove() {
+	if created "$1"; then
+		rm -rf "$1"
+		manifest_edit "* ${1#"$root"/}"
+	elif [[ -e $1 || -L $1 ]]; then
+		say "left alone: $1, which sifs-verify didn't create (or it was replaced)"
+		return 1
+	else
+		manifest_edit "* ${1#"$root"/}"
+	fi
+}
+
+meta_pattern() {
+	case $1 in
+	RUN | BUILD) echo '^[A-Za-z0-9-]{1,64}$' ;;
+	PID) echo '^[1-9][0-9]*$' ;;
+	FRONT_BEFORE) echo '^([0-9]+|\?)$' ;;
+	START) echo '^[0-9]+\.[0-9]{6}$' ;;
+	SHA) echo '^[0-9a-f]{40}$' ;;
+	BINARY_SHA256) echo '^[0-9a-f]{64}$' ;;
+	DIRTY | PATCHED) echo '^(yes|no)$' ;;
+	BUILT_AT | STARTED_AT) echo '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' ;;
+	SRC) echo '^/[^[:cntrl:]]*$' ;;
+	*) return 1 ;;
+	esac
+}
+
+read_meta() {
+	local file=$1 line key value pattern seen=" " LC_ALL=C
+	shift
+	unset M_RUN M_BUILD M_PID M_FRONT_BEFORE M_START M_SHA M_BINARY_SHA256 M_DIRTY M_PATCHED M_BUILT_AT M_STARTED_AT M_SRC
+	[[ -f $file && ! -L $file ]] || die "no $file"
+	while IFS= read -r line || [[ -n $line ]]; do
+		[[ $line =~ ^([A-Z0-9_]+)=(.*)$ ]] || die "$file is malformed at: $line"
+		key=${BASH_REMATCH[1]} value=${BASH_REMATCH[2]}
+		pattern=$(meta_pattern "$key") || die "$file has an unknown key: $key"
+		[[ $value =~ $pattern ]] || die "$file has a bad $key: $value"
+		[[ $seen != *" $key "* ]] || die "$file repeats $key"
+		seen+="$key "
+		printf -v "M_$key" '%s' "$value"
+	done <"$file"
+	for key; do [[ $seen == *" $key "* ]] || die "$file lacks $key"; done
+}
+
+write_meta() {
+	local file=$1 pair pattern LC_ALL=C
+	shift
+	for pair; do
+		pattern=$(meta_pattern "${pair%%=*}") && [[ ${pair#*=} =~ $pattern ]] || die "bad metadata for $file: $pair"
+	done
+	in_workspace "$file"
+	printf '%s\n' "$@" >"$file" || die "$file exists; it is written once"
+}
+
+evidence_open() {
+	[[ -d $evidence && ! -L $evidence ]] && listed "$(file_id "$evidence") evidence:$run_id" ||
+		die "refusing to write into $evidence: it is not the evidence folder this run created"
+}
+
+evidence_new() {
+	local file=$evidence/$1
+	evidence_open
+	[[ ! -e $file && ! -L $file ]] && cat >"$file" ||
+		die "refusing to write $file: it exists, and this run didn't create it"
+	manifest_edit "" "$(file_id "$file") evidence:$run_id/$1"
+}
+
+evidence_append() {
+	local file=$evidence/$1 key=evidence:$run_id/$1 was
+	evidence_open
+	if [[ ! -e $file && ! -L $file ]]; then
+		evidence_new "$1"
+		return
+	fi
+	was=$(file_id "$file")
+	[[ -f $file && ! -L $file ]] && listed "$was $key" || die "refusing to write $file: this run didn't create it"
+	{ cat "$file" && cat; } | replace_with "$file"
+	manifest_edit "$was $key" "$(file_id "$file") $key"
+}
+
+current_id() {
+	[[ -f $root/current && ! -L $root/current ]] || die "no current run; launch one or name one"
+	local id
+	id=$(<"$root/current")
+	need_id run "$id"
+	echo "$id"
+}
+
+use_run() {
+	local id=${1:-${SIFS_VERIFY_RUN:-}}
+	[[ -n $id ]] || id=$(current_id)
+	need_id run "$id"
+	run=$root/runs/$id run_id=$id
+	evidence=$evidence_root/$id
+	in_workspace "$run"
+	[[ -d $run ]] || die "no run $id in $root"
+	created "$run" || die "$run is not a run sifs-verify created (or it was replaced)"
+	read_meta "$run/run.env" RUN PID START STARTED_AT FRONT_BEFORE BUILD SHA DIRTY PATCHED BINARY_SHA256
+	[[ $M_RUN == "$id" ]] || die "$run/run.env is for run $M_RUN"
+}
+
+ax_bin() {
+	local bin=$root/bin/sifs-ax tmp
+	in_workspace "$bin"
+	if [[ ! -f $bin || ! -x $bin || $skill/ax.swift -nt $bin ]]; then
+		ws_mkdir "$root/bin"
+		tmp=$(mktemp -d "$root/bin/sifs-ax.XXXXXXXX")
+		swiftc -O "$skill/ax.swift" -o "$tmp/sifs-ax" >&2 || die "compiling ax.swift failed"
+		rename_over "$tmp/sifs-ax" "$bin"
+		rmdir "$tmp"
+	fi
+	echo "$bin"
+}
+
+ax() {
+	local bin
+	bin=$(ax_bin)
+	"$bin" "$@"
+}
+
+open_spy() {
+	local lib=$root/bin/open-spy.dylib tmp
+	in_workspace "$lib"
+	if [[ ! -f $lib || $skill/open-spy.m -nt $lib ]]; then
+		ws_mkdir "$root/bin"
+		tmp=$(mktemp -d "$root/bin/open-spy.XXXXXXXX")
+		clang -dynamiclib -fobjc-arc -framework AppKit "$skill/open-spy.m" -o "$tmp/open-spy.dylib" || die "compiling open-spy.m failed"
+		rename_over "$tmp/open-spy.dylib" "$lib"
+		rmdir "$tmp"
+	fi
+	echo "$lib"
+}
+
+build_ok() {
+	local out=$1
+	created "$out" && [[ -f $out/sifs && ! -L $out/sifs && -x $out/sifs && -f $out/build.env && ! -L $out/build.env ]] || return 1
+	read_meta "$out/build.env" BUILD SHA DIRTY PATCHED BINARY_SHA256
+	[[ $M_BUILD == "${out##*/}" && $(shasum -a 256 "$out/sifs" | cut -d' ' -f1) == "$M_BINARY_SHA256" ]]
+}
+
+cmd_build() {
+	local src="" ref="" sha id dirty=no patched=no app out
+	while (($#)); do
+		case $1 in
+		--src) src=$(cd "$2" && pwd -P); shift 2 ;;
+		--ref) ref=$2; shift 2 ;;
+		*) die "build: unknown option $1" ;;
+		esac
+	done
+	if [[ -n $ref ]]; then
+		sha=$(git -C "$repo" rev-parse -q --verify "$ref^{commit}") ||
+			{ git -C "$repo" fetch -q origin && sha=$(git -C "$repo" rev-parse -q --verify "$ref^{commit}"); } || die "no commit $ref (fetch first?)"
+		id=${sha:0:7}
+	else
+		src=${src:-$repo}
+		[[ $src != "$root" && $src != "$root"/* ]] || die "$src is inside the workspace; build a commit with --ref instead"
+		sha=$(git -C "$src" rev-parse HEAD)
+		[[ -n $(git -C "$src" status --porcelain -- src src-tauri package.json package-lock.json) ]] && dirty=yes
+		id=${sha:0:7}
+		if [[ $dirty == yes ]]; then id+=-dirty; fi
+	fi
+	need_id build "$id"
+	out=$root/builds/$id
+	ws_mkdir "$root/builds"
+	if [[ -e $out || -L $out ]]; then
+		if [[ $dirty == no ]] && build_ok "$out" && [[ $M_SHA == "$sha" ]]; then
+			say "reusing build $id"
+			echo "$id"
+			return
+		fi
+		ws_remove "$out" || die "$out exists, and sifs-verify didn't create it; remove it yourself"
+	fi
+	if [[ -n $ref ]]; then
+		# What npm and Cargo write inside the tree they build can't be listed
+		# here, so a --ref build never starts from a tree an earlier command left.
+		src=$(fresh_dir "$root/src" "$id")
+		trap "ws_remove $(printf %q "$src") >/dev/null 2>&1 || true" EXIT
+		git -C "$repo" archive "$sha" | tar -x -C "$src"
+	fi
+	app=$src/src-tauri/src/app.rs
+	if [[ ! -f $src/src-tauri/src/verification.rs ]]; then
+		[[ -n $ref ]] || die "$src has no verification support (src-tauri/src/verification.rs); build it with --ref so it can be added to a copy"
+		! grep -q SIFS_VERIFY_BACKGROUND "$app" ||
+			die "$sha has an earlier draft of the verification hook (PR #9 before a9960fa) that verify-support.patch can't upgrade; build a9960fa or later, or a commit from before the skill"
+		(cd "$src" && patch -p1 --forward --silent <"$skill/verify-support.patch") || die "verify-support.patch doesn't apply to $sha"
+		patched=yes
+	fi
+	grep -q 'activate_ignoring_other_apps(!verification::instance())' "$app" && grep -q 'verification::check_folder' "$app" ||
+		die "$app doesn't wire in the verification support; build another commit"
+	ws_create "$out"
+	if [[ -n $ref ]]; then
+		(cd "$src" && npm ci --no-audit --no-fund >"$out/npm.log" 2>&1) || die "npm ci failed, see $out/npm.log"
+		export CARGO_TARGET_DIR=$src/src-tauri/target
+	else
+		[[ -d $src/node_modules ]] || (cd "$src" && npm ci --no-audit --no-fund >"$out/npm.log" 2>&1) || die "npm ci failed, see $out/npm.log"
+	fi
+	say "building $id from $src (log: $out/build.log)"
+	(cd "$src" && npx tauri build --debug --no-bundle --ci >"$out/build.log" 2>&1) || die "build failed, see $out/build.log"
+	cp "$src/src-tauri/target/debug/sifs" "$out/sifs"
+	write_meta "$out/build.env" BUILD="$id" SHA="$sha" DIRTY="$dirty" PATCHED="$patched" SRC="$src" \
+		BUILT_AT="$(date -u +%FT%TZ)" BINARY_SHA256="$(shasum -a 256 "$out/sifs" | cut -d' ' -f1)"
+	echo "$id"
+}
+
+# Read-only: which app has the keyboard. Launch and doctor use it to prove
+# a test instance never took focus.
+front_pid() {
+	osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier' 2>/dev/null || echo "?"
+}
+
+other_sifs() {
+	local pids pid
+	pids=$(pgrep -x sifs) || [[ $? == 1 ]] || die "pgrep failed listing other SIFS processes"
+	for pid in $pids; do
+		[[ $pid == "${M_PID:-}" ]] && continue
+		echo "$pid $(ps -o comm= -p "$pid" || true)"
+	done
+}
+
+log_step() {
+	{ printf '\n## %s  %s\n' "$(date +%T)" "$*"; cat; } | evidence_append transcript.md
+}
+
+shot() {
+	local label=${1:?shot needs a label} id n name tmp
+	need_id label "$label"
+	id=$(ax wininfo "$run" | cut -d' ' -f1)
+	check_manifest
+	n=$(grep -c " evidence:$run_id/.*\.png$" "$root/$manifest" || true)
+	name=$(printf '%02d' $((n + 1)))-$label
+	tmp=$(mktemp -d "$run/shot.XXXXXXXX")
+	screencapture -x -o -l "$id" "$tmp/shot.png"
+	evidence_new "$name.png" <"$tmp/shot.png"
+	rm -rf "$tmp"
+	ax read "$run" | evidence_new "$name.json"
+	echo "screenshot $evidence/$name.png, read-back $evidence/$name.json" | log_step "shot $label"
+	echo "$evidence/$name.png"
+	echo "$evidence/$name.json"
+}
+
+cmd_launch() {
+	local build="" name="" built others front_before spy bin status pid start
+	while (($#)); do
+		case $1 in
+		--build) build=$2; shift 2 ;;
+		--name) name=$2; shift 2 ;;
+		*) die "launch: unknown option $1" ;;
+		esac
+	done
+	name=${name:-run-$(date +%Y%m%d-%H%M%S)}
+	need_id run "$name"
+	[[ -n $build ]] || build=$(ls -t "$root/builds" 2>/dev/null | head -1 || true)
+	[[ -n $build ]] || die "no build yet; run: sifs-verify build"
+	need_id build "$build"
+	built=$root/builds/$build
+	in_workspace "$built/sifs"
+	build_ok "$built" || die "no build $build made by sifs-verify with its binary unchanged; run: sifs-verify build"
+	local sha=$M_SHA dirty=$M_DIRTY patched=$M_PATCHED sum=$M_BINARY_SHA256
+	run=$root/runs/$name
+	evidence=$evidence_root/$name
+	in_workspace "$run"
+	[[ ! -e $run && ! -L $run ]] || die "run $name exists; clean it up or pick another --name"
+	[[ ! -e $evidence && ! -L $evidence ]] || die "$evidence exists; pick another --name"
+
+	others=$(other_sifs)
+	[[ -z $others ]] || say "other SIFS processes, left alone: $(echo "$others" | tr '\n' ';')"
+
+	ws_mkdir "$root/runs"
+	ws_create "$run"
+	"$skill/seed-home.sh" "$run/home" >/dev/null
+	cp "$built/sifs" "$run/sifs"
+	mkdir "$evidence"
+	manifest_edit "* evidence:$name/*"
+	manifest_edit "* evidence:$name" "$(file_id "$evidence") evidence:$name"
+	front_before=$(front_pid)
+	spy=$(open_spy)
+	bin=$(ax_bin)
+	# The spy writes only through this descriptor, never by path.
+	exec 7>"$evidence/open-requests.log"
+	manifest_edit "" "$(file_id "$evidence/open-requests.log") evidence:$name/open-requests.log"
+	(cd "$run" && SIFS_VERIFY_SPY="$spy" SIFS_VERIFY_OPEN_LOG_FD=7 exec "$bin" supervise "$run") \
+		>"$run/supervisor.log" 2>&1 </dev/null &
+	exec 7>&-
+	for _ in $(seq 1 50); do status=$(ax status "$run" 2>/dev/null) && break; sleep 0.1; done
+	[[ ${status:-} =~ ^running\ ([1-9][0-9]*)\ ([0-9]+\.[0-9]{6})$ ]] ||
+		die "the app didn't start under its supervisor; see $run/supervisor.log and $run/app.log"
+	pid=${BASH_REMATCH[1]} start=${BASH_REMATCH[2]}
+	write_meta "$run/run.env" RUN="$name" PID="$pid" START="$start" STARTED_AT="$(date -u +%FT%TZ)" \
+		FRONT_BEFORE="$front_before" BUILD="$build" SHA="$sha" DIRTY="$dirty" PATCHED="$patched" BINARY_SHA256="$sum"
+	in_workspace "$root/current"
+	echo "$name" | replace_with "$root/current"
+	use_run "$name"
+	evidence_new run.env <"$run/run.env"
+
+	for _ in $(seq 1 100); do ax wininfo "$run" >/dev/null 2>&1 && break; sleep 0.2; done
+	ax wininfo "$run" >/dev/null || die "no window after 20 s; see $run/app.log"
+	ax wait "$run" 'No folders yet' 20 >/dev/null
+	ax read "$run" | log_step "launch: first-run screen, before any input"
+	shot first-run >/dev/null
+	ax press "$run" "+ ~/Documents"
+	ax wait "$run" '^~/Documents [0-9]+ items' 60 >/dev/null
+	ax press "$run" "+ ~/Desktop"
+	ax wait "$run" '^~/Desktop [0-9]+ items' 60 >/dev/null
+	ax wait "$run" 'Reading inside files: [1-9][0-9]* read · 0 waiting' 120 >/dev/null
+	ax read "$run" | log_step "launch: added ~/Documents and ~/Desktop, contents read"
+	ax press "$run" "⚙︎"
+	local ready
+	ready=$(ax search "$run" "quarterly-budget")
+	echo "$ready" | log_step "launch: readiness search \"quarterly-budget\""
+	echo "$ready" | jq -e '.rows[0].name == "quarterly-budget.xlsx"' >/dev/null || die "not ready: the search didn't return quarterly-budget.xlsx"
+	ax key "$run" escape
+	say "ready: run $name, pid $M_PID, build $build ($M_SHA$([[ $M_PATCHED == yes ]] && echo ", support added"))"
+	say "evidence: $evidence"
+	cmd_doctor "$name"
+}
+
+inside_home() {
+	local dir=$1 home_id
+	home_id=$(stat -L -f '%d %i' "$run/home") || return 1
+	until [[ $(stat -L -f '%d %i' "$dir") == "$home_id" ]]; do
+		[[ $dir != / ]] || return 1
+		dir=${dir%/*}
+		dir=${dir:-/}
+	done
+}
+
+folders_inside_home() {
+	local list folder real
+	list=$(/usr/bin/sqlite3 -readonly "$run/home/Library/Application Support/com.sanket2904.sifs/sifs.db" "SELECT path FROM folders") || return 1
+	while IFS= read -r folder; do
+		[[ -n $folder ]] || continue
+		[[ $folder == /* ]] && real=$(cd "$folder" 2>/dev/null && pwd -P) || return 1
+		inside_home "$real" || return 1
+	done <<<"$list"
+}
+
+cmd_doctor() {
+	use_run "${1:-}"
+	local ok=0 db="$run/home/Library/Application Support/com.sanket2904.sifs/sifs.db" folders others
+	check() { if eval "$2"; then echo "ok    $1"; else echo "FAIL  $1"; ok=1; fi; }
+	check "process $M_PID is the one this run started: its binary, its fake HOME, started at $M_START" 'ax check "$run" >/dev/null'
+	check "its supervisor holds it and is the only thing that signals it" '[[ $(ax status "$run" 2>/dev/null) == "running $M_PID $M_START" ]]'
+	check "build $M_BUILD: $M_SHA (dirty=$M_DIRTY, support added=$M_PATCHED), binary unchanged" \
+		'[[ $(shasum -a 256 "$run/sifs" | cut -d" " -f1) == "$M_BINARY_SHA256" ]]'
+	check "its index is in the fake home" 'lsof -p "$M_PID" -Fn 2>/dev/null | grep -qxF "n$db"'
+	check "it has nothing open in the owner's data folder" '! lsof -p "$M_PID" -Fn 2>/dev/null | grep -qF "n$real_data"'
+	check "started as a verification instance (SIFS_VERIFY_BACKGROUND=1)" \
+		'ps eww -o command= -p "$M_PID" | tr " " "\n" | grep -qx SIFS_VERIFY_BACKGROUND=1'
+	folders=$(/usr/bin/sqlite3 -readonly "$db" "SELECT path FROM folders" 2>/dev/null | tr '\n' ' ') || folders="index unreadable"
+	check "every folder it searches is inside the fake home (${folders:-none yet})" folders_inside_home
+	check "it does not have the keyboard (front app pid $(front_pid))" '[[ $(front_pid) != "$M_PID" ]]'
+	check "open and show-in-Finder are captured, not performed (open-requests.log)" \
+		'grep -qx "spy loaded" "$evidence/open-requests.log" 2>/dev/null'
+	check "its window is known to the window server ($(ax wininfo "$run" 2>/dev/null || echo none))" 'ax wininfo "$run" >/dev/null 2>&1'
+	others=$(other_sifs)
+	echo "info  other SIFS processes (not ours, never touched): ${others:-none}" | tr '\n' ' '
+	echo
+	echo "info  evidence folder: $evidence"
+	return $ok
+}
+
+cmd_search() {
+	use_run
+	local out
+	out=$(ax search "$run" "$@")
+	echo "$out" | log_step "search \"$1\""
+	echo "$out"
+}
+
+cmd_read() {
+	use_run
+	local out
+	out=$(ax read "$run")
+	echo "$out" | log_step "read"
+	echo "$out"
+}
+
+cmd_ax() {
+	use_run
+	local sub=$1 out
+	shift
+	out=$(ax "$sub" "$run" "$@")
+	case $sub in
+	press | key | type | focus-search | focus-textarea | cancel-dialog)
+		{ [[ -z $out ]] || echo "$out"; echo "read-back:"; ax read "$run"; } | log_step "$sub $*" ;;
+	*) echo "$out" | log_step "$sub $*" ;;
+	esac
+	[[ -z $out ]] || echo "$out"
+}
+
+cmd_opened() {
+	use_run
+	local out
+	evidence_open
+	[[ -f $evidence/open-requests.log && ! -L $evidence/open-requests.log ]] || die "no open-requests.log in $evidence"
+	out=$(grep -vx 'spy loaded' "$evidence/open-requests.log" || true)
+	echo "$out" | log_step "opened"
+	[[ -z $out ]] || echo "$out"
+}
+
+stop_run() {
+	local id=$1 run=$root/runs/$1 out
+	in_workspace "$run/control.sock"
+	unset M_PID
+	[[ ! -e $run/run.env ]] || read_meta "$run/run.env" RUN PID START
+	if out=$(ax stop "$run" 2>&1); then
+		say "$out (run $id)"
+	elif [[ -n ${M_PID:-} ]] && ax check "$run" >/dev/null 2>&1; then
+		say "not stopping pid $M_PID: ${out#sifs-ax: }. It still runs this run's binary, so it is left running and $run is kept; stop it yourself once you have checked it"
+		return 0
+	fi
+	ws_remove "$run" || return 0
+	manifest_edit "* evidence:$id/*"
+	manifest_edit "* evidence:$id"
+	in_workspace "$root/current"
+	if [[ -f $root/current && $(<"$root/current") == "$id" ]]; then rm -f "$root/current"; fi
+	say "removed $run; evidence kept: $evidence_root/$id ($(find "$evidence_root/$id" -type f 2>/dev/null | wc -l | tr -d ' ') files)"
+}
+
+cmd_cleanup() {
+	local all=no builds=no name="" entry id ids=()
+	while (($#)); do
+		case $1 in
+		--run) name=$2; need_id run "$name"; shift 2 ;;
+		--all) all=yes; shift ;;
+		--builds) builds=yes; shift ;;
+		*) die "cleanup: unknown option $1" ;;
+		esac
+	done
+	if [[ $all == yes ]]; then
+		for entry in "$root"/runs/*; do
+			[[ -e $entry || -L $entry ]] || continue
+			if valid_id "${entry##*/}"; then ids+=("${entry##*/}"); else say "skipping $entry: not a run name"; fi
+		done
+	elif [[ -n $name ]]; then
+		ids+=("$name")
+	elif [[ -e $root/current || -L $root/current ]]; then
+		ids+=("$(current_id)")
+	fi
+	for id in ${ids[@]+"${ids[@]}"}; do stop_run "$id"; done
+	if [[ $builds == yes ]]; then
+		local dev ino path left
+		check_manifest
+		while read -r dev ino path; do
+			[[ $path =~ ^(builds|src)/[A-Za-z0-9-]{1,64}$ ]] && { ws_remove "$root/$path" || true; }
+		done < <(sed 1d "$root/$manifest")
+		left=$(cd "$root" && ls -d builds/* src/* 2>/dev/null | tr '\n' ' ' || true)
+		say "removed the builds and source copies sifs-verify created${left:+; left alone: $left}"
+	fi
+	return 0
+}
+
+usage() {
+	cat <<-EOF
+		usage: sifs-verify <command> [options]
+		  build [--src DIR | --ref GITREF]     build a debug SIFS with its page inside; prints the build id
+		  launch [--build ID] [--name NAME]    seed a fake home, start SIFS in the background, add folders, wait until ready
+		  doctor [NAME]                        is the run's instance ours, isolated and the expected build?
+		  search "<query>" [settle-seconds]    type a query, wait for settled results, print and log the read-back
+		  read                                 print and log what the window shows
+		  shot <label>                         screenshot the window and its read-back into the evidence folder
+		  press "<button title>" [n | --after "<text>"]   press a page button (n-th of that title, or first after a text)
+		  dialog-tree | cancel-dialog          inspect and cancel the Add a folder… dialog (never press Open: it starts in the owner's real home)
+		  key <down|up|return|escape|...> [--cmd] [--shift]
+		  type "<text>"                        key events to SIFS only ("\\n" is Return)
+		  focus-search | focus-textarea        focus the search box or the skipped-patterns box
+		  wait "<regex>" [seconds]             wait until a line of the window matches
+		  opened                               open / show-in-Finder requests the window made (captured, never performed)
+		  tree                                 the raw accessibility tree, to find new handles
+		  cleanup [--run NAME | --all] [--builds]   stop what a run started, delete its folder; never the evidence
+		Drive commands act on the current run; set SIFS_VERIFY_RUN=NAME for another.
+		Names (runs, builds, shot labels) are 1 to 64 letters, digits or '-'.
+	EOF
+}
+
+command=${1:-}
+shift || true
+case $command in
+build | launch | doctor | search | read | shot | press | key | type | focus-search | focus-textarea | wait | tree | \
+	cancel-dialog | dialog-tree | opened | cleanup)
+	open_workspace
+	open_evidence
+	;;
+*)
+	usage
+	[[ -z $command ]] || exit 1
+	exit 0
+	;;
+esac
+case $command in
+build) cmd_build "$@" ;;
+launch) cmd_launch "$@" ;;
+doctor) cmd_doctor "$@" ;;
+search) cmd_search "$@" ;;
+read) cmd_read ;;
+shot) use_run && shot "$@" ;;
+press | key | type | focus-search | focus-textarea | wait | tree | cancel-dialog | dialog-tree) cmd_ax "$command" "$@" ;;
+opened) cmd_opened ;;
+cleanup) cmd_cleanup "$@" ;;
+esac
