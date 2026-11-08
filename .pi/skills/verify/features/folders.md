@@ -31,6 +31,6 @@ Preconditions:
 ## Gotchas
 
 - **Never press Open in the Add a folder… dialog.** It starts in the owner's real home, not the fake one. A development run pressed Open after Go to Folder (⌘⇧G) failed to take its path, and the test instance began indexing the owner's real Documents. Picking a folder in the dialog is not supported. `fo-dialog` proves only that the dialog opens.
-- The `N items indexed in total.` line is not refreshed after Remove. It reloads only when the window reloads settings (after an add or a finished scan). Observed on main at 6a45930. Prove removal by searching.
+- The `N items indexed in total.` line can stay stale after Remove: the window reloads settings as soon as it asks for the removal, which finishes in the background. One development run on main at 6a45930 kept the old total; the proof run showed the new one. Prove removal by searching, not by the total.
 - Folder paths show as `~/…` only when the fake home's path has no symlink in it. `sifs-verify` uses `/private/tmp`, not `/tmp`. Under `/tmp` a folder shows as `/private~/Documents`, and the suggestion buttons don't hide after adding.
 - Counts include the folders themselves: `~/Downloads 2 items` is the folder and `invoice-2041.txt`.

@@ -51,7 +51,6 @@ func find(_ root: AXUIElement, _ match: (AXUIElement) -> Bool) -> [AXUIElement] 
     return found
 }
 
-/// The visible text under an element, in document order.
 func text(_ element: AXUIElement) -> String {
     var pieces: [String] = []
     walk(element) { node, _ in
@@ -212,7 +211,7 @@ func read(_ pid: pid_t) -> Screen {
     let box = searchBox(area)
     let rows = find(area, isRow).map(row).sorted { $0.index < $1.index }
     let footer = find(area, { string($0, kAXSubroleAttribute) == "AXSectionFooter" }).first.map {
-        children($0).map(text).joined(separator: " ")
+        children($0).map(text).joined(separator: " ").split(separator: " ").joined(separator: " ")
     } ?? ""
     return Screen(query: string(box, kAXValueAttribute), searchBoxFocused: isTrue(box, kAXFocusedAttribute),
                   rows: rows, footer: footer, lines: lines(area))

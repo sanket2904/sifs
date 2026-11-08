@@ -48,7 +48,7 @@ $V launch                               # newest build; or: $V launch --build d4
 4. Loads `open-spy.dylib` (built from `open-spy.m`) with `DYLD_INSERT_LIBRARIES`. Opening a result (Enter) and showing it in Finder (⌘Enter) are recorded in `open-requests.log` in the evidence folder and report success without opening anything. Performing them would bring Finder or another app forward and could open the owner's apps.
 5. In the window, presses `+ ~/Documents` and `+ ~/Desktop`, the suggestions a new user sees. It waits until both show an item count and `Reading inside files:` shows `0 waiting`. It closes settings, then searches `quarterly-budget`. **Ready** means that search returned `quarterly-budget.xlsx` in the real window. Last, it runs `doctor`.
 
-A launch takes about 10 to 20 seconds after the build. The settled index holds 23 items. Reading inside files ends at 12 read, 1 couldn't be read (`locked-notes.txt`, permission denied) and 3 skipped (`broken-report.docx`: not a Word document; `firmware-dump.txt`: not text; `huge-export.json`: larger than 1 MB). These counts are from main at 6a45930.
+A launch takes under a minute after the build. The settled index holds 23 items. Reading inside files ends at 12 read, 1 couldn't be read (`locked-notes.txt`, permission denied) and 3 skipped (`broken-report.docx`: not a Word document; `firmware-dump.txt`: not text; `huge-export.json`: larger than 1 MB). These counts are from main at 6a45930.
 
 ## Doctor
 

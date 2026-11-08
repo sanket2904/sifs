@@ -33,7 +33,6 @@ open_spy() {
 	echo "$lib"
 }
 
-# --- builds -------------------------------------------------------------
 
 cmd_build() {
 	local src="" ref="" sha id dirty=no patched=no
@@ -89,7 +88,6 @@ cmd_build() {
 	echo "$id"
 }
 
-# --- runs ---------------------------------------------------------------
 
 run_dir() {
 	local name=${1:-}
@@ -235,7 +233,6 @@ cmd_doctor() {
 	return $ok
 }
 
-# --- driving ------------------------------------------------------------
 
 drive() {
 	load_run "${RUN_NAME_ARG:-}"
