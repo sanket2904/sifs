@@ -10,6 +10,8 @@ pub(super) enum Frame {
     Pages(u32),
     Fact(String, String),
     Page(u32, String),
+    /// A page with no text: a scan, for OCR, or blank.
+    Textless(u32),
     Cut,
     Locked,
     Unopenable,
@@ -22,6 +24,7 @@ impl Frame {
             Frame::Pages(n) => (b'n', n.to_le_bytes().to_vec()),
             Frame::Fact(key, value) => (b'f', [key.as_bytes(), b"\0", value.as_bytes()].concat()),
             Frame::Page(index, text) => (b'p', [&index.to_le_bytes()[..], text.as_bytes()].concat()),
+            Frame::Textless(index) => (b't', index.to_le_bytes().to_vec()),
             Frame::Cut => (b'c', Vec::new()),
             Frame::Locked => (b'l', Vec::new()),
             Frame::Unopenable => (b'u', Vec::new()),
@@ -35,40 +38,49 @@ impl Frame {
     }
 }
 
+/// Frames from the helper's output, in whatever pieces the pipe gives it.
 #[derive(Default)]
 pub(super) struct Decoder {
     buf: Vec<u8>,
+    /// Where the next frame starts in buf.
+    at: usize,
     synced: bool,
 }
 
 impl Decoder {
-    pub(super) fn feed(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, String> {
+    pub(super) fn push(&mut self, bytes: &[u8]) {
+        self.buf.drain(..self.at);
+        self.at = 0;
         self.buf.extend_from_slice(bytes);
-        if !self.synced {
-            match self.buf.windows(MARKER.len()).position(|w| w == MARKER) {
-                Some(at) => {
-                    self.buf.drain(..at + MARKER.len());
-                    self.synced = true;
-                }
-                None => {
-                    let keep = self.buf.len().min(MARKER.len() - 1);
-                    self.buf.drain(..self.buf.len() - keep);
-                    return Ok(Vec::new());
-                }
+        if self.synced {
+            return;
+        }
+        match self.buf.windows(MARKER.len()).position(|w| w == MARKER) {
+            Some(at) => {
+                self.at = at + MARKER.len();
+                self.synced = true;
+            }
+            None => {
+                let keep = self.buf.len().min(MARKER.len() - 1);
+                self.buf.drain(..self.buf.len() - keep);
             }
         }
-        let mut frames = Vec::new();
-        let mut at = 0;
-        while self.buf.len() - at >= 5 {
-            let len = u32::from_le_bytes(self.buf[at + 1..at + 5].try_into().unwrap()) as usize;
-            if self.buf.len() - at - 5 < len {
-                break;
-            }
-            frames.push(decode(self.buf[at], &self.buf[at + 5..at + 5 + len])?);
-            at += 5 + len;
+    }
+
+    /// The next whole frame, if it has all come. A frame that can't be
+    /// decoded is an error, after every frame before it.
+    pub(super) fn next_frame(&mut self) -> Result<Option<Frame>, String> {
+        let rest = &self.buf[self.at..];
+        if !self.synced || rest.len() < 5 {
+            return Ok(None);
         }
-        self.buf.drain(..at);
-        Ok(frames)
+        let len = u32::from_le_bytes(rest[1..5].try_into().unwrap()) as usize;
+        if rest.len() - 5 < len {
+            return Ok(None);
+        }
+        let frame = decode(rest[0], &rest[5..5 + len])?;
+        self.at += 5 + len;
+        Ok(Some(frame))
     }
 }
 
@@ -82,6 +94,7 @@ fn decode(tag: u8, body: &[u8]) -> Result<Frame, String> {
             Frame::Fact(text(&body[..split])?, text(&body[split + 1..])?)
         }
         b'p' => Frame::Page(index(body)?, text(&body[4..])?),
+        b't' => Frame::Textless(index(body)?),
         b'c' => Frame::Cut,
         b'l' => Frame::Locked,
         b'u' => Frame::Unopenable,

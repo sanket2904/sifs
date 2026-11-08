@@ -61,7 +61,7 @@ pub(super) fn serve_and_exit() -> ! {
     unsafe { libc::_exit(code) }
 }
 
-fn exit_when_sifs_closes_stdin_or_after(deadline: Instant) {
+pub(super) fn exit_when_sifs_closes_stdin_or_after(deadline: Instant) {
     std::thread::spawn(move || {
         platform::lower_thread_priority();
         loop {
@@ -102,7 +102,6 @@ pub(super) fn serve(request: &Request, out: &mut impl Write) -> std::io::Result<
             send(Frame::Fact(key.to_string(), value))?;
         }
         let mut left = request.chars;
-        let mut textless = 0;
         let mut cut = count > request.pages;
         for index in 0..count.min(request.pages) {
             let text = autoreleasepool(|_| {
@@ -111,7 +110,7 @@ pub(super) fn serve(request: &Request, out: &mut impl Write) -> std::io::Result<
             });
             let text = text.unwrap_or_default();
             if text.trim().is_empty() {
-                textless += 1;
+                send(Frame::Textless(index as u32))?;
                 continue;
             }
             let kept = match text.char_indices().nth(left) {
@@ -119,14 +118,12 @@ pub(super) fn serve(request: &Request, out: &mut impl Write) -> std::io::Result<
                 None => &text,
             };
             left -= kept.chars().count();
+            let whole = kept.len() == text.len();
             send(Frame::Page(index as u32, kept.to_string()))?;
             if left == 0 {
-                cut = true;
+                cut |= !whole || index + 1 < count;
                 break;
             }
-        }
-        if textless > 0 {
-            send(Frame::Fact(fact::TEXTLESS_PAGES.into(), textless.to_string()))?;
         }
         if cut {
             send(Frame::Cut)?;

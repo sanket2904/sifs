@@ -2,7 +2,7 @@
 //! (helper.rs), because one PDFKit call can't be interrupted and may run
 //! for minutes or take every byte of memory (plan, step 2b). SIFS kills the
 //! helper at the time limit, past its processor time, memory or output cap,
-//! and keeps the pages it had sent.
+//! or when its output ends early, and keeps the pages it had sent.
 
 mod frame;
 mod helper;
@@ -27,6 +27,7 @@ use std::time::{Duration, Instant};
 pub(crate) const NOT_A_PDF: &str = "not a PDF";
 pub(crate) const DAMAGED: &str = "damaged, or not a PDF PDFKit can read";
 pub(crate) const CRASHED: &str = "PDFKit crashed reading it";
+pub(crate) const CLOSED: &str = "the PDF reader closed its output early";
 
 /// What a PDF read may take on, on top of the worker's limits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,7 +127,7 @@ impl Reader for Pdf {
             Stop::Output => format!("sent more than {}", describe_size(self.caps.output as u64)),
             Stop::Crash(why) => why,
         };
-        match run.last_page {
+        match run.received.last_page {
             Some(page) => {
                 sink.fact(fact::STOPPED, format!("{why}, after page {}", page as u64 + 1));
                 sink.cut();
@@ -172,8 +173,8 @@ enum Stop {
 
 struct Run {
     child: Child,
-    last_page: Option<u32>,
     deadline: Instant,
+    received: Received,
 }
 
 impl Run {
@@ -191,15 +192,20 @@ impl Run {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| ReadError::Other(format!("couldn't start the PDF reader: {e}")))?;
-        set_nonblocking(child.stdout.as_ref().unwrap())?;
-        Ok(Run { child, last_page: None, deadline })
+        let run = Run { child, deadline, received: Received::default() };
+        set_nonblocking(run.child.stdout.as_ref().unwrap())?;
+        Ok(run)
     }
 
     fn supervise(&mut self, sink: &mut Sink, caps: Caps) -> Stop {
+        let stop = self.until_stopped(sink, caps);
+        self.received.finish(sink);
+        stop
+    }
+
+    fn until_stopped(&mut self, sink: &mut Sink, caps: Caps) -> Stop {
         let mut stdout = self.child.stdout.take().unwrap();
-        let mut decoder = Decoder::default();
         let mut buf = vec![0u8; 64 * 1024];
-        let mut received = 0usize;
         loop {
             if Instant::now() >= self.deadline {
                 return Stop::Time;
@@ -211,29 +217,12 @@ impl Run {
             if usage.cpu > caps.cpu {
                 return Stop::Cpu;
             }
-            let mut closed = false;
             loop {
                 match stdout.read(&mut buf) {
-                    Ok(0) => {
-                        closed = true;
-                        break;
-                    }
+                    Ok(0) => return self.ended_early(),
                     Ok(n) => {
-                        received += n;
-                        if received > caps.output {
-                            return Stop::Output;
-                        }
-                        let frames = match decoder.feed(&buf[..n]) {
-                            Ok(frames) => frames,
-                            Err(why) => return Stop::Crash(format!("the PDF reader sent {why}")),
-                        };
-                        for frame in frames {
-                            match self.take(frame, sink) {
-                                Ok(None) => {}
-                                Ok(Some(stop)) => return stop,
-                                Err(ReadError::Timeout) => return Stop::Time,
-                                Err(e) => return Stop::Crash(format!("{e:?}")),
-                            }
+                        if let Some(stop) = self.received.take(&buf[..n], sink, caps) {
+                            return stop;
                         }
                     }
                     Err(e) if e.kind() == ErrorKind::WouldBlock => break,
@@ -241,56 +230,27 @@ impl Run {
                     Err(e) => return Stop::Crash(format!("reading from the PDF reader: {e}")),
                 }
             }
-            if closed {
-                return self.why_it_ended();
-            }
             let left = self.deadline.saturating_duration_since(Instant::now()).min(POLL);
             let mut fd = libc::pollfd { fd: stdout.as_raw_fd(), events: libc::POLLIN, revents: 0 };
             unsafe { libc::poll(&mut fd, 1, left.as_millis() as libc::c_int) };
         }
     }
 
-    fn take(&mut self, frame: Frame, sink: &mut Sink) -> Result<Option<Stop>, ReadError> {
-        match frame {
-            Frame::Pages(n) => sink.fact(fact::PAGES, n.to_string()),
-            Frame::Fact(key, value) => match key.as_str() {
-                fact::TITLE => sink.fact(fact::TITLE, value),
-                fact::AUTHOR => sink.fact(fact::AUTHOR, value),
-                fact::TEXTLESS_PAGES => sink.fact(fact::TEXTLESS_PAGES, value),
-                _ => {}
-            },
-            Frame::Page(index, text) => {
-                sink.part(format!("page {}", index as u64 + 1));
-                sink.text(&text)?;
-                self.last_page = Some(index);
-            }
-            Frame::Cut => {
-                sink.cut();
-            }
-            Frame::Locked => return Ok(Some(Stop::Locked)),
-            Frame::Unopenable => return Ok(Some(Stop::Unopenable)),
-            Frame::End => return Ok(Some(Stop::End)),
-        }
-        Ok(None)
+    /// The output ended before the helper's last frame: killed and reaped
+    /// at once, so it can't go on unwatched. Its stdin stays open until it
+    /// is reaped (wait would close it first): a closed stdin can end the
+    /// helper on its own before the kill lands, hiding that it was killed.
+    fn ended_early(&mut self) -> Stop {
+        use std::os::unix::process::ExitStatusExt;
+        let _stdin = self.child.stdin.take();
+        let _ = self.child.kill();
+        Stop::Crash(match self.child.wait() {
+            Ok(status) if status.signal() == Some(libc::SIGKILL) => CLOSED.into(),
+            Ok(status) if status.signal().is_some() => CRASHED.into(),
+            Ok(status) => format!("the PDF reader stopped early ({status})"),
+            Err(e) => format!("the PDF reader: {e}"),
+        })
     }
-
-    fn why_it_ended(&mut self) -> Stop {
-        loop {
-            match self.child.try_wait() {
-                Ok(Some(status)) => {
-                    use std::os::unix::process::ExitStatusExt;
-                    return Stop::Crash(match status.signal() {
-                        Some(_) => CRASHED.into(),
-                        None => format!("the PDF reader stopped early ({status})"),
-                    });
-                }
-                Ok(None) if Instant::now() >= self.deadline => return Stop::Time,
-                Ok(None) => std::thread::sleep(Duration::from_millis(1)),
-                Err(e) => return Stop::Crash(format!("the PDF reader: {e}")),
-            }
-        }
-    }
-
 }
 
 impl Drop for Run {
@@ -300,13 +260,123 @@ impl Drop for Run {
     }
 }
 
+/// What the helper has sent, taken frame by frame in the order the
+/// protocol allows: a page count, then pages in increasing order below it
+/// and the page cap, then the end.
+#[derive(Default)]
+struct Received {
+    decoder: Decoder,
+    bytes: usize,
+    pages: Option<u32>,
+    last_page: Option<u32>,
+    textless: u32,
+}
+
+impl Received {
+    /// Whole frames within the output cap are taken before the cap, or a
+    /// frame that can't be decoded, stops the read.
+    fn take(&mut self, bytes: &[u8], sink: &mut Sink, caps: Caps) -> Option<Stop> {
+        let room = caps.output - self.bytes;
+        let allowed = &bytes[..bytes.len().min(room)];
+        self.bytes += allowed.len();
+        self.decoder.push(allowed);
+        loop {
+            match self.decoder.next_frame() {
+                Ok(Some(frame)) => {
+                    if let Some(stop) = self.frame(frame, sink, caps) {
+                        return Some(stop);
+                    }
+                }
+                Ok(None) => break,
+                Err(why) => return Some(Stop::Crash(format!("the PDF reader sent {why}"))),
+            }
+        }
+        (bytes.len() > room).then_some(Stop::Output)
+    }
+
+    fn frame(&mut self, frame: Frame, sink: &mut Sink, caps: Caps) -> Option<Stop> {
+        let Some(pages) = self.pages else {
+            return match frame {
+                Frame::Pages(n) => {
+                    self.pages = Some(n);
+                    sink.fact(fact::PAGES, n.to_string());
+                    None
+                }
+                Frame::Locked => Some(Stop::Locked),
+                Frame::Unopenable => Some(Stop::Unopenable),
+                _ => Some(Stop::Crash("the PDF reader sent output before the page count".into())),
+            };
+        };
+        match frame {
+            Frame::Fact(key, value) => match key.as_str() {
+                fact::TITLE => sink.fact(fact::TITLE, value),
+                fact::AUTHOR => sink.fact(fact::AUTHOR, value),
+                _ => {}
+            },
+            Frame::Page(index, text) => {
+                if let Err(why) = self.next_page(index, pages, caps) {
+                    return Some(why);
+                }
+                sink.part(format!("page {}", index as u64 + 1));
+                match sink.text(&text) {
+                    Ok(_) => {}
+                    Err(ReadError::Timeout) => return Some(Stop::Time),
+                    Err(e) => return Some(Stop::Crash(format!("{e:?}"))),
+                }
+            }
+            Frame::Textless(index) => {
+                if let Err(why) = self.next_page(index, pages, caps) {
+                    return Some(why);
+                }
+                self.textless += 1;
+            }
+            Frame::Cut => {
+                sink.cut();
+            }
+            Frame::End => return Some(Stop::End),
+            Frame::Pages(_) | Frame::Locked | Frame::Unopenable => {
+                return Some(Stop::Crash("the PDF reader sent frames out of order".into()))
+            }
+        }
+        None
+    }
+
+    fn next_page(&mut self, index: u32, pages: u32, caps: Caps) -> Result<(), Stop> {
+        if index >= pages || index as usize >= caps.pages {
+            return Err(Stop::Crash("the PDF reader sent a page past the last".into()));
+        }
+        if self.last_page.is_some_and(|last| index <= last) {
+            return Err(Stop::Crash("the PDF reader sent pages out of order".into()));
+        }
+        self.last_page = Some(index);
+        Ok(())
+    }
+
+    /// The textless count goes in once, however the read ends: a fact
+    /// can't be updated.
+    fn finish(&self, sink: &mut Sink) {
+        if self.textless > 0 {
+            sink.fact(fact::TEXTLESS_PAGES, self.textless.to_string());
+        }
+    }
+}
+
 fn set_nonblocking(fd: &impl AsRawFd) -> Result<(), ReadError> {
     let fd = fd.as_raw_fd();
-    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
-    if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+    let flags = retrying(|| unsafe { libc::fcntl(fd, libc::F_GETFL) });
+    if flags < 0 || retrying(|| unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) }) < 0 {
         return Err(ReadError::Io(std::io::Error::last_os_error()));
     }
     Ok(())
+}
+
+fn retrying(mut call: impl FnMut() -> libc::c_int) -> libc::c_int {
+    loop {
+        let got = call();
+        if got >= 0 || std::io::Error::last_os_error().kind() != ErrorKind::Interrupted {
+            return got;
+        }
+    }
 }
 
 #[derive(Default)]
