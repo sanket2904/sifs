@@ -267,7 +267,7 @@ PDF through PDFKit, page by page (labels `page 1`…, from the PDF's page index)
 
 ## Step 2b in detail: PDF through PDFKit
 
-Step 2's second half. One reader, `pdf`, macOS only, registered in `readers/macos`. PDFKit reads each page's text; each PDF is read in a **helper process** (SIFS's own program, started again in a reader mode), which SIFS kills at the time limit or when it takes too much memory. Linux has no PDF reader yet, and still builds.
+Step 2's second half. One reader, `pdf`, macOS only, registered in `readers/macos`. PDFKit reads each page's text; each PDF is read in a **helper process** (SIFS's own program, started again in a reader mode), which SIFS kills when it uses too much processor time or memory, or runs past the time limit. Linux has no PDF reader yet, and still builds.
 
 ### In one process, or in a helper: what the measurements decided
 
@@ -304,12 +304,14 @@ The same files in one long-lived process: median 5.2 ms per file, 65 s in all ag
 
 **Decision: a helper process per PDF.** It bounds time and memory whatever the file is, a crash in PDFKit costs one file instead of SIFS, and PDFKit's caches leave with the helper. It costs about 30 ms per file: about 75 s of background time over the owner's PDFs, read once. This departs from decision 8 of step 1 ("Mac framework readers run in-process first; a helper process if crashes show up"): the measurements above show hangs and unbounded memory without any crash. A helper that serves many files in turn would save most of the 30 ms but needs a request loop and a rule for when to replace it; left for when step 6's measurements ask for it.
 
+**Processor time, not the clock, stops a page that never ends.** The helper runs at "utility" priority, so a busy Mac runs it last. The first full run of the reader over the owner's PDFs, with the worker's 10 s limit by the clock, was made while other programs kept 18 cores at a load average of 100 to 320: 4 files that take 0.15 to 1.1 s alone were stopped at 10 s, and would not be read again until they changed. A page that never ends uses the processor the whole time; a starved helper hardly uses it. So the helper is stopped at **10 s of processor time**, and the clock limit for PDFs is **60 s**. The second run, at a load average of 300 to 780, stopped no file; the slowest took 18.5 s by the clock.
+
 ### The helper
 
 - **Starting it:** the reader runs the program SIFS is running (`std::env::current_exe`) with `SIFS_PDF_HELPER` set. The program's `main` (the app, and `sifs-bench`) first calls `extract::serve_helper_if_asked()`, which reads the one PDF and exits, never starting the app. The PDF's path and its limits are in the environment. The test binary is its own helper, through an ignored test that calls the same function.
 - **Talking to it:** the helper writes a marker, then frames on stdout: the page count, the facts, each page's text with its index, then an end frame (or "password needed", "can't open"). Anything before the marker is ignored (the test binary prints a line first). A frame cut short is dropped.
-- **SIFS going away:** the helper's stdin is a pipe from SIFS that is never written. When it closes (SIFS quit or crashed), the helper exits. It also exits at its own deadline, the time limit and a second, if SIFS has not killed it.
-- **Priority:** the helper runs at macOS's "utility" quality of service, like the worker. The worker runs at most two reads at a time, so at most two helpers.
+- **SIFS going away:** the helper's stdin is a pipe from SIFS that is never written. When it closes (SIFS quit or crashed), the helper exits. It also exits a second after SIFS's deadline, if SIFS has not killed it.
+- **Priority:** the helper runs at macOS's "utility" quality of service, like the worker. The worker runs at most two reads at a time, so at most two helpers. The tests' helper keeps the test's priority: at "utility", with every core busy, a three-page read took 13 s alone and over 30 s in the full suite.
 - **Always reaped:** however a read ends, the helper is killed if still running and waited for, so none is left behind.
 
 ### Limits
@@ -317,10 +319,11 @@ The same files in one long-lived process: median 5.2 ms per file, 65 s in all ag
 | Limit | Value | Enforced by | Past it |
 |---|---|---|---|
 | file size | 512 MB (owner's largest: 207 MB) | the worker | skipped, never opened |
-| time | 10 s, the worker's limit | SIFS kills the helper at the deadline | the pages read are kept, with `truncated`; with none, failed ("took longer than 10 s") |
-| memory | 1 GB physical footprint, polled every 20 ms | SIFS kills the helper | the same, "used more than 1 GB of memory" |
+| processor time | 10 s, polled every 20 ms | SIFS kills the helper | the pages read are kept, with `truncated`; with none, failed ("used more than 10 s of processor time") |
+| time | 60 s by the clock, the worker's limit for this reader | SIFS kills the helper at the deadline | the same; with no pages, failed ("took longer than 60 s") |
+| memory | 1 GB physical footprint, polled every 20 ms | SIFS kills the helper | the same, "used more than 1024 MB of memory" |
 | output | 8 MB read from the helper | SIFS stops reading and kills it | the same, "sent more than 8 MB" |
-| a crash | | the helper ends on a signal | the same, "PDFKit crashed reading it" |
+| a crash | | the helper ends on a signal | the same, "PDFKit crashed reading it"; output that makes no sense is treated the same way |
 | pages | 10,000, in order | the helper | the rest left out, `truncated` |
 | characters | 1,000,000 | the helper cuts each page to what is left; the sink keeps the cap too | `truncated` |
 
@@ -347,7 +350,7 @@ One part per page with text, labelled `page 1`, `page 2`, … from the page's in
 macOS only, under `[target.'cfg(target_os = "macos")'.dependencies]`, all pinned, default features off:
 - `objc2-pdf-kit` **0.3.2** (new), features `PDFDocument` and `PDFPage`.
 - `objc2-foundation` **0.3.2** and `objc2` **0.6.5**: already in the tree through Tauri; named directly for `NSString`, `NSURL` and `NSDictionary`.
-- `libc` (already a dependency) for `poll`, `proc_pid_rusage` (the helper's footprint) and the helper's priority.
+- `libc` (already a dependency) for `poll`, `proc_pid_rusage` (the helper's footprint and processor time) and the helper's priority. `mach_timebase_info` is declared in the reader (libc's binding is deprecated): the processor times are in Mach ticks, which are not nanoseconds on Apple silicon.
 
 ### Tests
 
@@ -356,9 +359,21 @@ The PDFs are written byte by byte in the tests (a small PDF writer in the test m
 - **Encrypted:** a user password is skipped "password-protected"; an owner password only is read.
 - **No text:** an image-only PDF is `empty` with `textless_pages` equal to `pages`; a mixed one keeps its text pages and counts the other.
 - **Not a PDF, damaged:** no `%PDF-` (skipped, no helper started); an empty file (empty); a truncated file (failed).
-- **Limits:** the time limit on the flate-bomb page (killed at the deadline, with the earlier pages kept when there are some); memory on the XObject file (killed at a lowered cap); the page cap and the character cap (lowered, `truncated`); the output cap (a helper that floods); a helper that crashes; SIFS's end of stdin closing ends the helper; no helper is left running after any of these.
-- **Through the worker:** a PDF is read by `run_until_empty` and found by a word on its second page.
+- **Limits:** a page that never ends (form XObjects ten deep, ending in nothing) is killed at a lowered processor time cap, and within 0.75 s of a short clock deadline; with text pages before it, those are kept with `truncated` and `stopped`; the same forms ending in text are killed at a lowered memory cap; the clock limit is a minute; the page cap (lowered, `truncated`); the helper's character cap (its frames, read in the test process); the output cap (a test helper that floods); a test helper that crashes after a page, at once, or sends nonsense; a missing helper program; the helper ends when its stdin closes and a second after its deadline; no helper is left running or unreaped.
+- **The decoder:** what comes before the marker is passed over, frames arriving a byte at a time are put back together, and an unknown frame ends the output.
+- **Through the worker:** a PDF is read by `run_until_empty` and found by "resume", a Hindi word and a Japanese word on its second page, labelled `page 2`; a scan is `empty` with `textless_pages`; a file that isn't a PDF is skipped; a 5 MB PDF is read and one over 512 MB is skipped; the platform registry reads `pdf` on macOS.
 
-### Measuring
+### Measured on the owner's Mac (2026-11-07)
 
-`sifs-bench --contents` over the owner's home folder reports the PDF reader's counts, time per file and memory; the numbers go in this section.
+The reader as built, over the 2,698 PDFs Spotlight lists under `~`, one after another, each with its limits (a scratch program calling `Pdf::read` as the worker does; the same program serves as the helper):
+
+| | Files |
+|---|---|
+| read, text found | 1,718 (7 cut at the million-character cap) |
+| empty (no text in any page, or an empty file) | 900 (896 scans, 4 empty files) |
+| password needed (skipped) | 3 |
+| damaged (failed) | 2 |
+| iCloud placeholders (skipped, not opened) | 75 |
+| stopped by a limit, or crashed | 0 |
+
+27,526 pages; 43.8 million characters kept; 969 files have pages without text, marked for OCR. At a load average of 300 to 780 from other programs: 601 s in all, median 56 ms per file, p95 810 ms, max 18.5 s; the helpers used 108 s of processor time in all. SIFS's side peaked at 14 MB resident; the largest helper at 275 MB. Starting the helper from the app's own binary took a median of 50 ms against 47 ms from the small scratch program (15 runs each, alternating), so the app's size adds little to each start.
