@@ -397,3 +397,27 @@ Three checks of PR #5 at 5054213: gpt-6.1-sol and gpt-6-astra code reviews, and 
 **Known limits, left as they are** (measured by the reviewers on a loaded machine; revisit in step 6 on the real home folder):
 - **A million long names matching many short terms.** 1,000,000 files with 234-byte names and a query of 16 two-letter terms took 0.98 to 1.58 s (median 1.02 s) before this round, because a term under 3 characters has no trigram index and is checked against every name. Item 6 stops it at the time limit and says so, so the window never hangs, but the names after the cut are not compared. Nobody has a million such names; the index copy has 385,983 files in all.
 - **Memory for a prefix over millions of matching parts.** For the prefix query `common*` with limit 1, SQLite's extra heap peaked at 0.65 MB with 10,000 matching parts, 1.55 MB with 100,000 and 174 MB with 8,000,000. FTS5 reads the whole prefix's lists and ranks the phrase across them, whatever the outer LIMIT. Bounding it needs a prefix index on `contents_fts` (a rebuild of the index) or no bm25 ranking. 8 million matching parts is 800 files of 10,000 pages each, all containing the word; the index copy has 173,113 parts in all.
+
+**As built.** Where it differs from the plan above, and why:
+- **A missing part can't happen inside one snapshot.** With the read transaction, a part that matched is still there when its snippet is read, so the reviewers' delete-during-search test now finds the snippet. Reading by part and file stays, since a part id is reused once deleted, and a missing part still counts as no timeout.
+- **The typo-tolerant names run whenever 5,000 or fewer names match exactly.** Any fixed number below that is a cliff where one more exact code file hides a close-named document, which the owner's ranking puts first. Close names still rank below exact names of the same kind and place.
+- **Names are selected without building every row.** A name whose kind alone can't beat the 5,000th kept is skipped before it is ranked, and `place_prior` checks its markers with one case-insensitive regex instead of lowercasing every path. Without these, "a" took 176 ms for names on the index copy.
+- **`search_files` runs off the main thread too,** and a newer call stops an older one, as for `search_all`: a one-letter query now compares every name.
+- **Not covered by a test:** that the clock starts before the wait for the contents connection is the order of two lines in `app.rs`, which needs Tauri to test. The test that a newer call stops an older one covers what bounds the wait.
+
+**Tests.** `extract/find_review_tests.rs` holds the reviewers' round 2 tests, adapted, and one or more per fix; `index/tokenize_tests.rs` compares the tokenizer with `contents_fts` over every BMP character. Each fix was undone in place and its tests failed (17 Rust mutations, all caught); the window's fixes were undone in a copy of the page and the reviewers' Chromium probes, extended by four, failed (6 mutations, all caught). Scripts and logs: `devos-work/reviews/s3fix3/mutations.py`, `mutations2.out`, `ui/ui-mutations.py`, `ui/ui-mutations.log`.
+
+**Measured** (release build, the index copy: 385,983 files, 173,113 parts; median and slowest of 5 warm runs of `search_all` with limit 60, and one run of the names-only search; 5054213 against this round's head, run alternately on a loaded machine):
+
+| Query | Names only, before → after | search_all, before → after |
+|---|---|---|
+| revenue | 6.6 → 9.1 ms | 8.8 / 10.3 → 11.6 / 12.2 ms |
+| resume | 5.9 → 11.3 ms | 17.1 / 18.3 → 22.1 / 23.0 ms |
+| notes | 2.3 → 27.2 ms | 12.7 / 13.0 → 36.1 / 37.7 ms |
+| data | 5.3 → 25.9 ms | 40.4 / 40.6 → 59.9 / 61.9 ms, both caps |
+| the | 2.0 → 2.1 ms | 76.3 / 79.0 → 75.9 / 77.1 ms, part cap |
+| com | 6.2 → 10.6 ms | 103.6 / 110.2 → 115.0 / 127.0 ms, both caps |
+| re | 6.9 → 73.7 ms | 30.1 / 30.7 → 94.9 / 102.6 ms, both caps |
+| a | 3.2 → 146.6 ms | 23.3 / 24.8 → 116.9 / 119.0 ms, both caps |
+
+The slowest run of any query: 110.2 ms before ("com"), 146.6 ms after (names only, "a"). The added time is the work the old code skipped: it compared the first 5,000 names stored and stopped, and for "a" 302,651 names match; reading those rows alone takes SQLite about 70 ms. One- and two-letter queries pay most. If that is felt in use, a name index for short terms is the fix, not a return to storage order. Full tables: `devos-work/reviews/s3fix3/timings-before-r4.tsv`, `timings-after-r4.tsv`.
