@@ -1,0 +1,72 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [10 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Title <FEFF00500061007300730070006F00720074> /Producer (sample/tools/generate.mjs) /CreationDate (D:20240320080000Z) /ModDate (D:20240320080000Z) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 209 >>
+stream
+/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /T def /CMapType 2 def 1 begincodespacerange <0000> <FFFF> endcodespacerange
+endcmap CMapName currentdict /CMap defineresource pop end end
+endstream
+endobj
+6 0 obj
+<< /Type /FontDescriptor /FontName /T /Flags 32 /FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /CIDFontType2 /BaseFont /T /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 6 0 R /DW 600 >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type0 /BaseFont /T /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 5 0 R >>
+endobj
+9 0 obj
+<< /Length 976 >>
+stream
+BT /F2 10 Tf 50 760 Td (SAMPLE DOCUMENT. Made up for testing. Not a real passport.) Tj ET
+BT /F2 10 Tf 50 746 Td (Specimen page of the fictional state of Utopia \(ICAO code UTO\).) Tj ET
+BT /F2 10 Tf 50 732 Td (PASSPORT) Tj ET
+BT /F2 10 Tf 50 718 Td (Type: P Issuing state: UTO) Tj ET
+BT /F2 10 Tf 50 704 Td (Passport No.: SMP001826) Tj ET
+BT /F2 10 Tf 50 690 Td (Surname: KALPIT) Tj ET
+BT /F2 10 Tf 50 676 Td (Given names: ASHA) Tj ET
+BT /F2 10 Tf 50 662 Td (Nationality: UTOPIAN) Tj ET
+BT /F2 10 Tf 50 648 Td (Date of birth: 21 APR 1988) Tj ET
+BT /F2 10 Tf 50 634 Td (Sex: F) Tj ET
+BT /F2 10 Tf 50 620 Td (Place of birth: SAMPLE CITY) Tj ET
+BT /F2 10 Tf 50 606 Td (Date of issue: 18 MAR 2024) Tj ET
+BT /F2 10 Tf 50 592 Td (Date of expiry: 17 MAR 2034) Tj ET
+BT /F2 10 Tf 50 578 Td (Authority: UTOPIA PASSPORT OFFICE) Tj ET
+BT /F2 10 Tf 50 564 Td (P<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<) Tj ET
+BT /F2 10 Tf 50 550 Td (SMP0018266UTO8804215F3403174<<<<<<<<<<<<<<<2) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 8 0 R /F2 4 0 R >> >> /Contents 9 0 R >>
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000122 00000 n 
+0000000290 00000 n 
+0000000387 00000 n 
+0000000647 00000 n 
+0000000805 00000 n 
+0000000978 00000 n 
+0000001104 00000 n 
+0000002131 00000 n 
+trailer
+<< /Size 11 /Root 1 0 R /Info 3 0 R >>
+startxref
+2268
+%%EOF

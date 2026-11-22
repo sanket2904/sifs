@@ -1,0 +1,73 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [10 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Title <FEFF00530074006100740065006D0065006E007400200042> /Producer (sample/tools/generate.mjs) /CreationDate (D:20261015090000Z) /ModDate (D:20261015090000Z) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 209 >>
+stream
+/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /T def /CMapType 2 def 1 begincodespacerange <0000> <FFFF> endcodespacerange
+endcmap CMapName currentdict /CMap defineresource pop end end
+endstream
+endobj
+6 0 obj
+<< /Type /FontDescriptor /FontName /T /Flags 32 /FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /CIDFontType2 /BaseFont /T /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 6 0 R /DW 600 >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type0 /BaseFont /T /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 5 0 R >>
+endobj
+9 0 obj
+<< /Length 1172 >>
+stream
+BT /F2 10 Tf 50 760 Td (SAMPLE DOCUMENT. Made up for testing. Not a real statement.) Tj ET
+BT /F2 10 Tf 50 746 Td (HDFC Bank Ltd) Tj ET
+BT /F2 10 Tf 50 732 Td (Statement of Account) Tj ET
+BT /F2 10 Tf 50 718 Td (Account holder: Asha Kalpit) Tj ET
+BT /F2 10 Tf 50 704 Td (Address: 14 Imaginary Lane, Sample Nagar, Pune 411000) Tj ET
+BT /F2 10 Tf 50 690 Td (Account number: 50100417263958) Tj ET
+BT /F2 10 Tf 50 676 Td (IFSC: HDFC0SAMPL1) Tj ET
+BT /F2 10 Tf 50 662 Td (Account type: Savings) Tj ET
+BT /F2 10 Tf 50 648 Td (Statement period: 01 Jul 2026 to 31 Jul 2026) Tj ET
+BT /F2 10 Tf 50 634 Td (Opening balance: INR 52,340.00) Tj ET
+BT /F2 10 Tf 50 620 Td (Date Description Debit Credit Balance) Tj ET
+BT /F2 10 Tf 50 606 Td (03 Jul 2026 UPI rent July 18,000.00 34,340.00) Tj ET
+BT /F2 10 Tf 50 592 Td (10 Jul 2026 Salary credit 85,000.00 119,340.00) Tj ET
+BT /F2 10 Tf 50 578 Td (15 Jul 2026 Card bill payment 12,450.75 106,889.25) Tj ET
+BT /F2 10 Tf 50 564 Td (22 Jul 2026 ATM withdrawal 5,000.00 101,889.25) Tj ET
+BT /F2 10 Tf 50 550 Td (Closing balance: INR 101,889.25) Tj ET
+BT /F2 10 Tf 50 536 Td (This statement is computer generated and needs no signature.) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 8 0 R /F2 4 0 R >> >> /Contents 9 0 R >>
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000122 00000 n 
+0000000302 00000 n 
+0000000399 00000 n 
+0000000659 00000 n 
+0000000817 00000 n 
+0000000990 00000 n 
+0000001116 00000 n 
+0000002340 00000 n 
+trailer
+<< /Size 11 /Root 1 0 R /Info 3 0 R >>
+startxref
+2477
+%%EOF

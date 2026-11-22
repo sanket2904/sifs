@@ -2,3 +2,8 @@
 pnpm-lock.yaml
 package-lock.json
 yarn.lock
+
+# Written by the sample's tools in their own layout
+sample/files/
+sample/labels.json
+sample/directory/banks.json

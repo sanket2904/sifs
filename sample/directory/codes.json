@@ -1,0 +1,43 @@
+{
+	"ifsc_prefix": {
+		"source": "The first four letters of an IFSC name the bank. Codes checked on 2026-11-22 against src/banknames.json of github.com/razorpay/ifsc (MIT licence), which compiles the Reserve Bank of India's IFSC list.",
+		"codes": {
+			"Q631047": ["HDFC"],
+			"Q1653258": ["ICIC"],
+			"Q1340361": ["SBIN"],
+			"Q2003549": ["UTIB"],
+			"Q2040404": ["KKBK"],
+			"Q2743499": ["PUNB"],
+			"Q2003797": ["BARB"],
+			"Q2004439": ["BKID"],
+			"Q2007090": ["CBIN"],
+			"Q2004078": ["UBIN"],
+			"Q2003302": ["PSIB"],
+			"Q2003777": ["CNRB"],
+			"Q2003611": ["IOBA"],
+			"Q2003789": ["IDIB"],
+			"Q2040323": ["INDB"],
+			"Q2044983": ["FDRL"],
+			"Q2040394": ["YESB"],
+			"Q944085": ["RBIS"],
+			"Q3633485": ["IBKL"]
+		}
+	},
+	"iban_bank_code": {
+		"source": "German bank codes (Bankleitzahlen) checked on 2026-11-22 against the Deutsche Bundesbank's public Bankleitzahlendatei (blz-aktuell-txt-data.txt; the page states no licence, and only single codes, which are facts, are copied). A German bank has many codes; only the ones the sample uses are listed. For GB, IE and NL the IBAN bank code is the first four letters of the bank's BIC, so build.mjs derives those from Wikidata's BIC.",
+		"codes": {
+			"Q157617": [{ "country": "DE", "code": "37040044" }],
+			"Q66048": [
+				{ "country": "DE", "code": "10070000" },
+				{ "country": "DE", "code": "50070010" }
+			],
+			"Q162222": [{ "country": "DE", "code": "10000000" }]
+		}
+	},
+	"aliases": {
+		"source": "Names added by the sample's authors because Wikidata lacks a name in common use. Wikidata gives the alias HDFC only to Housing Development Finance Corporation (merged into HDFC Bank in 2023); adding it to HDFC Bank as well makes the bare name a marked clash instead of a silent match to the old company.",
+		"names": {
+			"Q631047": [{ "text": "HDFC", "lang": "en" }]
+		}
+	}
+}

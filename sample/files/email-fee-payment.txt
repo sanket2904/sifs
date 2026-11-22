@@ -1,0 +1,14 @@
+SAMPLE DOCUMENT. Made up for testing. Not a real email.
+From: Asha Kalpit <asha@example.com>
+To: School office <office@example.org>
+Date: Tue, 20 Oct 2026 19:05:00 +0530
+Subject: Fee payment
+
+Hello,
+
+I paid the term fee today through hdfcbank netbanking. The HDFC BANK app
+showed reference N2026102098765 for it.
+If anything is missing, please call me on +44 7700 900123.
+
+Thanks,
+Asha
