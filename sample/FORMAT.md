@@ -176,6 +176,7 @@ The machine-readable zone in `passport-rohan`:
 ## Changes in round 2
 
 - On `text-ocr/`, only a scanned page matches by page and text or value. Every other page matches by span, as on `text/`.
-- A keyed mention on a `not_orgs` span, where the key maps to the organisation the entry excludes, is a wrong attachment, which fails the run.
+- A keyed mention exactly on a `not_orgs` span is a wrong attachment, which fails the run, unless its key maps to the organisation of a labelled mention on the same page whose span contains that span.
+- A wrong attachment does not depend on directory ids. It holds with the directory on or off, and for a key that maps to no labelled organisation, such as a "Bank of India" card made from the text inside "State Bank of India".
 - A card name ignores all whitespace, not only repeated spaces, and folds nothing else.
 - A root that is not an object, and a `paired-code` link with no `via`, are format errors.

@@ -295,18 +295,67 @@ for (const directory of ['on', 'off'])
 			assert.equal(result.failed, true);
 		});
 
-test('a keyed mention the labels exclude only for other organisations, or cannot tell, fails nothing', () => {
-	for (const key of ['ref:hdfc-life', 'ref:sample-traders']) {
+for (const directory of ['on', 'off'])
+	test(`a card made from a name inside a longer name is a wrong attachment whatever its key maps to, directory ${directory}`, () => {
+		const output = perfect(directory);
+		const school = doc(output, 'school-fee-banks');
+		Object.assign(
+			school.orgs.find((m) => m.text === 'Bank of India'),
+			spanOf(output, 'school-fee-banks', 'Bank of India')
+		);
+		const result = run(output);
+		assert.deepEqual(result.wrong_attachments, [
+			{
+				document: 'school-fee-banks',
+				key: 'ref:bank-of-india',
+				organisation: null,
+				mention: 'Bank of India at 1:144',
+				why: 'inside-other-name'
+			}
+		]);
+		assert.equal(result.failed, true);
+	});
+
+test('a name inside a longer name keyed to the longer name’s own card is no wrong attachment', () => {
+	const output = perfect();
+	doc(output, 'school-fee-banks').orgs.push({
+		...spanOf(output, 'school-fee-banks', 'Bank of India'),
+		org: 'ref:sbi',
+		settled_by: 'name'
+	});
+	const result = run(output);
+	assert.deepEqual(result.wrong_attachments, []);
+	assert.equal(totals(result, 'mentions').wrong, 1);
+	assert.equal(result.failed, false);
+});
+
+test('a keyed mention on a name the labels exclude, keyed to some other card, is a wrong attachment', () => {
+	const output = perfect();
+	doc(output, 'hdfc-life-receipt').orgs.push({
+		...spanOf(output, 'hdfc-life-receipt', 'HDFC'),
+		org: 'ref:sample-traders',
+		settled_by: 'name'
+	});
+	const result = run(output);
+	assert.deepEqual(
+		result.wrong_attachments.map((a) => a.organisation),
+		['sample-traders']
+	);
+	assert.equal(result.failed, true);
+});
+
+test('a keyed mention the labels exclude, keyed to the enclosing name’s card, or that the labels cannot tell, fails nothing', () => {
+	{
 		const output = perfect();
 		doc(output, 'hdfc-life-receipt').orgs.push({
 			...spanOf(output, 'hdfc-life-receipt', 'HDFC'),
-			org: key,
+			org: 'ref:hdfc-life',
 			settled_by: 'name'
 		});
 		const result = run(output);
-		assert.deepEqual(result.wrong_attachments, [], key);
-		assert.equal(totals(result, 'mentions').wrong, 1, key);
-		assert.equal(result.failed, false, key);
+		assert.deepEqual(result.wrong_attachments, []);
+		assert.equal(totals(result, 'mentions').wrong, 1);
+		assert.equal(result.failed, false);
 	}
 	const output = perfect();
 	doc(output, 'household-notes').orgs.find((m) => m.text === 'BOI').org = 'ref:bank-of-india';

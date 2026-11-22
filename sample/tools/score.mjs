@@ -505,19 +505,22 @@ export function score(labels, textSet, rawOutput, directory) {
 			if (!o.org) continue;
 			const notOrgs = label.not_orgs.filter((n) => w.mentionKey(n) === w.mentionKey(o));
 			const notOrg = notOrgs[0];
-			// A not_orgs entry names the directory entry the text is not. The
-			// labels' organisation with that directory id is the one it excludes.
-			for (const t of targetsOf(o.org)) {
-				const excluded = notOrgs.find((n) => n.entry === directoryIdOf(t));
-				if (excluded)
-					wrongAttachments.push({
-						document: id,
-						key: o.org,
-						organisation: t,
-						mention: `${o.text} at ${o.page}:${o.start}`,
-						why: excluded.why
-					});
-			}
+			// Text the labels say is no organisation puts its document on a wrong
+			// card, unless the key is the card of the labelled name around it.
+			const enclosing = (n) =>
+				label.orgs.filter((l) => l.page === n.page && l.start <= n.start && n.end <= l.end);
+			const t = single(o.org);
+			const excluded = notOrgs.find(
+				(n) => t === null || !enclosing(n).some((l) => target(l) === t)
+			);
+			if (excluded)
+				wrongAttachments.push({
+					document: id,
+					key: o.org,
+					organisation: t,
+					mention: `${o.text} at ${o.page}:${o.start}`,
+					why: excluded.why
+				});
 			add(
 				'mentions',
 				lang,

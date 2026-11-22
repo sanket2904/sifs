@@ -209,9 +209,21 @@ const MUTANTS = [
 	],
 	[
 		'tools/score.mjs',
-		'a keyed mention the labels exclude for its organisation is a wrong attachment',
-		'const excluded = notOrgs.find((n) => n.entry === directoryIdOf(t));',
-		'const excluded = null;'
+		'a keyed mention on a not_orgs span is a wrong attachment',
+		'if (excluded)\n\t\t\t\twrongAttachments.push',
+		'if (false)\n\t\t\t\twrongAttachments.push'
+	],
+	[
+		'tools/score.mjs',
+		'only the enclosing name’s own card excuses a mention on a not_orgs span',
+		'(n) => t === null || !enclosing(n).some((l) => target(l) === t)',
+		'() => true'
+	],
+	[
+		'tools/score.mjs',
+		'a wrong attachment does not depend on directory ids',
+		'(n) => t === null || !enclosing(n).some((l) => target(l) === t)',
+		'(n) => [...targetsOf(o.org)].some((x) => n.entry === directoryIdOf(x))'
 	],
 	['tools/score.mjs', 'a wrong attachment fails the run', 'wrongAttachments.length > 0 ||', ''],
 	[
