@@ -155,9 +155,9 @@ impl Reader for Image {
 
     fn read(&self, path: &Path, sink: &mut Sink) -> Result<(), ReadError> {
         let mut held = self.running.lock();
-        let mut read = self.request(&mut held, path, sink)?;
+        let mut read = self.request(&mut held, path, sink, self.caps.cpu)?;
         if matches!(read.stop, Stop::Idle | Stop::Leftover(_)) {
-            read = self.request(&mut held, path, sink)?;
+            read = self.request(&mut held, path, sink, self.caps.cpu.saturating_sub(read.cpu))?;
         }
         let ended = matches!(read.stop, Stop::End(_));
         let why = match read.stop {
@@ -190,14 +190,18 @@ impl Reader for Image {
 }
 
 impl Image {
-    /// One request, on the helper there is or a new one. A helper that
-    /// stopped, or must go after it, is gone after.
-    fn request(&self, held: &mut Held, path: &Path, sink: &mut Sink) -> Result<Read, ReadError> {
+    /// One request, with cpu of the image's processor time left, on the
+    /// helper there is or a new one; with none left, none is started. A
+    /// helper that stopped, or must go after it, is gone after.
+    fn request(&self, held: &mut Held, path: &Path, sink: &mut Sink, cpu: Duration) -> Result<Read, ReadError> {
+        if cpu.is_zero() {
+            return Ok(Read { stop: Stop::Cpu, received: false, cpu });
+        }
         if held.running.as_mut().is_some_and(|running| running.must_go(self.caps)) {
             held.running = None;
         }
         let running = held.helper(|| self.start())?;
-        let read = running.request(path, sink, self.caps);
+        let read = running.request(path, sink, self.caps, cpu);
         let ended = matches!(read.stop, Stop::End(_));
         if ended {
             running.wait_from_now();
@@ -261,6 +265,8 @@ struct Read {
     stop: Stop,
     /// Whether the sink kept any of the image's frames.
     received: bool,
+    /// The processor time the helper used on it, while it could be measured.
+    cpu: Duration,
 }
 
 /// A helper and its output.
@@ -313,7 +319,7 @@ impl Running {
         usage.footprint > caps.keep || usage.cpu.saturating_sub(self.cpu_then) > caps.cpu
     }
 
-    fn request(&mut self, path: &Path, sink: &mut Sink, caps: Caps) -> Read {
+    fn request(&mut self, path: &Path, sink: &mut Sink, caps: Caps, cpu: Duration) -> Read {
         let request = Request {
             id: fresh_id(),
             path: path.into(),
@@ -322,7 +328,7 @@ impl Running {
             max_pixels: caps.pixels,
         };
         let mut order = Order::new(request.id);
-        let watch = Watch { deadline: sink.deadline(), cpu: caps.cpu, memory: caps.memory, cpu_before: self.process.usage().cpu };
+        let watch = Watch { deadline: sink.deadline(), cpu, memory: caps.memory, cpu_before: self.process.usage().cpu };
         self.intake.restart();
         let watched = match self.process.send(&watch, &request.encode()) {
             Ok(()) => {
@@ -331,6 +337,7 @@ impl Running {
             }
             Err(watched) => watched,
         };
+        let used = self.process.usage().cpu.saturating_sub(watch.cpu_before);
         let nothing_yet = order.step == (Step::Facts { seen: 0 });
         let stop = match watched {
             Watched::Taken(Taken::Stop(Stop::End(outcome))) => {
@@ -348,7 +355,7 @@ impl Running {
             Watched::Ended(Ended::Exited(status)) if status.code() == Some(Exit::Idle as i32) && nothing_yet => Stop::Idle,
             Watched::Ended(_) | Watched::Unreadable(_) => Stop::Crashed,
         };
-        Read { stop, received: order.received() }
+        Read { stop, received: order.received(), cpu: used }
     }
 }
 

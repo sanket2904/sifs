@@ -197,6 +197,18 @@ fn misbehave(how: &str, first: bool, request: &Request, send: &mut Send) -> std:
             send(width())?;
             std::process::abort()
         }
+        // Each helper uses 250 ms of processor time; the first then sends a
+        // frame for another image, as a leftover would, and the second
+        // answers.
+        "busy, then a leftover in the first helper" => {
+            busy(Duration::from_millis(250));
+            if first {
+                send(Frame::End { id: id.wrapping_add(1), outcome: Outcome::Read })?;
+                park()
+            }
+            send(text())?;
+            send(Frame::End { id, outcome: Outcome::Read })
+        }
         "idle" => helper::exit(helper::Exit::Idle),
         "idle in the first helper" if first => helper::exit(helper::Exit::Idle),
         "another id" => {
@@ -726,7 +738,9 @@ fn an_image_keeps_its_end_and_a_helper_sending_past_it_reads_no_more() {
     let mut helper = Image::default().helper;
     helper.env.push((MISBEHAVE.into(), "an end, then bytes past the cap".into()));
     let mut running = Running::start(&helper, Caps::default()).unwrap();
-    let mut read = |caps| running.request(Path::new("/nonexistent/any.png"), &mut Sink::new(100, Instant::now() + Duration::from_secs(60)), caps);
+    let mut read = |caps: Caps| {
+        running.request(Path::new("/nonexistent/any.png"), &mut Sink::new(100, Instant::now() + Duration::from_secs(60)), caps, caps.cpu)
+    };
     assert_eq!(read(Caps::default()).stop, Stop::End(Outcome::Read));
     let at_the_cap = Caps { output: width_then_end(0).len(), ..Caps::default() };
     assert_eq!(read(at_the_cap).stop, Stop::End(Outcome::Read));
@@ -906,6 +920,30 @@ fn a_helper_that_ends_idle_is_replaced_once_and_only_once() {
         }
         assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 2, "{how}: two helpers started");
     }
+}
+
+#[test]
+fn a_helper_replaced_after_a_leftover_has_only_the_images_remaining_processor_time() {
+    let dir = Dir::new();
+    let log = dir.0.path().join("pids");
+    let caps = Caps { cpu: Duration::from_millis(400), ..Caps::default() };
+    let mut image = reader(caps, Some("busy, then a leftover in the first helper"));
+    image.helper.env.push((LOG.into(), log.clone().into()));
+    let got = read_path(&image, Path::new("/nonexistent/any.png"), Duration::from_secs(60));
+    assert_eq!(failed(got), "used more than 400 ms of processor time", "250 ms each, 500 ms in all");
+    let pids = started(&log);
+    assert_eq!(pids.len(), 2, "replaced once");
+    assert!(pids.iter().all(|&pid| gone(pid)));
+}
+
+#[test]
+fn an_image_with_no_processor_time_left_starts_no_helper() {
+    // A helper that can't start: trying to start one fails the request.
+    let mut image = Image::default();
+    image.helper.program = "/nonexistent/sifs".into();
+    let mut sink = Sink::new(image.caps.chars, Instant::now() + Duration::from_secs(60));
+    let read = image.request(&mut image.running.lock(), Path::new("/nonexistent/any.png"), &mut sink, Duration::ZERO);
+    assert_eq!(read.unwrap().stop, Stop::Cpu);
 }
 
 #[test]
@@ -1203,7 +1241,7 @@ fn a_helper_that_died_just_before_an_image_is_replaced() {
     unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
     eventually("the helper to die", || slot.running.as_mut().unwrap().process.try_wait().unwrap().is_some());
     let mut sink = Sink::new(image.caps.chars, Instant::now() + Duration::from_secs(60));
-    assert_eq!(image.request(&mut slot, &a, &mut sink).unwrap().stop, Stop::End(Outcome::Read));
+    assert_eq!(image.request(&mut slot, &a, &mut sink, image.caps.cpu).unwrap().stop, Stop::End(Outcome::Read));
     assert_eq!(text(&sink.finish().0), "Again");
     assert_ne!(slot.running.as_ref().map(|running| running.process.id()), Some(pid));
 }
@@ -1216,7 +1254,7 @@ fn a_helper_keeping_too_much_memory_is_replaced_after_its_image() {
     // Held, so its watcher can't replace it first.
     let mut slot = image.running.lock();
     let mut sink = Sink::new(image.caps.chars, Instant::now() + Duration::from_secs(60));
-    assert_eq!(image.request(&mut slot, &a, &mut sink).unwrap().stop, Stop::End(Outcome::Read));
+    assert_eq!(image.request(&mut slot, &a, &mut sink, image.caps.cpu).unwrap().stop, Stop::End(Outcome::Read));
     assert_eq!(text(&sink.finish().0), "Kept");
     assert!(slot.running.is_none(), "Vision alone takes more than 1 MB");
 }
