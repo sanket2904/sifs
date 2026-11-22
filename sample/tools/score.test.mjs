@@ -5,7 +5,7 @@ import { SAMPLE } from './generate.mjs';
 import { readLabels } from './lib/labels.mjs';
 import { reference } from './reference.mjs';
 import { FormatError, score } from './score.mjs';
-import { readTextSet } from './text.mjs';
+import { checkTextSets, readTextSet } from './text.mjs';
 
 const labels = readLabels(new URL('labels.json', SAMPLE));
 const sets = { text: readTextSet('text'), 'text-ocr': readTextSet('text-ocr') };
@@ -277,18 +277,6 @@ test('an output whose span does not read back breaks the format', () => {
 	assert.throws(() => run(output), FormatError);
 });
 
-test('the text set is what text.mjs writes from spec.json', async () => {
-	const { loadSpec } = await import('./generate.mjs');
-	const { textSet } = await import('./text.mjs');
-	const spec = loadSpec();
-	const written = textSet(spec);
-	for (const [file, body] of written) assert.deepEqual(sets.text.docs.get(body.id), body, file);
-	for (const [, body] of written) {
-		const ocr = sets['text-ocr'].docs.get(body.id);
-		body.pages.forEach((page, i) => {
-			if (!page.scanned) assert.equal(ocr.pages[i].text, page.text, `${body.id} page ${i + 1}`);
-		});
-	}
-	assert.equal(sets.text.index.reference_date, labels.reference_date);
-	assert.equal(sets['text-ocr'].index.reference_date, labels.reference_date);
+test('the committed text sets are what text.mjs writes from the committed files', () => {
+	assert.deepEqual(checkTextSets(), []);
 });

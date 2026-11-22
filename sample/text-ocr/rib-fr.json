@@ -1,6 +1,7 @@
 {
 	"id": "rib-fr",
 	"file": "releve-identite-bancaire.pdf",
+	"sha256": "5ce34d021b235fb2d157c9840eae4ae3cda64819a3c66593b6600b6c37fcfe0a",
 	"format": "pdf",
 	"lang": "fr",
 	"created": "2026-04-08T09:00:00Z",

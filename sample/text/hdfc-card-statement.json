@@ -1,6 +1,7 @@
 {
 	"id": "hdfc-card-statement",
 	"file": "card-statement-sep.pdf",
+	"sha256": "238902a59b7e1ac5547a55d79a38f14c33c332461706d1bcc68fb3e7838b3d44",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2026-09-16T04:00:00Z",

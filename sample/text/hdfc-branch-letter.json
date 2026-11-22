@@ -1,6 +1,7 @@
 {
 	"id": "hdfc-branch-letter",
 	"file": "branch-hours-letter.pdf",
+	"sha256": "b19ff2cd820da3598563445655ed2d3550076a31b6b59f5759a4ae45d8e00776",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2026-08-12T06:00:00Z",

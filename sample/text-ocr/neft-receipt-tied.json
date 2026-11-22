@@ -1,6 +1,7 @@
 {
 	"id": "neft-receipt-tied",
 	"file": "funds-transfer-receipt.pdf",
+	"sha256": "ed45af72696643a59b85f0db53eaf17f578f399d11ce392ac368c0cf18505690",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2026-09-22T05:12:00Z",

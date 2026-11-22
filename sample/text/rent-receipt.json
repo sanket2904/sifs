@@ -1,6 +1,7 @@
 {
 	"id": "rent-receipt",
 	"file": "rent-receipt-october.pdf",
+	"sha256": "30ac2c3e7c6ef084d5f0182f3cb5b9429bab235181427e87b048f9aac0ad3bc3",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2026-10-03T12:00:00Z",

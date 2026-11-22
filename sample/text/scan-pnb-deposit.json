@@ -1,6 +1,7 @@
 {
 	"id": "scan-pnb-deposit",
 	"file": "scan-deposit-slip.pdf",
+	"sha256": "04275d9a6007f2c063fea854c0a0baf28e68d36b11e579a17a0ca3d6fa861771",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2026-09-02T07:30:00Z",

@@ -1,6 +1,7 @@
 {
 	"id": "poem",
 	"file": "poem-morning.txt",
+	"sha256": "21c40c6bf185e49e62691ffe896ae44ed7d4fa5ebdfa34d1c63d1df6706bad35",
 	"format": "txt",
 	"lang": "en",
 	"created": "2024-01-07T07:00:00Z",

@@ -19,6 +19,7 @@ A document file holds:
 | --- | --- |
 | `id` | The document id. |
 | `file` | The file name in `files/`. |
+| `sha256` | The file's hash, as `files/SHA256SUMS` gives it. |
 | `format` | `pdf`, `txt` or `html`. |
 | `lang` | The document's language: `en`, `de`, `fr`, `hi` or `ja`. |
 | `created` | The file date, `YYYY-MM-DDTHH:MM:SSZ`. It deliberately disagrees with statement periods. |
@@ -26,7 +27,7 @@ A document file holds:
 
 `index.json` holds `format` (1), `text_set` (the folder name), `reference_date` (the date that decides which passport is current, from `labels.json`), and `documents` (every id). In `text-ocr/` it also holds `ocr`: the macOS version, the Vision request and revision, the recognition level, language correction (off) and the pixel size each scanned page was drawn at. The committed set was read on macOS 26.4.1 with `VNRecognizeTextRequest` revision 3.
 
-`node sample/tools/text.mjs` writes `text/` from `spec.json`. `node sample/tools/text.mjs --ocr` also writes `text-ocr/` by running `tools/vision-text.swift`, macOS only. The OCR set is committed so a score does not depend on the machine that takes it.
+`node sample/tools/text.mjs` writes `text/` from `spec.json`, and `text-ocr/` from `spec.json` with each scanned page keeping its committed reading. `node sample/tools/text.mjs --ocr` reads the scanned pages again by running `tools/vision-text.swift`, macOS only. The OCR set is committed so a score does not depend on the machine that takes it. `node sample/tools/text.mjs --check` writes nothing and fails when a committed file in either set differs from what the tool writes, so text left behind by a change to `spec.json`, `labels.json` or `files/` fails `score.test.mjs`. For a scanned page it compares everything except the reading, which depends on the Mac.
 
 ## Output
 

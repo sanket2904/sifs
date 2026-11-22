@@ -1,6 +1,7 @@
 {
 	"id": "sbi-passbook-hindi",
 	"file": "passbook-sbi.pdf",
+	"sha256": "690a982295e6e36608737d4c7112dd903230677f8655bba7a84b32f62310034e",
 	"format": "pdf",
 	"lang": "hi",
 	"created": "2026-10-02T05:00:00Z",

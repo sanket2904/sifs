@@ -1,6 +1,7 @@
 {
 	"id": "hdfc-life-receipt",
 	"file": "premium-receipt.pdf",
+	"sha256": "c13c5a34860f1e922ce0c46680d5789c5999f886f7891b6ced0d86d850890897",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2026-07-11T09:00:00Z",

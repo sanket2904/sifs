@@ -1,6 +1,7 @@
 {
 	"id": "transfer-untied",
 	"file": "payment-confirmation.pdf",
+	"sha256": "6507ddd7dec99911856a1ba928a53b49a14c80729d57a792e58e7bc6d397f498",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2026-10-14T08:00:00Z",

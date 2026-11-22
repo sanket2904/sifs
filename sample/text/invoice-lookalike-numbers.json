@@ -1,6 +1,7 @@
 {
 	"id": "invoice-lookalike-numbers",
 	"file": "invoice-sample-supplies.pdf",
+	"sha256": "2c4f2e97001fee517e8c18ec967dfcc0d88fea86825986134370815634345a17",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2026-05-14T11:00:00Z",

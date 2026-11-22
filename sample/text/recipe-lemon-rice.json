@@ -1,6 +1,7 @@
 {
 	"id": "recipe-lemon-rice",
 	"file": "lemon-rice.pdf",
+	"sha256": "f896461f912c65bd1dffec3eaddcc30c40700773abb4fe71a7769206d3948ca6",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2025-08-15T10:00:00Z",

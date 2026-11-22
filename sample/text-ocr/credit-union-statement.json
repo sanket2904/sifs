@@ -1,6 +1,7 @@
 {
 	"id": "credit-union-statement",
 	"file": "member-savings-oct.pdf",
+	"sha256": "7c205db55e0f308c155af5e9bb88c58b969f8f00cb6943bcece548c9cb4b09c1",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2026-11-04T07:00:00Z",

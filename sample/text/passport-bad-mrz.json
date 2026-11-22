@@ -1,6 +1,7 @@
 {
 	"id": "passport-bad-mrz",
 	"file": "passport-eriksson.pdf",
+	"sha256": "159d6fbecc13b8a83b896360000fd2a5be4dc4ef636f93e324a281ad53d6d767",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2021-04-20T08:00:00Z",

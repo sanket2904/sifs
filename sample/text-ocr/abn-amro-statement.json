@@ -1,6 +1,7 @@
 {
 	"id": "abn-amro-statement",
 	"file": "rekeningafschrift-aug.pdf",
+	"sha256": "0baa210a850e38e0067f1ebef3d92ea85d97233176b50bee0a8710434c54c71f",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2026-09-02T06:00:00Z",

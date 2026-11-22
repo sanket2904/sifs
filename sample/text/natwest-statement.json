@@ -1,6 +1,7 @@
 {
 	"id": "natwest-statement",
 	"file": "current-account-sep.pdf",
+	"sha256": "62387006c564dbd70462f1f12fb77a4d39e796b17c60a175bda8baab7f142e86",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2026-10-01T07:00:00Z",

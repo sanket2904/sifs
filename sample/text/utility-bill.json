@@ -1,6 +1,7 @@
 {
 	"id": "utility-bill",
 	"file": "electricity-bill-aug.pdf",
+	"sha256": "8944c22324d1b7f42ef5cee5c4cd904efa7b4fad33693ea01671798d6c6000ef",
 	"format": "pdf",
 	"lang": "en",
 	"created": "2026-09-05T06:00:00Z",

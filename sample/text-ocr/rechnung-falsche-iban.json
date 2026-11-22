@@ -1,6 +1,7 @@
 {
 	"id": "rechnung-falsche-iban",
 	"file": "rechnung-schreinerei.pdf",
+	"sha256": "d1aec8c22198a3d2a956e70d78e493d56f4ad4036b19000dc6fb28a966fa3883",
 	"format": "pdf",
 	"lang": "de",
 	"created": "2026-06-20T14:00:00Z",

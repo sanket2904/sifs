@@ -1,6 +1,7 @@
 {
 	"id": "commerzbank-kontoauszug",
 	"file": "kontoauszug-oktober.pdf",
+	"sha256": "2a4aa63d277c5c93b21b1acf4880043698369dea7046c3fe580748c2dc59e533",
 	"format": "pdf",
 	"lang": "de",
 	"created": "2026-11-01T06:00:00Z",
