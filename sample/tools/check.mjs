@@ -6,22 +6,26 @@ import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { build, FILES, loadSpec, pageText, SAMPLE, SUMS, sumsFile } from './generate.mjs';
-import { KINDS, parseMrz } from './lib/ids.mjs';
+import { KINDS, parseMrz, ribKey } from './lib/ids.mjs';
 import { matchKey } from './lib/key.mjs';
 import { LISTS, readLabels, spans } from './lib/labels.mjs';
+import { planted } from './lib/planted.mjs';
 
 const REASONS = new Set([
 	'iban-bank-code',
 	'bic-institution',
 	'ifsc-prefix',
 	'paired-code',
+	'inside-iban',
+	'same-account',
 	'statement-header'
 ]);
-const CODE_REASONS = new Set(['iban-bank-code', 'bic-institution', 'ifsc-prefix', 'paired-code']);
+const CODE_REASONS = new Set([...REASONS].filter((r) => r !== 'statement-header'));
 const NOT_ORG_WHY = new Set(['inside-other-name', 'word-not-name']);
 const NOT_LINK_WHY = new Set([
 	'no-tie',
 	'code-names-other-bank',
+	'held-at-other',
 	'invalid-identifier',
 	'name-not-this-bank'
 ]);
@@ -34,6 +38,18 @@ const NOT_IDENTIFIER_WHY = new Set([
 	'tax-account-number',
 	'visa-number'
 ]);
+// Kinds that are held at an organisation: each one gets a link or a not_link
+// to every organisation its document names.
+const HELD = new Set([
+	'account',
+	'iban',
+	'card',
+	'bic',
+	'ifsc',
+	'gb_sort_code',
+	'fr_bank_code',
+	'fr_branch_code'
+]);
 const IBAN_BANK_CODE = {
 	CH: [4, 9],
 	DE: [4, 12],
@@ -43,15 +59,22 @@ const IBAN_BANK_CODE = {
 	IE: [4, 8],
 	NL: [4, 8]
 };
+// Where a domestic identifier sits inside its country's IBAN.
+const IBAN_PARTS = {
+	GB: { gb_sort_code: [8, 14], account: [14, 22] },
+	FR: { fr_bank_code: [4, 9], fr_branch_code: [9, 14], account: [14, 25], fr_rib_key: [25, 27] }
+};
+const PERIOD_FIELD = /^(Statement period|Period|Zeitraum|अवधि|期間): $/u;
 const FIELDS = {
 	doc: ['id', 'note', 'nothing_to_find', ...LISTS, 'statement', 'passport'],
-	org: ['id', 'page', 'start', 'end', 'text', 'org', 'by_name', 'candidates'],
-	not_org: ['page', 'start', 'end', 'text', 'org', 'why'],
-	identifier: ['id', 'page', 'start', 'end', 'text', 'kind', 'value', 'valid'],
+	org: ['id', 'page', 'start', 'end', 'text', 'resolved_by_document', 'directory'],
+	organisation: ['name', 'directory', 'names'],
+	not_org: ['page', 'start', 'end', 'text', 'entry', 'why'],
+	identifier: ['id', 'page', 'start', 'end', 'text', 'kind', 'value', 'valid', 'same_account_as'],
 	not_identifier: ['page', 'start', 'end', 'text', 'looks_like', 'why'],
 	link: ['identifier', 'org', 'mention', 'reasons', 'via'],
 	not_link: ['identifier', 'org', 'why'],
-	statement: ['page', 'start', 'end', 'text', 'accounts', 'from', 'to'],
+	statement: ['page', 'start', 'end', 'text', 'accounts', 'issuer', 'from', 'to'],
 	passport: [
 		'holder',
 		'number',
@@ -69,6 +92,10 @@ const ibanBankCode = (iban) => {
 	const [from, to] = IBAN_BANK_CODE[iban.slice(0, 2)] ?? [];
 	return { country: iban.slice(0, 2), code: from === undefined ? null : iban.slice(from, to) };
 };
+const ibanPart = (iban, kind) => {
+	const [from, to] = IBAN_PARTS[iban.slice(0, 2)]?.[kind] ?? [];
+	return from === undefined ? null : iban.slice(from, to);
+};
 const bicMatches = (entry, bic) => entry.codes.bic.some((b) => b.slice(0, 6) === bic.slice(0, 6));
 
 const errors = [];
@@ -82,6 +109,29 @@ const isDate = (s) =>
 	/^\d{4}-\d\d-\d\d$/.test(s) &&
 	new Date(s + 'T00:00:00Z').toISOString().startsWith(s);
 const holderKey = (h) => `${h.surname}, ${h.given}`;
+const word = (c) =>
+	c !== undefined &&
+	/[\p{L}\p{M}\p{N}]/u.test(c) &&
+	!/[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]/u.test(c);
+// The words of a name as the match key splits them, before it joins them.
+const keyWords = (name) =>
+	name
+		.normalize('NFKC')
+		.toLowerCase()
+		.split(/[^\p{L}\p{M}\p{N}]+/u)
+		.filter((w) => w && matchKey(w));
+// A short form of a name: a prefix of its key, or its initials.
+const shortFormOf = (short, name) => {
+	const key = matchKey(short);
+	const initials = keyWords(name)
+		.map((w) => [...w][0])
+		.join('');
+	return (
+		key.length > 0 &&
+		key.length < matchKey(name).length &&
+		(matchKey(name).startsWith(key) || initials === key)
+	);
+};
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 const HINDI_MONTHS = [
@@ -196,17 +246,45 @@ const NUMBER_SHAPES = [
 	/\b[A-Z]{4}0[A-Z0-9]{6}\b/g,
 	/\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?\b/g,
 	/\b[A-Z]{5}\d{4}[A-Z]\b/g,
-	/[A-Z0-9<]{30,}/g
+	/[A-Z0-9<]{30,}/g,
+	/\b\d\d-\d\d-\d\d\b/g
 ];
 
 // Labels.
 const labels = readLabels(new URL('labels.json', SAMPLE));
+if (labels.version !== 2) fail('labels.json', `version ${labels.version}, this check reads 2`);
 if (labels.directory_version !== directory.version)
 	fail(
 		'labels.json',
 		`directory_version ${labels.directory_version}, directory is version ${directory.version}`
 	);
 if (!isDate(labels.reference_date)) fail('labels.json', 'reference_date is not a date');
+
+// Organisations: one identity each, whether or not a directory holds it.
+const organisations = new Map(Object.entries(labels.organisations ?? {}));
+const byEntry = new Map();
+const nameOwner = new Map();
+for (const [id, o] of organisations) {
+	const at = `organisation ${id}`;
+	fields(at, o, FIELDS.organisation);
+	if (!/^[a-z0-9-]+$/.test(id)) fail(at, 'id must be lower case, digits and hyphens');
+	if (typeof o.name !== 'string' || !o.name) fail(at, 'name is missing');
+	if (o.directory !== null) {
+		if (!entries.has(o.directory)) fail(at, `directory ${o.directory} is not in the directory`);
+		if (byEntry.has(o.directory))
+			fail(at, `directory ${o.directory} is also ${byEntry.get(o.directory)}`);
+		byEntry.set(o.directory, id);
+	}
+	if (!Array.isArray(o.names) || !o.names.length) fail(at, 'names must be a list');
+	for (const name of o.names ?? []) {
+		const key = matchKey(name);
+		if (nameOwner.has(key) && nameOwner.get(key) !== id)
+			fail(at, `name ${JSON.stringify(name)} has the key of a name of ${nameOwner.get(key)}`);
+		nameOwner.set(key, id);
+	}
+}
+const usedOrganisations = new Set();
+
 const specDocs = new Map(spec.documents.map((doc) => [doc.id, doc]));
 const labelled = new Set(labels.documents.map((doc) => doc.id));
 for (const id of specDocs.keys())
@@ -214,8 +292,7 @@ for (const id of specDocs.keys())
 
 const statements = [];
 const passports = [];
-let spanCount = 0;
-let linkCount = 0;
+const counts = { spans: 0, links: 0, not_links: 0, mentions: 0, planted: 0 };
 
 for (const doc of labels.documents) {
 	const where = `labels ${doc.id}`;
@@ -232,6 +309,9 @@ for (const doc of labels.documents) {
 		if (LISTS.some((list) => !Array.isArray(doc[list]))) continue;
 	}
 	const pages = source.pages.map((page) => [...pageText(page)]);
+	const proved = planted(source, doc, pages);
+	counts.planted += proved.rows.length;
+	for (const problem of proved.problems) fail(where, problem);
 
 	for (const span of spans(doc)) {
 		const at = `${where} ${JSON.stringify(span.text)}`;
@@ -250,63 +330,22 @@ for (const doc of labels.documents) {
 				at,
 				`span ${span.start}..${span.end} reads ${JSON.stringify(page.slice(span.start, span.end).join(''))}`
 			);
-		spanCount++;
+		counts.spans++;
 	}
 	if (doc.nothing_to_find === true) {
 		lint(doc, pages, where);
 		continue;
 	}
-
-	const orgs = new Map();
-	for (const o of doc.orgs) {
-		const at = `${where} org ${o.id}`;
-		fields(at, o, FIELDS.org);
-		if (orgs.has(o.id)) fail(at, 'id used twice');
-		orgs.set(o.id, o);
-		const held = [...(holders.get(matchKey(o.text)) ?? [])].sort();
-		if (o.by_name === 'exact') {
-			if (!entries.has(o.org)) fail(at, `org ${o.org} is not in the directory`);
-			if (held.length !== 1 || held[0] !== o.org)
-				fail(
-					at,
-					`by_name exact, but the directory gives ${held.join(', ') || 'nothing'} for ${JSON.stringify(o.text)}`
-				);
-		} else if (o.by_name === 'clash') {
-			const candidates = [...(o.candidates ?? [])].sort();
-			if (o.org !== null) fail(at, 'a clash has org null');
-			if (held.length < 2 || candidates.join() !== held.join())
-				fail(
-					at,
-					`candidates ${candidates.join(', ')}, the directory gives ${held.join(', ') || 'nothing'}`
-				);
-		} else if (o.by_name === 'none') {
-			if (!entries.has(o.org)) fail(at, `org ${o.org} is not in the directory`);
-			if (held.length) fail(at, `by_name none, but the directory gives ${held.join(', ')}`);
-		} else fail(at, `by_name ${o.by_name} is not exact, clash or none`);
-		if (o.by_name !== 'clash' && o.candidates) fail(at, 'only a clash has candidates');
-	}
-	const resolved = new Set(doc.orgs.map((o) => o.org).filter(Boolean));
-
-	for (const n of doc.not_orgs) {
-		const at = `${where} not_org ${JSON.stringify(n.text)}`;
-		fields(at, n, FIELDS.not_org);
-		if (!entries.has(n.org)) fail(at, `org ${n.org} is not in the directory`);
-		const inside = doc.orgs.some(
-			(o) =>
-				o.page === n.page &&
-				o.start <= n.start &&
-				n.end <= o.end &&
-				o.end - o.start > n.end - n.start &&
-				o.org !== n.org
-		);
-		if (!NOT_ORG_WHY.has(n.why)) fail(at, `why ${n.why} is not in the list`);
-		else if ((n.why === 'inside-other-name') !== inside)
-			fail(
-				at,
-				inside
-					? 'lies inside a longer mention, so why is inside-other-name'
-					: 'inside-other-name, but no longer mention of another organisation holds it'
-			);
+	// A label holds a whole token: it does not start or end inside a word.
+	for (const span of [...doc.orgs, ...doc.identifiers, ...doc.not_identifiers]) {
+		const page = pages[span.page - 1];
+		if (!page) continue;
+		const chars = [...span.text];
+		if (
+			(word(chars[0]) && word(page[span.start - 1])) ||
+			(word(chars.at(-1)) && word(page[span.end]))
+		)
+			fail(`${where} ${JSON.stringify(span.text)}`, 'covers part of a token, not the whole token');
 	}
 
 	const ids = new Map();
@@ -328,6 +367,31 @@ for (const doc of labels.documents) {
 		const valid = kind.valid ? kind.valid(i.value) : null;
 		if (i.valid !== valid) fail(at, `marked valid ${i.valid}, its check gives ${valid}`);
 	}
+	const lineOf = (span) =>
+		pages[span.page - 1].slice(0, span.start).filter((c) => c === '\n').length;
+	const sameLine = (a, b) => a.page === b.page && lineOf(a) === lineOf(b);
+	const ibans = doc.identifiers.filter((v) => v.kind === 'iban' && v.valid);
+	for (const i of doc.identifiers) {
+		const at = `${where} identifier ${i.id}`;
+		if (i.kind === 'account') {
+			const holding = ibans.filter((v) => ibanPart(v.value, 'account') === i.value);
+			if (i.same_account_as === undefined && holding.length)
+				fail(
+					at,
+					`is the account inside ${holding[0].value}, so same_account_as is ${holding[0].id}`
+				);
+			if (i.same_account_as !== undefined && !holding.some((v) => v.id === i.same_account_as))
+				fail(at, `same_account_as ${i.same_account_as} is not an IBAN here that holds ${i.value}`);
+		} else if (i.same_account_as !== undefined) fail(at, 'only an account has same_account_as');
+		if (i.kind === 'fr_rib_key') {
+			const onLine = (kind) => doc.identifiers.find((v) => v.kind === kind && sameLine(v, i));
+			const [bank, branch, account] = ['fr_bank_code', 'fr_branch_code', 'account'].map(onLine);
+			const key =
+				bank && branch && account ? ribKey(bank.value, branch.value, account.value) : null;
+			if ((key === i.value) !== (i.valid === true))
+				fail(at, `marked valid ${i.valid}, the codes and account on its line give the key ${key}`);
+		}
+	}
 	for (const n of doc.not_identifiers) {
 		const at = `${where} not_identifier ${JSON.stringify(n.text)}`;
 		fields(at, n, FIELDS.not_identifier);
@@ -335,9 +399,134 @@ for (const doc of labels.documents) {
 		if (!NOT_IDENTIFIER_WHY.has(n.why)) fail(at, `why ${n.why} is not in the list`);
 	}
 
-	const lineOf = (span) =>
-		pages[span.page - 1].slice(0, span.start).filter((c) => c === '\n').length;
+	const orgs = new Map();
+	for (const o of doc.orgs) {
+		const at = `${where} org ${o.id}`;
+		fields(at, o, FIELDS.org);
+		if (orgs.has(o.id)) fail(at, 'id used twice');
+		orgs.set(o.id, o);
+		counts.mentions++;
+		const held = [...(holders.get(matchKey(o.text)) ?? [])].sort();
+		const lookup = o.directory ?? {};
+		if (lookup.lookup === 'exact') {
+			if (held.length !== 1 || held[0] !== lookup.id)
+				fail(
+					at,
+					`directory exact ${lookup.id}, but the directory gives ${held.join(', ') || 'nothing'} for ${JSON.stringify(o.text)}`
+				);
+			if (lookup.candidates) fail(at, 'only a clash has candidates');
+		} else if (lookup.lookup === 'clash') {
+			const candidates = [...(lookup.candidates ?? [])].sort();
+			if (held.length < 2 || candidates.join() !== held.join())
+				fail(
+					at,
+					`directory candidates ${candidates.join(', ')}, the directory gives ${held.join(', ') || 'nothing'}`
+				);
+			if (lookup.id) fail(at, 'a clash has no id');
+		} else if (lookup.lookup === 'none') {
+			if (held.length) fail(at, `directory none, but the directory gives ${held.join(', ')}`);
+		} else fail(at, `directory lookup ${lookup.lookup} is not exact, clash or none`);
+	}
+	const resolvedOrg = (o) => o?.resolved_by_document?.org ?? null;
+	const entryOf = (o) => organisations.get(resolvedOrg(o))?.directory ?? null;
+	const resolved = new Set(doc.orgs.map(resolvedOrg).filter(Boolean));
+	const codeOrg = (identifier) => doc.links.find((l) => l.identifier === identifier.id)?.org;
+	const prefix = (v) => v.value.slice(0, 4).toLowerCase();
+
+	for (const o of doc.orgs) {
+		const at = `${where} org ${o.id}`;
+		const r = o.resolved_by_document;
+		if (r === null) {
+			if (o.directory?.lookup === 'exact' && !byEntry.has(o.directory.id))
+				fail(at, `the directory settles it as ${o.directory.id}, which no organisation carries`);
+			continue;
+		}
+		if (!r || !organisations.has(r.org)) {
+			fail(at, `resolved_by_document ${JSON.stringify(r)} names no organisation`);
+			continue;
+		}
+		usedOrganisations.add(r.org);
+		if (o.directory?.lookup === 'exact' && o.directory.id !== organisations.get(r.org).directory)
+			fail(at, `the document settles it as ${r.org}, the directory as ${o.directory.id}`);
+		if (!Array.isArray(r.evidence) || !r.evidence.length) fail(at, 'evidence must be a list');
+		for (const e of r.evidence ?? []) {
+			if (e.by === 'name') {
+				if (nameOwner.get(matchKey(o.text)) !== r.org)
+					fail(at, `${JSON.stringify(o.text)} is not a name of ${r.org}`);
+			} else if (e.by === 'mention') {
+				const other = orgs.get(e.mention);
+				if (!other || other === o || resolvedOrg(other) !== r.org)
+					fail(at, `evidence mention ${e.mention} is not another mention of ${r.org}`);
+				else if (other.resolved_by_document.evidence.some((x) => x.by === 'mention'))
+					fail(at, `evidence mention ${e.mention} is itself settled by another mention`);
+				else if (!shortFormOf(o.text, other.text))
+					fail(
+						at,
+						`${JSON.stringify(o.text)} is not a short form of ${JSON.stringify(other.text)}`
+					);
+				const rivals = doc.orgs.filter(
+					(x) => resolvedOrg(x) && resolvedOrg(x) !== r.org && shortFormOf(o.text, x.text)
+				);
+				if (rivals.length)
+					fail(
+						at,
+						`${JSON.stringify(o.text)} is also a short form of ${JSON.stringify(rivals[0].text)}`
+					);
+			} else if (e.by === 'code') {
+				const code = ids.get(e.identifier);
+				if (!code || !['ifsc', 'bic'].includes(code.kind))
+					fail(at, `evidence identifier ${e.identifier} is not an IFSC or BIC here`);
+				else if (prefix(code) !== matchKey(o.text) || codeOrg(code) !== r.org)
+					fail(at, `${code.value} does not spell ${JSON.stringify(o.text)} and tie it to ${r.org}`);
+				else if (
+					doc.identifiers.some(
+						(v) =>
+							['ifsc', 'bic'].includes(v.kind) && prefix(v) === prefix(code) && codeOrg(v) !== r.org
+					)
+				)
+					fail(at, `another code spelling ${JSON.stringify(o.text)} is tied elsewhere`);
+			} else fail(at, `evidence by ${e.by} is not name, mention or code`);
+		}
+	}
+
+	for (const n of doc.not_orgs) {
+		const at = `${where} not_org ${JSON.stringify(n.text)}`;
+		fields(at, n, FIELDS.not_org);
+		if (!entries.has(n.entry)) fail(at, `entry ${n.entry} is not in the directory`);
+		const inside = doc.orgs.some(
+			(o) =>
+				o.page === n.page &&
+				o.start <= n.start &&
+				n.end <= o.end &&
+				o.end - o.start > n.end - n.start &&
+				entryOf(o) !== n.entry
+		);
+		if (!NOT_ORG_WHY.has(n.why)) fail(at, `why ${n.why} is not in the list`);
+		else if ((n.why === 'inside-other-name') !== inside)
+			fail(
+				at,
+				inside
+					? 'lies inside a longer mention, so why is inside-other-name'
+					: 'inside-other-name, but no longer mention of another organisation holds it'
+			);
+	}
+
+	// Every organisation the document names or ties an identifier to: settled
+	// mentions, links, the candidates of a clash, and an organisation whose
+	// name sits inside another's.
+	const named = new Set([...resolved, ...doc.links.map((l) => l.org)]);
+	const nameEntries = [
+		...doc.orgs.flatMap((o) => o.directory?.candidates ?? []),
+		...doc.not_orgs.filter((n) => n.why === 'inside-other-name').map((n) => n.entry)
+	];
+	const heldHere = doc.identifiers.some((i) => HELD.has(i.kind));
+	for (const entry of nameEntries) {
+		if (byEntry.has(entry)) named.add(byEntry.get(entry));
+		else if (heldHere) fail(where, `names ${entry}, which no organisation carries`);
+	}
+
 	const statementValues = new Set((doc.statement?.accounts ?? []).map((id) => ids.get(id)?.value));
+	const issuer = orgs.get(doc.statement?.issuer);
 	const codeLinked = (v, org) =>
 		doc.links.some(
 			(l) =>
@@ -345,9 +534,19 @@ for (const doc of labels.documents) {
 				l.org === org &&
 				(l.reasons.includes('ifsc-prefix') || l.reasons.includes('bic-institution'))
 		);
+	const linkedIbanHolding = (id, org) =>
+		ibans.some(
+			(v) =>
+				ibanPart(v.value, id.kind) === id.value &&
+				doc.links.some((l) => l.identifier === v.id && l.org === org)
+		);
+	const lineHas = (span, kinds) =>
+		doc.identifiers.some((v) => v !== span && kinds.includes(v.kind) && sameLine(v, span));
 	// Why a reason does not hold for identifier id at org, or null when it holds.
 	const reasonProblem = (reason, id, org, via) => {
-		const entry = entries.get(org);
+		const entry = entries.get(organisations.get(org)?.directory);
+		if (['iban-bank-code', 'bic-institution', 'ifsc-prefix'].includes(reason) && !entry)
+			return `${org} is not in the directory`;
 		if (reason === 'iban-bank-code') {
 			if (id.kind !== 'iban') return 'not an IBAN';
 			const code = ibanBankCode(id.value);
@@ -372,27 +571,52 @@ for (const doc of labels.documents) {
 			if (!via || !['ifsc', 'bic'].includes(via.kind))
 				return 'via is not an IFSC or BIC in this document';
 			if (!codeLinked(via, org)) return `${via.value} is not tied to ${org} by its own code`;
+			if (sameLine(via, id)) return null;
 			if (via.page !== id.page || Math.abs(lineOf(via) - lineOf(id)) > 1)
 				return `${via.value} is not on the same or the next line`;
+			if (lineHas(id, ['ifsc', 'bic'])) return `${id.value} has a code of its own on its line`;
+			if (lineHas(via, ['account', 'iban']))
+				return `${via.value} belongs to the account on its own line`;
 			return null;
 		}
+		if (reason === 'inside-iban') {
+			if (!['gb_sort_code', 'fr_bank_code', 'fr_branch_code'].includes(id.kind))
+				return `a ${id.kind} is not part of an IBAN`;
+			return linkedIbanHolding(id, org) ? null : `no IBAN tied to ${org} holds ${id.value}`;
+		}
+		if (reason === 'same-account') {
+			const iban = ids.get(id.same_account_as);
+			return iban && doc.links.some((l) => l.identifier === iban.id && l.org === org)
+				? null
+				: `${id.value} is not the same account as an IBAN tied to ${org}`;
+		}
 		if (!statementValues.has(id.value)) return "the identifier is not the statement's account";
-		if (resolved.size !== 1 || !resolved.has(org))
-			return `the document names ${[...resolved].join(', ') || 'no organisation'}, not exactly ${org}`;
+		if (!issuer || resolvedOrg(issuer) !== org) return `the statement's issuer is not ${org}`;
 		return null;
 	};
+	const holdingReasons = (id, org) =>
+		id.valid === false
+			? []
+			: [...REASONS].filter((reason) =>
+					reason === 'paired-code'
+						? doc.identifiers.some((v) => !reasonProblem(reason, id, org, v))
+						: !reasonProblem(reason, id, org)
+				);
+
 	const linked = new Map();
 	for (const link of doc.links) {
 		const at = `${where} link ${link.identifier}->${link.org}`;
 		fields(at, link, FIELDS.link);
-		linkCount++;
+		counts.links++;
 		const id = ids.get(link.identifier);
-		const entry = entries.get(link.org);
 		if (!id) fail(at, 'identifier is not in this document');
-		if (!entry) fail(at, 'org is not in the directory');
-		if (link.mention !== null && orgs.get(link.mention)?.org !== link.org)
+		if (!organisations.has(link.org)) fail(at, 'org is not an organisation');
+		if (link.mention !== null && resolvedOrg(orgs.get(link.mention)) !== link.org)
 			fail(at, `mention ${link.mention} is not a mention of ${link.org} in this document`);
-		if (!id || !entry) continue;
+		if (link.mention === null && resolved.has(link.org))
+			fail(at, `the document mentions ${link.org}, so mention is not null`);
+		if (!id || !organisations.has(link.org)) continue;
+		usedOrganisations.add(link.org);
 		if (id.valid === false) fail(at, 'links an identifier that fails its check');
 		const key = `${id.value} ${link.org}`;
 		if (linked.has(key)) fail(at, 'linked twice');
@@ -407,13 +631,14 @@ for (const doc of labels.documents) {
 			fail(at, 'via goes with paired-code, and only with it');
 		for (const reason of link.reasons)
 			if (!REASONS.has(reason)) fail(at, `reason ${reason} is not in the list`);
+		const holding = holdingReasons(id, link.org);
 		for (const reason of REASONS) {
 			const listed = link.reasons.includes(reason);
-			let problem;
-			if (reason === 'paired-code' && !listed) {
-				const pairs = doc.identifiers.filter((v) => !reasonProblem(reason, id, link.org, v));
-				problem = pairs.length ? null : 'no code beside it';
-			} else problem = reasonProblem(reason, id, link.org, ids.get(link.via));
+			let problem = holding.includes(reason)
+				? null
+				: (reasonProblem(reason, id, link.org) ?? 'no code beside it');
+			if (reason === 'paired-code' && listed)
+				problem = reasonProblem(reason, id, link.org, ids.get(link.via));
 			if (listed && problem) fail(at, `${reason}: ${problem}`);
 			if (!listed && !problem) fail(at, `${reason} holds but is not listed`);
 		}
@@ -421,16 +646,19 @@ for (const doc of labels.documents) {
 	for (const i of doc.identifiers) {
 		if (!['iban', 'bic', 'ifsc'].includes(i.kind) || i.valid !== true) continue;
 		for (const entry of directory.entries) {
-			const named =
+			const code = ibanBankCode(i.value);
+			const names =
 				(i.kind === 'iban' &&
 					entry.codes.iban_bank_code.some(
-						(c) =>
-							c.country === ibanBankCode(i.value).country && c.code === ibanBankCode(i.value).code
+						(c) => c.country === code.country && c.code === code.code
 					)) ||
 				(i.kind === 'bic' && bicMatches(entry, i.value)) ||
 				(i.kind === 'ifsc' && entry.codes.ifsc_prefix.includes(i.value.slice(0, 4)));
-			if (named && !linked.has(`${i.value} ${entry.id}`))
-				fail(`${where} identifier ${i.id}`, `its code names ${entry.id}, but there is no link`);
+			if (names && !linked.has(`${i.value} ${byEntry.get(entry.id)}`))
+				fail(
+					`${where} identifier ${i.id}`,
+					`its code names ${entry.id}, but there is no link to it`
+				);
 		}
 	}
 	const linkedTo = new Map();
@@ -441,55 +669,99 @@ for (const doc of labels.documents) {
 		linkedTo.set(value, org);
 	}
 
+	const excluded = new Set();
 	for (const n of doc.not_links) {
 		const at = `${where} not_link ${n.identifier}->${n.org}`;
 		fields(at, n, FIELDS.not_link);
+		counts.not_links++;
 		const id = ids.get(n.identifier);
 		if (!id) fail(at, 'identifier is not in this document');
-		if (!entries.has(n.org)) fail(at, 'org is not in the directory');
-		if (!id) continue;
+		if (!organisations.has(n.org)) fail(at, 'org is not an organisation');
+		if (!id || !organisations.has(n.org)) continue;
+		usedOrganisations.add(n.org);
+		if (!named.has(n.org) && n.why !== 'invalid-identifier')
+			fail(at, `the document does not name ${n.org}`);
+		if (excluded.has(`${n.identifier} ${n.org}`)) fail(at, 'listed twice');
+		excluded.add(`${n.identifier} ${n.org}`);
 		if (linked.has(`${id.value} ${n.org}`)) fail(at, 'the same pair is also a link');
+		const holds = holdingReasons(id, n.org);
+		if (holds.length) fail(at, `${holds.join(', ')} holds, so the pair is a link`);
 		const other = linkedTo.get(id.value);
+		const otherByCode = [...linked.values()].some(
+			(l) => ids.get(l.identifier)?.value === id.value && l.reasons.some((r) => CODE_REASONS.has(r))
+		);
 		if (!NOT_LINK_WHY.has(n.why)) fail(at, `why ${n.why} is not in the list`);
 		else if (n.why === 'invalid-identifier' && id.valid !== false)
 			fail(at, 'invalid-identifier, but the identifier passes its check');
-		else if (
-			n.why === 'code-names-other-bank' &&
-			!(
-				other &&
-				other !== n.org &&
-				[...linked.values()].some(
-					(l) =>
-						ids.get(l.identifier)?.value === id.value && l.reasons.some((r) => CODE_REASONS.has(r))
-				)
-			)
-		)
+		else if (n.why === 'code-names-other-bank' && !(other && other !== n.org && otherByCode))
 			fail(at, 'code-names-other-bank, but no code ties the identifier to another bank');
+		else if (n.why === 'held-at-other' && !(other && other !== n.org && !otherByCode))
+			fail(
+				at,
+				otherByCode
+					? 'a code ties the identifier to another bank, so why is code-names-other-bank'
+					: 'held-at-other, but the identifier is not held at another organisation'
+			);
 		else if (n.why === 'no-tie' && other)
 			fail(at, `no-tie, but the identifier is linked to ${other}`);
 		else if (n.why === 'name-not-this-bank' && resolved.has(n.org))
 			fail(at, 'name-not-this-bank, but the document names this bank');
+	}
+	// Every held identifier has a link or a not_link to every named organisation.
+	for (const i of doc.identifiers) {
+		if (!HELD.has(i.kind)) continue;
+		for (const org of named) {
+			if (!linked.has(`${i.value} ${org}`) && !excluded.has(`${i.id} ${org}`))
+				fail(`${where} identifier ${i.id}`, `has neither a link nor a not_link to ${org}`);
+		}
 	}
 
 	if (doc.statement) {
 		const s = doc.statement;
 		const at = `${where} statement`;
 		fields(at, s, FIELDS.statement);
-		if (!s.accounts?.length || s.accounts.some((id) => !ids.has(id)))
+		const accounts = (s.accounts ?? []).map((id) => ids.get(id));
+		if (!accounts.length || accounts.some((a) => !a))
 			fail(at, 'accounts must name identifiers of this document');
+		const one = accounts.every(
+			(a) =>
+				a &&
+				accounts.every(
+					(b) => a.value === b?.value || a.same_account_as === b?.id || b?.same_account_as === a.id
+				)
+		);
+		if (!one) fail(at, 'accounts are not all spellings of one account');
+		if (!issuer || !resolvedOrg(issuer)) fail(at, 'issuer must name a settled mention');
+		else if (
+			doc.orgs.some(
+				(o) => o.page < issuer.page || (o.page === issuer.page && o.start < issuer.start)
+			)
+		)
+			fail(at, `issuer ${s.issuer} is not the first organisation the document names`);
 		if (!isDate(s.from) || !isDate(s.to) || s.from > s.to)
 			fail(at, `period ${s.from}..${s.to} is not a pair of dates in order`);
 		const read = datesIn(s.text);
 		if (read[0] !== s.from || read[1] !== s.to)
 			fail(at, `the text gives ${read.join(' and ') || 'no dates'}, not ${s.from} and ${s.to}`);
-		if (s.accounts?.length && ids.has(s.accounts[0]))
+		const page = pages[s.page - 1] ?? [];
+		const lineStart = page.lastIndexOf('\n', s.start - 1) + 1;
+		const lineEnd = page.indexOf('\n', s.end);
+		if (
+			!PERIOD_FIELD.test(page.slice(lineStart, s.start).join('')) ||
+			(lineEnd === -1 ? page.length : lineEnd) !== s.end
+		)
+			fail(at, `${JSON.stringify(s.text)} is not the statement's own period field`);
+		if (one && accounts.length) {
+			const iban = accounts.find((a) => a.kind === 'iban');
 			statements.push({
 				doc: doc.id,
-				account: ids.get(s.accounts[0]).value,
+				account: (iban ?? accounts[0]).value,
+				spellings: new Set(accounts.map((a) => a.value)),
 				from: s.from,
 				to: s.to,
 				created: source.created
 			});
+		}
 	}
 
 	if (doc.passport) {
@@ -541,6 +813,8 @@ for (const doc of labels.documents) {
 	}
 	lint(doc, pages, where);
 }
+for (const id of organisations.keys())
+	if (!usedOrganisations.has(id)) fail(`organisation ${id}`, 'no label uses it');
 
 // Answers, derived from the labels above.
 const ref = labels.reference_date;
@@ -561,16 +835,30 @@ const currentWant = answer(
 );
 if (!sameSet(currentWant, answer(labels.answers.current_passport)))
 	fail('labels answers', `current_passport should be ${[...currentWant].join(' ')}`);
-const byAccount = Map.groupBy(statements, (s) => s.account);
+// Statements that share a spelling are statements of one account, keyed by
+// its IBAN when any statement gives one.
+const accounts = [];
+for (const s of statements) {
+	const into = { spellings: new Set(s.spellings), list: [s] };
+	for (const a of accounts.filter((a) => [...s.spellings].some((v) => a.spellings.has(v)))) {
+		accounts.splice(accounts.indexOf(a), 1);
+		a.spellings.forEach((v) => into.spellings.add(v));
+		into.list.push(...a.list);
+	}
+	accounts.push(into);
+}
+for (const a of accounts)
+	a.account = a.list.find((s) => /^[A-Z]{2}\d\d/.test(s.account))?.account ?? a.list[0].account;
 const latestWant = answer(
-	[...byAccount].map(([account, list]) => ({
-		account,
-		document: list.reduce((a, b) => (b.to > a.to ? b : a)).doc
+	accounts.map((a) => ({
+		account: a.account,
+		spellings: [...a.spellings].sort(),
+		document: a.list.reduce((x, y) => (y.to > x.to ? y : x)).doc
 	}))
 );
 if (!sameSet(latestWant, answer(labels.answers.latest_statement)))
 	fail('labels answers', `latest_statement should be ${[...latestWant].join(' ')}`);
-for (const [account, list] of byAccount) {
+for (const { account, list } of accounts) {
 	if (list.length < 2) continue;
 	const byPeriod = [...list]
 		.sort((a, b) => a.to.localeCompare(b.to))
@@ -584,18 +872,15 @@ for (const [account, list] of byAccount) {
 		fail(`statements of ${account}`, 'file dates agree with the periods; they must not');
 }
 
-// Completeness: every directory name and every identifier-shaped number on a
-// page lies in a labelled span, so nothing findable is left unlabelled.
+// Completeness: every directory name on a page is covered, for each entry
+// that holds it, by a mention of that entry or a not_org of it; every
+// identifier-shaped number lies whole inside one label.
 function lint(doc, pages, where) {
-	const covered = (lists, page, start, end) =>
-		lists.some((s) => s.page === page && s.start < end && start < s.end);
+	const overlaps = (s, page, start, end) => s.page === page && s.start < end && start < s.end;
+	const entryOf = (o) => organisations.get(o.resolved_by_document?.org)?.directory;
 	pages.forEach((chars, index) => {
 		const page = index + 1;
 		const lower = chars.map((c) => c.toLowerCase());
-		const word = (c) =>
-			c !== undefined &&
-			/[\p{L}\p{M}\p{N}]/u.test(c) &&
-			!/[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]/u.test(c);
 		for (const [first, names] of nameIndex) {
 			for (let i = 0; i < lower.length; i++) {
 				if (lower[i] !== first) continue;
@@ -604,16 +889,19 @@ function lint(doc, pages, where) {
 					const end = i + name.length;
 					if ((word(name[0]) && word(chars[i - 1])) || (word(name.at(-1)) && word(chars[end])))
 						continue;
-					const ids = nameHolders.get(name.join(''));
-					const ofThisName = (o) => ids.has(o.org) || (o.candidates ?? []).some((c) => ids.has(c));
-					if (
-						!covered((doc.orgs ?? []).filter(ofThisName), page, i, end) &&
-						!covered(doc.not_orgs ?? [], page, i, end)
-					) {
-						fail(
-							where,
-							`page ${page} names ${JSON.stringify(chars.slice(i, end).join(''))} (${[...ids].join(', ')}) at ${i}, which no org or not_org label covers`
-						);
+					for (const entry of nameHolders.get(name.join(''))) {
+						const ofEntry = (o) =>
+							entryOf(o) === entry ||
+							o.directory?.id === entry ||
+							(o.directory?.candidates ?? []).includes(entry);
+						if (
+							!(doc.orgs ?? []).some((o) => ofEntry(o) && overlaps(o, page, i, end)) &&
+							!(doc.not_orgs ?? []).some((n) => n.entry === entry && overlaps(n, page, i, end))
+						)
+							fail(
+								where,
+								`page ${page} names ${JSON.stringify(chars.slice(i, end).join(''))} (${entry}) at ${i}, which no org or not_org label of ${entry} covers`
+							);
 					}
 				}
 			}
@@ -623,17 +911,15 @@ function lint(doc, pages, where) {
 		for (const pattern of NUMBER_SHAPES) {
 			for (const m of text.matchAll(pattern)) {
 				const start = toPoint(m.index);
+				const end = start + [...m[0]].length;
 				if (
-					!covered(
-						[...(doc.identifiers ?? []), ...(doc.not_identifiers ?? [])],
-						page,
-						start,
-						start + [...m[0]].length
+					![...(doc.identifiers ?? []), ...(doc.not_identifiers ?? [])].some(
+						(s) => s.page === page && s.start <= start && end <= s.end
 					)
 				)
 					fail(
 						where,
-						`page ${page} holds ${JSON.stringify(m[0])} at ${start}, which no identifier or not_identifier label covers`
+						`page ${page} holds ${JSON.stringify(m[0])} at ${start}, which no identifier or not_identifier label holds whole`
 					);
 			}
 		}
@@ -668,5 +954,5 @@ if (errors.length) {
 	process.exit(1);
 }
 console.log(
-	`ok: ${built.length} documents, ${spanCount} spans, ${linkCount} links, ${directory.entries.length} directory entries${process.argv.includes('--pdfkit') ? ', PDFKit text matches' : ''}`
+	`ok: ${built.length} documents, ${counts.spans} spans, ${counts.mentions} organisation mentions, ${counts.links} links, ${counts.not_links} not_links, ${counts.planted} planted tokens, ${organisations.size} organisations, ${directory.entries.length} directory entries${process.argv.includes('--pdfkit') ? ', PDFKit text matches' : ''}`
 );

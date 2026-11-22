@@ -65,6 +65,43 @@ export function parseMrz(value) {
 	return fields;
 }
 
+// The French RIB key: 97 minus (89 x bank code + 15 x branch code + 3 x account)
+// mod 97, with the account's letters read as digits (A and J are 1, B, K and S
+// are 2, and so on).
+const RIB_LETTERS = {
+	A: 1,
+	J: 1,
+	B: 2,
+	K: 2,
+	S: 2,
+	C: 3,
+	L: 3,
+	T: 3,
+	D: 4,
+	M: 4,
+	U: 4,
+	E: 5,
+	N: 5,
+	V: 5,
+	F: 6,
+	O: 6,
+	W: 6,
+	G: 7,
+	P: 7,
+	X: 7,
+	H: 8,
+	Q: 8,
+	Y: 8,
+	I: 9,
+	R: 9,
+	Z: 9
+};
+export function ribKey(bank, branch, account) {
+	const digits = [...account].map((c) => RIB_LETTERS[c] ?? c).join('');
+	const sum = 89n * BigInt(bank) + 15n * BigInt(branch) + 3n * BigInt(digits);
+	return String(97n - (sum % 97n)).padStart(2, '0');
+}
+
 export const KINDS = {
 	iban: { normalize: (t) => t.replaceAll(' ', ''), valid: validIban },
 	bic: { normalize: (t) => t, valid: (v) => /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(v) },
@@ -75,6 +112,11 @@ export const KINDS = {
 	ifsc: { normalize: (t) => t, valid: (v) => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v) },
 	in_pan: { normalize: (t) => t, valid: (v) => /^[A-Z]{3}[ABCFGHJLPT][A-Z]\d{4}[A-Z]$/.test(v) },
 	mrz: { normalize: (t) => t, valid: (v) => parseMrz(v)?.failed.length === 0 },
+	gb_sort_code: { normalize: (t) => t.replaceAll('-', ''), valid: (v) => /^\d{6}$/.test(v) },
+	fr_bank_code: { normalize: (t) => t, valid: (v) => /^\d{5}$/.test(v) },
+	fr_branch_code: { normalize: (t) => t, valid: (v) => /^\d{5}$/.test(v) },
+	// Shape only here; check.mjs also recomputes the key from the codes beside it.
+	fr_rib_key: { normalize: (t) => t, valid: (v) => /^\d{2}$/.test(v) },
 	account: { normalize: (t) => t.replaceAll(' ', ''), valid: null },
 	passport_number: { normalize: (t) => t, valid: null }
 };

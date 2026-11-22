@@ -29,7 +29,7 @@ endobj
 << /Type /Font /Subtype /Type0 /BaseFont /T /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 5 0 R >>
 endobj
 9 0 obj
-<< /Length 753 >>
+<< /Length 683 >>
 stream
 BT /F2 10 Tf 50 760 Td (MUSTERDOKUMENT. F\374r Tests erfunden. Kein echter Brief.) Tj ET
 BT /F2 10 Tf 50 746 Td (SAMPLE DOCUMENT. Made up for testing.) Tj ET
@@ -37,10 +37,9 @@ BT /F2 10 Tf 50 732 Td (Deutsche Bank) Tj ET
 BT /F2 10 Tf 50 718 Td (Berlin, 12.03.2026) Tj ET
 BT /F2 10 Tf 50 704 Td (Sehr geehrte Frau Mustermann,) Tj ET
 BT /F2 10 Tf 50 690 Td (ab dem 1. Mai 2026 gelten neue Meldegrenzen der Deutschen Bundesbank f\374r Zahlungen ins Ausland.) Tj ET
-BT /F2 10 Tf 50 676 Td (Ihr Konto: DE65 1007 0000 0123 4567 89) Tj ET
-BT /F2 10 Tf 50 662 Td (Die \304nderung betrifft Sie nur, wenn Sie mehr als 12.500 Euro ins Ausland senden.) Tj ET
-BT /F2 10 Tf 50 648 Td (Mit freundlichen Gr\374\337en) Tj ET
-BT /F2 10 Tf 50 634 Td (Deutsche Bank AG, Filiale Berlin) Tj ET
+BT /F2 10 Tf 50 676 Td (Die \304nderung betrifft Sie nur, wenn Sie mehr als 12.500 Euro ins Ausland senden.) Tj ET
+BT /F2 10 Tf 50 662 Td (Mit freundlichen Gr\374\337en) Tj ET
+BT /F2 10 Tf 50 648 Td (Deutsche Bank AG, Filiale Berlin) Tj ET
 endstream
 endobj
 10 0 obj
@@ -58,9 +57,9 @@ xref
 0000000793 00000 n 
 0000000966 00000 n 
 0000001092 00000 n 
-0000001896 00000 n 
+0000001826 00000 n 
 trailer
 << /Size 11 /Root 1 0 R /Info 3 0 R >>
 startxref
-2033
+1963
 %%EOF

@@ -1,68 +1,121 @@
 {
-  "version": 1,
+  "version": 2,
   "reference_date": "2026-11-22",
   "span_unit": "Unicode scalar values, start inclusive, end exclusive, into the page text: the page's lines in spec.json joined with a line feed",
   "directory": "directory/banks.json",
   "directory_version": 1,
+  "organisations": {
+    "hdfc-bank": {"name":"HDFC Bank","directory":"Q631047","names":["HDFC Bank","एचडीएफसी बैंक"]},
+    "hdfc-ltd": {"name":"Housing Development Finance Corporation","directory":"Q1446319","names":["Housing Development Finance Corporation Limited"]},
+    "hdfc-life": {"name":"HDFC Life Insurance Company","directory":"Q5629189","names":["HDFC Life Insurance Company Limited","HDFC Life"]},
+    "kotak": {"name":"Kotak Mahindra Bank","directory":"Q2040404","names":["Kotak Mahindra Bank"]},
+    "sample-nagar-sahakari-bank": {"name":"Sample Nagar Sahakari Bank","directory":null,"names":["Sample Nagar Sahakari Bank"]},
+    "sampleton-credit-union": {"name":"Sampleton Credit Union","directory":null,"names":["Sampleton Credit Union"]},
+    "natwest": {"name":"National Westminster Bank","directory":"Q2740021","names":["National Westminster Bank Plc"]},
+    "example-cafe": {"name":"Example Cafe","directory":null,"names":["Example Cafe"]},
+    "abn-amro": {"name":"ABN AMRO","directory":"Q287471","names":["ABN AMRO Bank N.V.","ABN AMRO"]},
+    "commerzbank": {"name":"Commerzbank","directory":"Q157617","names":["Commerzbank"]},
+    "deutsche-bank": {"name":"Deutsche Bank","directory":"Q66048","names":["Deutsche Bank"]},
+    "bundesbank": {"name":"Deutsche Bundesbank","directory":"Q162222","names":["Deutschen Bundesbank"]},
+    "musterfirma-schreinerei": {"name":"Musterfirma Schreinerei GmbH","directory":null,"names":["Musterfirma Schreinerei GmbH"]},
+    "sample-supplies": {"name":"Sample Supplies Ltd","directory":null,"names":["Sample Supplies Ltd"]},
+    "sample-traders": {"name":"Sample Traders","directory":null,"names":["Sample Traders"]},
+    "icici-bank": {"name":"ICICI Bank","directory":"Q1653258","names":["ICICI Bank"]},
+    "bnp-paribas": {"name":"BNP Paribas","directory":"Q499707","names":["BNP Paribas"]},
+    "mizuho-bank": {"name":"Mizuho Bank","directory":"Q2882956","names":["Mizuho Bank","みずほ銀行"]},
+    "sample-grocers": {"name":"Sample Grocers","directory":null,"names":["Sample Grocers"]},
+    "example-books": {"name":"Example Books","directory":null,"names":["Example Books"]},
+    "icici-lombard": {"name":"ICICI Lombard General Insurance Company","directory":"Q5969591","names":["ICICI Lombard General Insurance Company Limited"]},
+    "sample-public-school": {"name":"Sample Public School","directory":null,"names":["Sample Public School"]},
+    "sbi": {"name":"State Bank of India","directory":"Q1340361","names":["State Bank of India","स्टेट बैंक ऑफ़ इंडिया"]},
+    "bank-of-india": {"name":"Bank of India","directory":"Q2004439","names":["Bank of India"]},
+    "central-bank-of-india": {"name":"Central Bank of India","directory":"Q2007090","names":["Central Bank of India"]},
+    "union-bank-of-india": {"name":"Union Bank of India","directory":"Q2004078","names":["Union Bank of India"]},
+    "bank-of-baroda": {"name":"Bank of Baroda","directory":"Q2003797","names":["Bank of Baroda"]},
+    "pnb": {"name":"Punjab National Bank","directory":"Q2743499","names":["Punjab National Bank"]},
+    "punjab-sind-bank": {"name":"Punjab & Sind Bank","directory":"Q2003302","names":["Punjab & Sind Bank"]},
+    "sample-technologies": {"name":"Sample Technologies Private Limited","directory":null,"names":["सैंपल टेक्नोलॉजीज़ प्राइवेट लिमिटेड"]},
+    "mufg-bank": {"name":"MUFG Bank","directory":"Q988284","names":["三菱UFJ銀行"]},
+    "mufg-trust": {"name":"Mitsubishi UFJ Trust and Banking Corporation","directory":"Q6883178","names":["三菱UFJ信託銀行"]},
+    "la-banque-postale": {"name":"La Banque Postale","directory":"Q3206431","names":["La Banque Postale"]},
+    "axis-bank": {"name":"Axis Bank","directory":"Q2003549","names":["Axis Bank"]},
+    "sample-power": {"name":"Sample Power Distribution Ltd","directory":null,"names":["Sample Power Distribution Ltd"]},
+    "utopia-passport-office": {"name":"Utopia Passport Office","directory":null,"names":["UTOPIA PASSPORT OFFICE"]}
+  },
   "documents": [
     {
       "id": "hdfc-statement-sep",
       "orgs": [
-        {"id":"o1","page":1,"start":60,"end":73,"text":"HDFC Bank Ltd","org":"Q631047","by_name":"exact"}
+        {"id":"o1","page":1,"start":60,"end":73,"text":"HDFC Bank Ltd","resolved_by_document":{"org":"hdfc-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q631047"}}
       ],
-      "not_orgs": [],
+      "not_orgs": [
+        {"page":1,"start":60,"end":64,"text":"HDFC","entry":"Q1446319","why":"inside-other-name"}
+      ],
       "identifiers": [
         {"id":"i1","page":1,"start":193,"end":207,"text":"50100417263958","kind":"account","value":"50100417263958","valid":null},
         {"id":"i2","page":1,"start":214,"end":225,"text":"HDFC0SAMPL1","kind":"ifsc","value":"HDFC0SAMPL1","valid":true}
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q631047","mention":"o1","reasons":["statement-header","paired-code"],"via":"i2"},
-        {"identifier":"i2","org":"Q631047","mention":"o1","reasons":["ifsc-prefix"]}
+        {"identifier":"i1","org":"hdfc-bank","mention":"o1","reasons":["statement-header","paired-code"],"via":"i2"},
+        {"identifier":"i2","org":"hdfc-bank","mention":"o1","reasons":["ifsc-prefix"]}
       ],
-      "not_links": [],
-      "statement": {"page":1,"start":266,"end":292,"text":"01 Sep 2026 to 30 Sep 2026","accounts":["i1"],"from":"2026-09-01","to":"2026-09-30"}
+      "not_links": [
+        {"identifier":"i1","org":"hdfc-ltd","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"hdfc-ltd","why":"code-names-other-bank"}
+      ],
+      "statement": {"page":1,"start":266,"end":292,"text":"01 Sep 2026 to 30 Sep 2026","accounts":["i1"],"from":"2026-09-01","to":"2026-09-30","issuer":"o1"}
     },
     {
       "id": "hdfc-statement-jul",
       "orgs": [
-        {"id":"o1","page":1,"start":60,"end":73,"text":"HDFC Bank Ltd","org":"Q631047","by_name":"exact"}
+        {"id":"o1","page":1,"start":60,"end":73,"text":"HDFC Bank Ltd","resolved_by_document":{"org":"hdfc-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q631047"}}
       ],
-      "not_orgs": [],
+      "not_orgs": [
+        {"page":1,"start":60,"end":64,"text":"HDFC","entry":"Q1446319","why":"inside-other-name"}
+      ],
       "identifiers": [
         {"id":"i1","page":1,"start":193,"end":207,"text":"50100417263958","kind":"account","value":"50100417263958","valid":null},
         {"id":"i2","page":1,"start":214,"end":225,"text":"HDFC0SAMPL1","kind":"ifsc","value":"HDFC0SAMPL1","valid":true}
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q631047","mention":"o1","reasons":["statement-header","paired-code"],"via":"i2"},
-        {"identifier":"i2","org":"Q631047","mention":"o1","reasons":["ifsc-prefix"]}
+        {"identifier":"i1","org":"hdfc-bank","mention":"o1","reasons":["statement-header","paired-code"],"via":"i2"},
+        {"identifier":"i2","org":"hdfc-bank","mention":"o1","reasons":["ifsc-prefix"]}
       ],
-      "not_links": [],
-      "statement": {"page":1,"start":266,"end":292,"text":"01 Jul 2026 to 31 Jul 2026","accounts":["i1"],"from":"2026-07-01","to":"2026-07-31"}
+      "not_links": [
+        {"identifier":"i1","org":"hdfc-ltd","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"hdfc-ltd","why":"code-names-other-bank"}
+      ],
+      "statement": {"page":1,"start":266,"end":292,"text":"01 Jul 2026 to 31 Jul 2026","accounts":["i1"],"from":"2026-07-01","to":"2026-07-31","issuer":"o1"}
     },
     {
       "id": "hdfc-statement-aug",
       "orgs": [
-        {"id":"o1","page":1,"start":60,"end":73,"text":"HDFC Bank Ltd","org":"Q631047","by_name":"exact"}
+        {"id":"o1","page":1,"start":60,"end":73,"text":"HDFC Bank Ltd","resolved_by_document":{"org":"hdfc-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q631047"}}
       ],
-      "not_orgs": [],
+      "not_orgs": [
+        {"page":1,"start":60,"end":64,"text":"HDFC","entry":"Q1446319","why":"inside-other-name"}
+      ],
       "identifiers": [
         {"id":"i1","page":1,"start":193,"end":207,"text":"50100417263958","kind":"account","value":"50100417263958","valid":null},
         {"id":"i2","page":1,"start":214,"end":225,"text":"HDFC0SAMPL1","kind":"ifsc","value":"HDFC0SAMPL1","valid":true}
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q631047","mention":"o1","reasons":["statement-header","paired-code"],"via":"i2"},
-        {"identifier":"i2","org":"Q631047","mention":"o1","reasons":["ifsc-prefix"]}
+        {"identifier":"i1","org":"hdfc-bank","mention":"o1","reasons":["statement-header","paired-code"],"via":"i2"},
+        {"identifier":"i2","org":"hdfc-bank","mention":"o1","reasons":["ifsc-prefix"]}
       ],
-      "not_links": [],
-      "statement": {"page":1,"start":266,"end":292,"text":"01 Aug 2026 to 31 Aug 2026","accounts":["i1"],"from":"2026-08-01","to":"2026-08-31"}
+      "not_links": [
+        {"identifier":"i1","org":"hdfc-ltd","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"hdfc-ltd","why":"code-names-other-bank"}
+      ],
+      "statement": {"page":1,"start":266,"end":292,"text":"01 Aug 2026 to 31 Aug 2026","accounts":["i1"],"from":"2026-08-01","to":"2026-08-31","issuer":"o1"}
     },
     {
       "id": "kotak-statement",
       "orgs": [
-        {"id":"o1","page":1,"start":60,"end":79,"text":"Kotak Mahindra Bank","org":"Q2040404","by_name":"exact"}
+        {"id":"o1","page":1,"start":60,"end":79,"text":"Kotak Mahindra Bank","resolved_by_document":{"org":"kotak","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2040404"}}
       ],
       "not_orgs": [],
       "identifiers": [
@@ -70,37 +123,78 @@
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q2040404","mention":"o1","reasons":["statement-header"]}
+        {"identifier":"i1","org":"kotak","mention":"o1","reasons":["statement-header"]}
       ],
       "not_links": [],
-      "statement": {"page":1,"start":189,"end":214,"text":"01 Oct 2026 - 31 Oct 2026","accounts":["i1"],"from":"2026-10-01","to":"2026-10-31"}
+      "statement": {"page":1,"start":189,"end":214,"text":"01 Oct 2026 - 31 Oct 2026","accounts":["i1"],"from":"2026-10-01","to":"2026-10-31","issuer":"o1"}
+    },
+    {
+      "id": "sahakari-statement",
+      "orgs": [
+        {"id":"o1","page":1,"start":60,"end":90,"text":"Sample Nagar Sahakari Bank Ltd","resolved_by_document":{"org":"sample-nagar-sahakari-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}},
+        {"id":"o2","page":1,"start":344,"end":370,"text":"Sample Nagar Sahakari Bank","resolved_by_document":{"org":"sample-nagar-sahakari-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}}
+      ],
+      "not_orgs": [],
+      "identifiers": [
+        {"id":"i1","page":1,"start":153,"end":165,"text":"004512000789","kind":"account","value":"004512000789","valid":null}
+      ],
+      "not_identifiers": [],
+      "links": [
+        {"identifier":"i1","org":"sample-nagar-sahakari-bank","mention":"o1","reasons":["statement-header"]}
+      ],
+      "not_links": [],
+      "statement": {"page":1,"start":184,"end":210,"text":"01 Oct 2026 to 31 Oct 2026","accounts":["i1"],"issuer":"o1","from":"2026-10-01","to":"2026-10-31"}
+    },
+    {
+      "id": "credit-union-statement",
+      "orgs": [
+        {"id":"o1","page":1,"start":60,"end":82,"text":"Sampleton Credit Union","resolved_by_document":{"org":"sampleton-credit-union","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}}
+      ],
+      "not_orgs": [],
+      "identifiers": [
+        {"id":"i1","page":1,"start":147,"end":155,"text":"88120457","kind":"account","value":"88120457","valid":null}
+      ],
+      "not_identifiers": [],
+      "links": [
+        {"identifier":"i1","org":"sampleton-credit-union","mention":"o1","reasons":["statement-header"]}
+      ],
+      "not_links": [],
+      "statement": {"page":1,"start":164,"end":197,"text":"1 October 2026 to 31 October 2026","accounts":["i1"],"issuer":"o1","from":"2026-10-01","to":"2026-10-31"}
     },
     {
       "id": "natwest-statement",
       "orgs": [
-        {"id":"o1","page":1,"start":60,"end":89,"text":"National Westminster Bank Plc","org":"Q2740021","by_name":"exact"}
+        {"id":"o1","page":1,"start":60,"end":89,"text":"National Westminster Bank Plc","resolved_by_document":{"org":"natwest","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2740021"}},
+        {"id":"o2","page":1,"start":339,"end":351,"text":"Example Cafe","resolved_by_document":{"org":"example-cafe","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}}
       ],
       "not_orgs": [
-        {"page":1,"start":216,"end":219,"text":"BIC","org":"Q795981","why":"word-not-name"}
+        {"page":1,"start":216,"end":219,"text":"BIC","why":"word-not-name","entry":"Q795981"}
       ],
       "identifiers": [
-        {"id":"i1","page":1,"start":173,"end":181,"text":"31926819","kind":"account","value":"31926819","valid":null},
+        {"id":"i1","page":1,"start":173,"end":181,"text":"31926819","kind":"account","value":"31926819","valid":null,"same_account_as":"i2"},
         {"id":"i2","page":1,"start":188,"end":215,"text":"GB29 NWBK 6016 1331 9268 19","kind":"iban","value":"GB29NWBK60161331926819","valid":true},
-        {"id":"i3","page":1,"start":221,"end":229,"text":"NWBKGB2L","kind":"bic","value":"NWBKGB2L","valid":true}
+        {"id":"i3","page":1,"start":221,"end":229,"text":"NWBKGB2L","kind":"bic","value":"NWBKGB2L","valid":true},
+        {"id":"i4","page":1,"start":148,"end":156,"text":"60-16-13","kind":"gb_sort_code","value":"601613","valid":true}
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q2740021","mention":"o1","reasons":["statement-header"]},
-        {"identifier":"i2","org":"Q2740021","mention":"o1","reasons":["iban-bank-code","statement-header","paired-code"],"via":"i3"},
-        {"identifier":"i3","org":"Q2740021","mention":"o1","reasons":["bic-institution"]}
+        {"identifier":"i1","org":"natwest","mention":"o1","reasons":["statement-header","same-account"]},
+        {"identifier":"i2","org":"natwest","mention":"o1","reasons":["iban-bank-code","statement-header","paired-code"],"via":"i3"},
+        {"identifier":"i3","org":"natwest","mention":"o1","reasons":["bic-institution"]},
+        {"identifier":"i4","org":"natwest","mention":"o1","reasons":["inside-iban"]}
       ],
-      "not_links": [],
-      "statement": {"page":1,"start":238,"end":275,"text":"1 September 2026 to 30 September 2026","accounts":["i2","i1"],"from":"2026-09-01","to":"2026-09-30"}
+      "not_links": [
+        {"identifier":"i1","org":"example-cafe","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"example-cafe","why":"code-names-other-bank"},
+        {"identifier":"i3","org":"example-cafe","why":"code-names-other-bank"},
+        {"identifier":"i4","org":"example-cafe","why":"code-names-other-bank"}
+      ],
+      "statement": {"page":1,"start":238,"end":275,"text":"1 September 2026 to 30 September 2026","accounts":["i2","i1"],"from":"2026-09-01","to":"2026-09-30","issuer":"o1"}
     },
     {
       "id": "abn-amro-statement",
       "orgs": [
-        {"id":"o1","page":1,"start":60,"end":78,"text":"ABN AMRO Bank N.V.","org":"Q287471","by_name":"exact"}
+        {"id":"o1","page":1,"start":60,"end":78,"text":"ABN AMRO Bank N.V.","resolved_by_document":{"org":"abn-amro","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q287471"}}
       ],
       "not_orgs": [],
       "identifiers": [
@@ -108,18 +202,18 @@
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q287471","mention":"o1","reasons":["iban-bank-code","statement-header"]}
+        {"identifier":"i1","org":"abn-amro","mention":"o1","reasons":["iban-bank-code","statement-header"]}
       ],
       "not_links": [],
-      "statement": {"page":1,"start":182,"end":206,"text":"01-08-2026 to 31-08-2026","accounts":["i1"],"from":"2026-08-01","to":"2026-08-31"}
+      "statement": {"page":1,"start":182,"end":206,"text":"01-08-2026 to 31-08-2026","accounts":["i1"],"from":"2026-08-01","to":"2026-08-31","issuer":"o1"}
     },
     {
       "id": "commerzbank-kontoauszug",
       "orgs": [
-        {"id":"o1","page":1,"start":99,"end":113,"text":"Commerzbank AG","org":"Q157617","by_name":"exact"}
+        {"id":"o1","page":1,"start":99,"end":113,"text":"Commerzbank AG","resolved_by_document":{"org":"commerzbank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q157617"}}
       ],
       "not_orgs": [
-        {"page":1,"start":242,"end":245,"text":"BIC","org":"Q795981","why":"word-not-name"}
+        {"page":1,"start":242,"end":245,"text":"BIC","why":"word-not-name","entry":"Q795981"}
       ],
       "identifiers": [
         {"id":"i1","page":1,"start":214,"end":241,"text":"DE89 3704 0044 0532 0130 00","kind":"iban","value":"DE89370400440532013000","valid":true},
@@ -127,53 +221,50 @@
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q157617","mention":"o1","reasons":["iban-bank-code","statement-header","paired-code"],"via":"i2"},
-        {"identifier":"i2","org":"Q157617","mention":"o1","reasons":["bic-institution"]}
+        {"identifier":"i1","org":"commerzbank","mention":"o1","reasons":["iban-bank-code","statement-header","paired-code"],"via":"i2"},
+        {"identifier":"i2","org":"commerzbank","mention":"o1","reasons":["bic-institution"]}
       ],
       "not_links": [],
-      "statement": {"page":1,"start":269,"end":294,"text":"01.10.2026 bis 31.10.2026","accounts":["i1"],"from":"2026-10-01","to":"2026-10-31"}
+      "statement": {"page":1,"start":269,"end":294,"text":"01.10.2026 bis 31.10.2026","accounts":["i1"],"from":"2026-10-01","to":"2026-10-31","issuer":"o1"}
     },
     {
       "id": "deutsche-bank-brief",
-      "note": "The Bundesbank is named in the inflected form \"der Deutschen Bundesbank\"; the span is the part that is a directory name.",
       "orgs": [
-        {"id":"o1","page":1,"start":93,"end":106,"text":"Deutsche Bank","org":"Q66048","by_name":"exact"},
-        {"id":"o2","page":1,"start":214,"end":224,"text":"Bundesbank","org":"Q162222","by_name":"exact"},
-        {"id":"o3","page":1,"start":396,"end":412,"text":"Deutsche Bank AG","org":"Q66048","by_name":"exact"}
+        {"id":"o1","page":1,"start":93,"end":106,"text":"Deutsche Bank","resolved_by_document":{"org":"deutsche-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q66048"}},
+        {"id":"o2","page":1,"start":204,"end":224,"text":"Deutschen Bundesbank","resolved_by_document":{"org":"bundesbank","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}},
+        {"id":"o3","page":1,"start":357,"end":373,"text":"Deutsche Bank AG","resolved_by_document":{"org":"deutsche-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q66048"}}
       ],
       "not_orgs": [],
-      "identifiers": [
-        {"id":"i1","page":1,"start":263,"end":290,"text":"DE65 1007 0000 0123 4567 89","kind":"iban","value":"DE65100700000123456789","valid":true}
-      ],
+      "identifiers": [],
       "not_identifiers": [],
-      "links": [
-        {"identifier":"i1","org":"Q66048","mention":"o1","reasons":["iban-bank-code"]}
-      ],
-      "not_links": [
-        {"identifier":"i1","org":"Q162222","why":"code-names-other-bank"}
-      ]
+      "links": [],
+      "not_links": []
     },
     {
       "id": "rechnung-falsche-iban",
       "orgs": [
-        {"id":"o1","page":1,"start":380,"end":391,"text":"Commerzbank","org":"Q157617","by_name":"exact"}
+        {"id":"o2","page":1,"start":96,"end":124,"text":"Musterfirma Schreinerei GmbH","resolved_by_document":{"org":"musterfirma-schreinerei","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}},
+        {"id":"o1","page":1,"start":380,"end":391,"text":"Commerzbank","resolved_by_document":{"org":"commerzbank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q157617"}}
       ],
       "not_orgs": [],
       "identifiers": [
         {"id":"i1","page":1,"start":336,"end":363,"text":"DE88 3704 0044 0532 0130 00","kind":"iban","value":"DE88370400440532013000","valid":false}
       ],
       "not_identifiers": [
-        {"page":1,"start":159,"end":175,"text":"+49 30 1234 5678","looks_like":"account","why":"phone-number"},
+        {"page":1,"start":159,"end":175,"text":"+49 30 23125 471","looks_like":"account","why":"phone-number"},
         {"page":1,"start":202,"end":216,"text":"2026 0815 4711","looks_like":"account","why":"invoice-number"}
       ],
       "links": [],
       "not_links": [
-        {"identifier":"i1","org":"Q157617","why":"invalid-identifier"}
+        {"identifier":"i1","org":"commerzbank","why":"invalid-identifier"},
+        {"identifier":"i1","org":"musterfirma-schreinerei","why":"invalid-identifier"}
       ]
     },
     {
       "id": "invoice-lookalike-numbers",
-      "orgs": [],
+      "orgs": [
+        {"id":"o1","page":1,"start":58,"end":77,"text":"Sample Supplies Ltd","resolved_by_document":{"org":"sample-supplies","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}}
+      ],
       "not_orgs": [],
       "identifiers": [
         {"id":"i1","page":1,"start":230,"end":257,"text":"GB28 NWBK 6016 1331 9268 19","kind":"iban","value":"GB28NWBK60161331926819","valid":false},
@@ -185,17 +276,22 @@
       ],
       "links": [],
       "not_links": [
-        {"identifier":"i1","org":"Q2740021","why":"invalid-identifier"}
+        {"identifier":"i1","org":"natwest","why":"invalid-identifier"},
+        {"identifier":"i1","org":"sample-supplies","why":"invalid-identifier"},
+        {"identifier":"i2","org":"sample-supplies","why":"invalid-identifier"}
       ]
     },
     {
       "id": "neft-receipt-tied",
       "orgs": [
-        {"id":"o1","page":1,"start":58,"end":62,"text":"HDFC","org":null,"by_name":"clash","candidates":["Q631047","Q1446319"]},
-        {"id":"o2","page":1,"start":236,"end":245,"text":"HDFC Bank","org":"Q631047","by_name":"exact"},
-        {"id":"o3","page":1,"start":318,"end":328,"text":"ICICI Bank","org":"Q1653258","by_name":"exact"}
+        {"id":"o1","page":1,"start":58,"end":62,"text":"HDFC","resolved_by_document":{"org":"hdfc-bank","evidence":[{"by":"mention","mention":"o2"},{"by":"code","identifier":"i2"}]},"directory":{"lookup":"clash","candidates":["Q631047","Q1446319"]}},
+        {"id":"o2","page":1,"start":236,"end":245,"text":"HDFC Bank","resolved_by_document":{"org":"hdfc-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q631047"}},
+        {"id":"o3","page":1,"start":318,"end":328,"text":"ICICI Bank","resolved_by_document":{"org":"icici-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q1653258"}},
+        {"id":"o4","page":1,"start":250,"end":264,"text":"Sample Traders","resolved_by_document":{"org":"sample-traders","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}}
       ],
-      "not_orgs": [],
+      "not_orgs": [
+        {"page":1,"start":236,"end":240,"text":"HDFC","entry":"Q1446319","why":"inside-other-name"}
+      ],
       "identifiers": [
         {"id":"i1","page":1,"start":197,"end":211,"text":"50100417263958","kind":"account","value":"50100417263958","valid":null},
         {"id":"i2","page":1,"start":218,"end":229,"text":"HDFC0SAMPL1","kind":"ifsc","value":"HDFC0SAMPL1","valid":true},
@@ -206,47 +302,94 @@
         {"page":1,"start":122,"end":139,"text":"N2026092212345678","looks_like":"account","why":"reference-number"}
       ],
       "links": [
-        {"identifier":"i1","org":"Q631047","mention":"o2","reasons":["paired-code"],"via":"i2"},
-        {"identifier":"i2","org":"Q631047","mention":"o2","reasons":["ifsc-prefix"]},
-        {"identifier":"i3","org":"Q1653258","mention":"o3","reasons":["paired-code"],"via":"i4"},
-        {"identifier":"i4","org":"Q1653258","mention":"o3","reasons":["ifsc-prefix"]}
+        {"identifier":"i1","org":"hdfc-bank","mention":"o2","reasons":["paired-code"],"via":"i2"},
+        {"identifier":"i2","org":"hdfc-bank","mention":"o2","reasons":["ifsc-prefix"]},
+        {"identifier":"i3","org":"icici-bank","mention":"o3","reasons":["paired-code"],"via":"i4"},
+        {"identifier":"i4","org":"icici-bank","mention":"o3","reasons":["ifsc-prefix"]}
       ],
       "not_links": [
-        {"identifier":"i1","org":"Q1653258","why":"code-names-other-bank"},
-        {"identifier":"i3","org":"Q631047","why":"code-names-other-bank"}
-      ]
+        {"identifier":"i1","org":"icici-bank","why":"code-names-other-bank"},
+        {"identifier":"i3","org":"hdfc-bank","why":"code-names-other-bank"},
+        {"identifier":"i1","org":"hdfc-ltd","why":"code-names-other-bank"},
+        {"identifier":"i1","org":"sample-traders","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"icici-bank","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"hdfc-ltd","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"sample-traders","why":"code-names-other-bank"},
+        {"identifier":"i3","org":"hdfc-ltd","why":"code-names-other-bank"},
+        {"identifier":"i3","org":"sample-traders","why":"code-names-other-bank"},
+        {"identifier":"i4","org":"hdfc-bank","why":"code-names-other-bank"},
+        {"identifier":"i4","org":"hdfc-ltd","why":"code-names-other-bank"},
+        {"identifier":"i4","org":"sample-traders","why":"code-names-other-bank"}
+      ],
+      "note": "The bare HDFC is held by two directory entries, so a directory alone cannot settle it; the document does, through the debit row's HDFC Bank and its HDFC IFSC."
     },
     {
       "id": "transfer-untied",
       "orgs": [
-        {"id":"o1","page":1,"start":334,"end":345,"text":"Commerzbank","org":"Q157617","by_name":"exact"},
-        {"id":"o2","page":1,"start":347,"end":358,"text":"BNP Paribas","org":"Q499707","by_name":"exact"},
-        {"id":"o3","page":1,"start":360,"end":371,"text":"Mizuho Bank","org":"Q2882956","by_name":"exact"}
+        {"id":"o1","page":1,"start":334,"end":345,"text":"Commerzbank","resolved_by_document":{"org":"commerzbank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q157617"}},
+        {"id":"o2","page":1,"start":347,"end":358,"text":"BNP Paribas","resolved_by_document":{"org":"bnp-paribas","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q499707"}},
+        {"id":"o3","page":1,"start":360,"end":371,"text":"Mizuho Bank","resolved_by_document":{"org":"mizuho-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2882956"}}
       ],
       "not_orgs": [],
       "identifiers": [
         {"id":"i1","page":1,"start":190,"end":217,"text":"DE89 3704 0044 0532 0130 00","kind":"iban","value":"DE89370400440532013000","valid":true},
         {"id":"i2","page":1,"start":266,"end":276,"text":"7730194522","kind":"account","value":"7730194522","valid":null}
       ],
-      "not_identifiers": [],
+      "not_identifiers": [
+        {"page":1,"start":115,"end":130,"text":"TRX-2026-000417","looks_like":"account","why":"reference-number"}
+      ],
       "links": [
-        {"identifier":"i1","org":"Q157617","mention":"o1","reasons":["iban-bank-code"]}
+        {"identifier":"i1","org":"commerzbank","mention":"o1","reasons":["iban-bank-code"]}
       ],
       "not_links": [
-        {"identifier":"i1","org":"Q499707","why":"code-names-other-bank"},
-        {"identifier":"i1","org":"Q2882956","why":"code-names-other-bank"},
-        {"identifier":"i2","org":"Q157617","why":"no-tie"},
-        {"identifier":"i2","org":"Q499707","why":"no-tie"},
-        {"identifier":"i2","org":"Q2882956","why":"no-tie"}
+        {"identifier":"i1","org":"bnp-paribas","why":"code-names-other-bank"},
+        {"identifier":"i1","org":"mizuho-bank","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"commerzbank","why":"no-tie"},
+        {"identifier":"i2","org":"bnp-paribas","why":"no-tie"},
+        {"identifier":"i2","org":"mizuho-bank","why":"no-tie"}
+      ]
+    },
+    {
+      "id": "transfer-rows",
+      "note": "Each row starts with its IFSC and ends with its account. The first account is three characters from the second row's IFSC and 49 from its own, so only the row says which code is its own.",
+      "orgs": [
+        {"id":"o1","page":1,"start":192,"end":206,"text":"Sample Traders","resolved_by_document":{"org":"sample-traders","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}}
+      ],
+      "not_orgs": [],
+      "identifiers": [
+        {"id":"i1","page":1,"start":103,"end":114,"text":"HDFC0SAMPL1","kind":"ifsc","value":"HDFC0SAMPL1","valid":true},
+        {"id":"i2","page":1,"start":163,"end":177,"text":"50100417263958","kind":"account","value":"50100417263958","valid":null},
+        {"id":"i3","page":1,"start":180,"end":191,"text":"ICIC0SAMPL2","kind":"ifsc","value":"ICIC0SAMPL2","valid":true},
+        {"id":"i4","page":1,"start":244,"end":256,"text":"002101234567","kind":"account","value":"002101234567","valid":null}
+      ],
+      "not_identifiers": [],
+      "links": [
+        {"identifier":"i1","org":"hdfc-bank","mention":null,"reasons":["ifsc-prefix"]},
+        {"identifier":"i2","org":"hdfc-bank","mention":null,"reasons":["paired-code"],"via":"i1"},
+        {"identifier":"i3","org":"icici-bank","mention":null,"reasons":["ifsc-prefix"]},
+        {"identifier":"i4","org":"icici-bank","mention":null,"reasons":["paired-code"],"via":"i3"}
+      ],
+      "not_links": [
+        {"identifier":"i1","org":"icici-bank","why":"code-names-other-bank"},
+        {"identifier":"i1","org":"sample-traders","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"icici-bank","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"sample-traders","why":"code-names-other-bank"},
+        {"identifier":"i3","org":"hdfc-bank","why":"code-names-other-bank"},
+        {"identifier":"i3","org":"sample-traders","why":"code-names-other-bank"},
+        {"identifier":"i4","org":"hdfc-bank","why":"code-names-other-bank"},
+        {"identifier":"i4","org":"sample-traders","why":"code-names-other-bank"}
       ]
     },
     {
       "id": "hdfc-branch-letter",
       "orgs": [
-        {"id":"o1","page":1,"start":57,"end":74,"text":"HDFC Bank Limited","org":"Q631047","by_name":"exact"},
-        {"id":"o2","page":1,"start":280,"end":289,"text":"HDFC Bank","org":"Q631047","by_name":"exact"}
+        {"id":"o1","page":1,"start":57,"end":74,"text":"HDFC Bank Limited","resolved_by_document":{"org":"hdfc-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q631047"}},
+        {"id":"o2","page":1,"start":280,"end":289,"text":"HDFC Bank","resolved_by_document":{"org":"hdfc-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q631047"}}
       ],
-      "not_orgs": [],
+      "not_orgs": [
+        {"page":1,"start":57,"end":61,"text":"HDFC","entry":"Q1446319","why":"inside-other-name"},
+        {"page":1,"start":280,"end":284,"text":"HDFC","entry":"Q1446319","why":"inside-other-name"}
+      ],
       "identifiers": [],
       "not_identifiers": [],
       "links": [],
@@ -255,12 +398,12 @@
     {
       "id": "hdfc-letter-hindi",
       "orgs": [
-        {"id":"o1","page":1,"start":97,"end":110,"text":"एचडीएफसी बैंक","org":"Q631047","by_name":"exact"},
-        {"id":"o2","page":1,"start":291,"end":304,"text":"एचडीएफसी बैंक","org":"Q631047","by_name":"exact"}
+        {"id":"o1","page":1,"start":97,"end":110,"text":"एचडीएफसी बैंक","resolved_by_document":{"org":"hdfc-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q631047"}},
+        {"id":"o2","page":1,"start":291,"end":304,"text":"एचडीएफसी बैंक","resolved_by_document":{"org":"hdfc-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q631047"}}
       ],
       "not_orgs": [
-        {"page":1,"start":97,"end":105,"text":"एचडीएफसी","org":"Q1446319","why":"inside-other-name"},
-        {"page":1,"start":291,"end":299,"text":"एचडीएफसी","org":"Q1446319","why":"inside-other-name"}
+        {"page":1,"start":97,"end":105,"text":"एचडीएफसी","why":"inside-other-name","entry":"Q1446319"},
+        {"page":1,"start":291,"end":299,"text":"एचडीएफसी","why":"inside-other-name","entry":"Q1446319"}
       ],
       "identifiers": [],
       "not_identifiers": [],
@@ -275,7 +418,7 @@
         {"id":"i1","page":1,"start":239,"end":253,"text":"33445566778899","kind":"account","value":"33445566778899","valid":null}
       ],
       "not_identifiers": [
-        {"page":1,"start":283,"end":298,"text":"+91 98765 43210","looks_like":"account","why":"phone-number"}
+        {"page":1,"start":283,"end":298,"text":"+44 7700 900417","looks_like":"account","why":"phone-number"}
       ],
       "links": [],
       "not_links": []
@@ -283,14 +426,16 @@
     {
       "id": "email-fee-payment",
       "orgs": [
-        {"id":"o1","page":1,"start":234,"end":242,"text":"hdfcbank","org":"Q631047","by_name":"exact"},
-        {"id":"o2","page":1,"start":259,"end":268,"text":"HDFC BANK","org":"Q631047","by_name":"exact"}
+        {"id":"o1","page":1,"start":234,"end":242,"text":"hdfcbank","resolved_by_document":{"org":"hdfc-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q631047"}},
+        {"id":"o2","page":1,"start":259,"end":268,"text":"HDFC BANK","resolved_by_document":{"org":"hdfc-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q631047"}}
       ],
-      "not_orgs": [],
+      "not_orgs": [
+        {"page":1,"start":259,"end":263,"text":"HDFC","entry":"Q1446319","why":"inside-other-name"}
+      ],
       "identifiers": [],
       "not_identifiers": [
         {"page":1,"start":290,"end":304,"text":"N2026102098765","looks_like":"account","why":"reference-number"},
-        {"page":1,"start":355,"end":370,"text":"+91 90000 00000","looks_like":"account","why":"phone-number"}
+        {"page":1,"start":355,"end":370,"text":"+44 7700 900123","looks_like":"account","why":"phone-number"}
       ],
       "links": [],
       "not_links": []
@@ -298,28 +443,38 @@
     {
       "id": "hdfc-card-statement",
       "orgs": [
-        {"id":"o1","page":1,"start":60,"end":69,"text":"HDFC Bank","org":"Q631047","by_name":"exact"}
+        {"id":"o1","page":1,"start":60,"end":69,"text":"HDFC Bank","resolved_by_document":{"org":"hdfc-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q631047"}},
+        {"id":"o2","page":1,"start":299,"end":313,"text":"Sample Grocers","resolved_by_document":{"org":"sample-grocers","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}},
+        {"id":"o3","page":1,"start":341,"end":354,"text":"Example Books","resolved_by_document":{"org":"example-books","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}}
       ],
-      "not_orgs": [],
+      "not_orgs": [
+        {"page":1,"start":60,"end":64,"text":"HDFC","entry":"Q1446319","why":"inside-other-name"}
+      ],
       "identifiers": [
         {"id":"i1","page":1,"start":130,"end":149,"text":"4111 1111 1111 1111","kind":"card","value":"4111111111111111","valid":true}
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q631047","mention":"o1","reasons":["statement-header"]}
+        {"identifier":"i1","org":"hdfc-bank","mention":"o1","reasons":["statement-header"]}
       ],
-      "not_links": [],
-      "statement": {"page":1,"start":168,"end":194,"text":"16 Aug 2026 to 15 Sep 2026","accounts":["i1"],"from":"2026-08-16","to":"2026-09-15"}
+      "not_links": [
+        {"identifier":"i1","org":"sample-grocers","why":"held-at-other"},
+        {"identifier":"i1","org":"example-books","why":"held-at-other"},
+        {"identifier":"i1","org":"hdfc-ltd","why":"held-at-other"}
+      ],
+      "statement": {"page":1,"start":168,"end":194,"text":"16 Aug 2026 to 15 Sep 2026","accounts":["i1"],"from":"2026-08-16","to":"2026-09-15","issuer":"o1"}
     },
     {
       "id": "hdfc-life-receipt",
       "orgs": [
-        {"id":"o1","page":1,"start":58,"end":77,"text":"HDFC Life Insurance","org":"Q5629189","by_name":"exact"},
-        {"id":"o2","page":1,"start":265,"end":274,"text":"HDFC Life","org":"Q5629189","by_name":"exact"}
+        {"id":"o1","page":1,"start":58,"end":93,"text":"HDFC Life Insurance Company Limited","resolved_by_document":{"org":"hdfc-life","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}},
+        {"id":"o2","page":1,"start":265,"end":274,"text":"HDFC Life","resolved_by_document":{"org":"hdfc-life","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q5629189"}}
       ],
       "not_orgs": [
-        {"page":1,"start":58,"end":62,"text":"HDFC","org":"Q631047","why":"inside-other-name"},
-        {"page":1,"start":265,"end":269,"text":"HDFC","org":"Q631047","why":"inside-other-name"}
+        {"page":1,"start":58,"end":62,"text":"HDFC","entry":"Q1446319","why":"inside-other-name"},
+        {"page":1,"start":58,"end":62,"text":"HDFC","why":"inside-other-name","entry":"Q631047"},
+        {"page":1,"start":265,"end":269,"text":"HDFC","entry":"Q1446319","why":"inside-other-name"},
+        {"page":1,"start":265,"end":269,"text":"HDFC","why":"inside-other-name","entry":"Q631047"}
       ],
       "identifiers": [
         {"id":"i1","page":1,"start":222,"end":241,"text":"5555 5555 5555 4444","kind":"card","value":"5555555555554444","valid":true}
@@ -329,18 +484,19 @@
       ],
       "links": [],
       "not_links": [
-        {"identifier":"i1","org":"Q5629189","why":"no-tie"},
-        {"identifier":"i1","org":"Q631047","why":"name-not-this-bank"}
+        {"identifier":"i1","org":"hdfc-life","why":"no-tie"},
+        {"identifier":"i1","org":"hdfc-bank","why":"name-not-this-bank"},
+        {"identifier":"i1","org":"hdfc-ltd","why":"name-not-this-bank"}
       ]
     },
     {
       "id": "icici-lombard-notice",
       "orgs": [
-        {"id":"o1","page":1,"start":57,"end":104,"text":"ICICI Lombard General Insurance Company Limited","org":"Q5969591","by_name":"exact"},
-        {"id":"o2","page":1,"start":273,"end":283,"text":"ICICI Bank","org":"Q1653258","by_name":"exact"}
+        {"id":"o1","page":1,"start":57,"end":104,"text":"ICICI Lombard General Insurance Company Limited","resolved_by_document":{"org":"icici-lombard","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q5969591"}},
+        {"id":"o2","page":1,"start":273,"end":283,"text":"ICICI Bank","resolved_by_document":{"org":"icici-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q1653258"}}
       ],
       "not_orgs": [
-        {"page":1,"start":57,"end":62,"text":"ICICI","org":"Q1653258","why":"inside-other-name"}
+        {"page":1,"start":57,"end":62,"text":"ICICI","why":"inside-other-name","entry":"Q1653258"}
       ],
       "identifiers": [],
       "not_identifiers": [
@@ -352,18 +508,19 @@
     {
       "id": "school-fee-banks",
       "orgs": [
-        {"id":"o1","page":1,"start":138,"end":157,"text":"State Bank of India","org":"Q1340361","by_name":"exact"},
-        {"id":"o2","page":1,"start":158,"end":171,"text":"Bank of India","org":"Q2004439","by_name":"exact"},
-        {"id":"o3","page":1,"start":172,"end":193,"text":"Central Bank of India","org":"Q2007090","by_name":"exact"},
-        {"id":"o4","page":1,"start":194,"end":213,"text":"Union Bank of India","org":"Q2004078","by_name":"exact"},
-        {"id":"o5","page":1,"start":214,"end":228,"text":"Bank of Baroda","org":"Q2003797","by_name":"exact"},
-        {"id":"o6","page":1,"start":229,"end":249,"text":"Punjab National Bank","org":"Q2743499","by_name":"exact"},
-        {"id":"o7","page":1,"start":250,"end":268,"text":"Punjab & Sind Bank","org":"Q2003302","by_name":"exact"}
+        {"id":"o8","page":1,"start":57,"end":77,"text":"Sample Public School","resolved_by_document":{"org":"sample-public-school","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}},
+        {"id":"o1","page":1,"start":138,"end":157,"text":"State Bank of India","resolved_by_document":{"org":"sbi","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q1340361"}},
+        {"id":"o2","page":1,"start":158,"end":171,"text":"Bank of India","resolved_by_document":{"org":"bank-of-india","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2004439"}},
+        {"id":"o3","page":1,"start":172,"end":193,"text":"Central Bank of India","resolved_by_document":{"org":"central-bank-of-india","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2007090"}},
+        {"id":"o4","page":1,"start":194,"end":213,"text":"Union Bank of India","resolved_by_document":{"org":"union-bank-of-india","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2004078"}},
+        {"id":"o5","page":1,"start":214,"end":228,"text":"Bank of Baroda","resolved_by_document":{"org":"bank-of-baroda","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2003797"}},
+        {"id":"o6","page":1,"start":229,"end":249,"text":"Punjab National Bank","resolved_by_document":{"org":"pnb","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2743499"}},
+        {"id":"o7","page":1,"start":250,"end":268,"text":"Punjab & Sind Bank","resolved_by_document":{"org":"punjab-sind-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2003302"}}
       ],
       "not_orgs": [
-        {"page":1,"start":144,"end":157,"text":"Bank of India","org":"Q2004439","why":"inside-other-name"},
-        {"page":1,"start":180,"end":193,"text":"Bank of India","org":"Q2004439","why":"inside-other-name"},
-        {"page":1,"start":200,"end":213,"text":"Bank of India","org":"Q2004439","why":"inside-other-name"}
+        {"page":1,"start":144,"end":157,"text":"Bank of India","why":"inside-other-name","entry":"Q2004439"},
+        {"page":1,"start":180,"end":193,"text":"Bank of India","why":"inside-other-name","entry":"Q2004439"},
+        {"page":1,"start":200,"end":213,"text":"Bank of India","why":"inside-other-name","entry":"Q2004439"}
       ],
       "identifiers": [],
       "not_identifiers": [],
@@ -372,11 +529,11 @@
     },
     {
       "id": "household-notes",
-      "note": "Each short name is held by two directory entries, so the right answer is no organisation, whatever a reader would guess.",
+      "note": "Each short name is held by two directory entries and nothing else in the note settles it, so the right answer is no organisation, with the directory on or off.",
       "orgs": [
-        {"id":"o1","page":1,"start":122,"end":125,"text":"BOI","org":null,"by_name":"clash","candidates":["Q2004439","Q28457664"]},
-        {"id":"o2","page":1,"start":153,"end":156,"text":"SBI","org":null,"by_name":"clash","candidates":["Q1113213","Q1340361"]},
-        {"id":"o3","page":1,"start":192,"end":196,"text":"HDFC","org":null,"by_name":"clash","candidates":["Q631047","Q1446319"]}
+        {"id":"o1","page":1,"start":122,"end":125,"text":"BOI","resolved_by_document":null,"directory":{"lookup":"clash","candidates":["Q2004439","Q28457664"]}},
+        {"id":"o2","page":1,"start":153,"end":156,"text":"SBI","resolved_by_document":null,"directory":{"lookup":"clash","candidates":["Q1113213","Q1340361"]}},
+        {"id":"o3","page":1,"start":192,"end":196,"text":"HDFC","resolved_by_document":null,"directory":{"lookup":"clash","candidates":["Q631047","Q1446319"]}}
       ],
       "not_orgs": [],
       "identifiers": [],
@@ -387,10 +544,10 @@
     {
       "id": "sbi-passbook-hindi",
       "orgs": [
-        {"id":"o1","page":1,"start":99,"end":120,"text":"स्टेट बैंक ऑफ़ इंडिया","org":"Q1340361","by_name":"exact"}
+        {"id":"o1","page":1,"start":99,"end":120,"text":"स्टेट बैंक ऑफ़ इंडिया","resolved_by_document":{"org":"sbi","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q1340361"}}
       ],
       "not_orgs": [
-        {"page":1,"start":105,"end":120,"text":"बैंक ऑफ़ इंडिया","org":"Q2004439","why":"inside-other-name"}
+        {"page":1,"start":105,"end":120,"text":"बैंक ऑफ़ इंडिया","why":"inside-other-name","entry":"Q2004439"}
       ],
       "identifiers": [
         {"id":"i1","page":1,"start":171,"end":182,"text":"30123456789","kind":"account","value":"30123456789","valid":null},
@@ -398,16 +555,21 @@
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q1340361","mention":"o1","reasons":["statement-header","paired-code"],"via":"i2"},
-        {"identifier":"i2","org":"Q1340361","mention":"o1","reasons":["ifsc-prefix"]}
+        {"identifier":"i1","org":"sbi","mention":"o1","reasons":["statement-header","paired-code"],"via":"i2"},
+        {"identifier":"i2","org":"sbi","mention":"o1","reasons":["ifsc-prefix"]}
       ],
-      "not_links": [],
-      "statement": {"page":1,"start":233,"end":264,"text":"01 जुलाई 2026 से 30 सितंबर 2026","accounts":["i1"],"from":"2026-07-01","to":"2026-09-30"}
+      "not_links": [
+        {"identifier":"i1","org":"bank-of-india","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"bank-of-india","why":"code-names-other-bank"}
+      ],
+      "statement": {"page":1,"start":233,"end":264,"text":"01 जुलाई 2026 से 30 सितंबर 2026","accounts":["i1"],"from":"2026-07-01","to":"2026-09-30","issuer":"o1"}
     },
     {
       "id": "pan-form-hindi",
       "note": "The salary account is tied to its bank only by the IFSC beside it; the bank is never named.",
-      "orgs": [],
+      "orgs": [
+        {"id":"o1","page":1,"start":151,"end":186,"text":"सैंपल टेक्नोलॉजीज़ प्राइवेट लिमिटेड","resolved_by_document":{"org":"sample-technologies","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}}
+      ],
       "not_orgs": [],
       "identifiers": [
         {"id":"i1","page":1,"start":253,"end":263,"text":"ABCPK1234F","kind":"in_pan","value":"ABCPK1234F","valid":true},
@@ -419,16 +581,19 @@
         {"page":1,"start":210,"end":220,"text":"PNES12345A","looks_like":"in_pan","why":"tax-account-number"}
       ],
       "links": [
-        {"identifier":"i2","org":"Q631047","mention":null,"reasons":["paired-code"],"via":"i3"},
-        {"identifier":"i3","org":"Q631047","mention":null,"reasons":["ifsc-prefix"]}
+        {"identifier":"i2","org":"hdfc-bank","mention":null,"reasons":["paired-code"],"via":"i3"},
+        {"identifier":"i3","org":"hdfc-bank","mention":null,"reasons":["ifsc-prefix"]}
       ],
-      "not_links": []
+      "not_links": [
+        {"identifier":"i2","org":"sample-technologies","why":"code-names-other-bank"},
+        {"identifier":"i3","org":"sample-technologies","why":"code-names-other-bank"}
+      ]
     },
     {"id":"recipe-hindi","nothing_to_find":true},
     {
       "id": "mizuho-statement-ja",
       "orgs": [
-        {"id":"o1","page":1,"start":72,"end":77,"text":"みずほ銀行","org":"Q2882956","by_name":"exact"}
+        {"id":"o1","page":1,"start":72,"end":77,"text":"みずほ銀行","resolved_by_document":{"org":"mizuho-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2882956"}}
       ],
       "not_orgs": [],
       "identifiers": [
@@ -436,21 +601,21 @@
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q2882956","mention":"o1","reasons":["statement-header"]}
+        {"identifier":"i1","org":"mizuho-bank","mention":"o1","reasons":["statement-header"]}
       ],
       "not_links": [],
-      "statement": {"page":1,"start":119,"end":139,"text":"2026年8月1日～2026年8月31日","accounts":["i1"],"from":"2026-08-01","to":"2026-08-31"}
+      "statement": {"page":1,"start":119,"end":139,"text":"2026年8月1日～2026年8月31日","accounts":["i1"],"from":"2026-08-01","to":"2026-08-31","issuer":"o1"}
     },
     {
       "id": "mufg-remittance-ja",
       "orgs": [
-        {"id":"o1","page":1,"start":76,"end":83,"text":"三菱UFJ銀行","org":"Q988284","by_name":"exact"},
-        {"id":"o2","page":1,"start":161,"end":169,"text":"ABN AMRO","org":"Q287471","by_name":"exact"},
-        {"id":"o3","page":1,"start":192,"end":201,"text":"三菱UFJ信託銀行","org":"Q6883178","by_name":"exact"},
-        {"id":"o4","page":1,"start":206,"end":213,"text":"三菱UFJ銀行","org":"Q988284","by_name":"exact"}
+        {"id":"o1","page":1,"start":76,"end":83,"text":"三菱UFJ銀行","resolved_by_document":{"org":"mufg-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q988284"}},
+        {"id":"o2","page":1,"start":161,"end":169,"text":"ABN AMRO","resolved_by_document":{"org":"abn-amro","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q287471"}},
+        {"id":"o3","page":1,"start":192,"end":201,"text":"三菱UFJ信託銀行","resolved_by_document":{"org":"mufg-trust","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q6883178"}},
+        {"id":"o4","page":1,"start":206,"end":213,"text":"三菱UFJ銀行","resolved_by_document":{"org":"mufg-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q988284"}}
       ],
       "not_orgs": [
-        {"page":1,"start":192,"end":197,"text":"三菱UFJ","org":"Q988284","why":"inside-other-name"}
+        {"page":1,"start":192,"end":197,"text":"三菱UFJ","why":"inside-other-name","entry":"Q988284"}
       ],
       "identifiers": [
         {"id":"i1","page":1,"start":94,"end":102,"text":"BOTKJPJT","kind":"bic","value":"BOTKJPJT","valid":true},
@@ -458,41 +623,48 @@
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q988284","mention":"o1","reasons":["bic-institution"]},
-        {"identifier":"i2","org":"Q988284","mention":"o1","reasons":["paired-code"],"via":"i1"}
+        {"identifier":"i1","org":"mufg-bank","mention":"o1","reasons":["bic-institution"]},
+        {"identifier":"i2","org":"mufg-bank","mention":"o1","reasons":["paired-code"],"via":"i1"}
       ],
       "not_links": [
-        {"identifier":"i2","org":"Q6883178","why":"code-names-other-bank"},
-        {"identifier":"i2","org":"Q287471","why":"code-names-other-bank"}
+        {"identifier":"i2","org":"mufg-trust","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"abn-amro","why":"code-names-other-bank"},
+        {"identifier":"i1","org":"abn-amro","why":"code-names-other-bank"},
+        {"identifier":"i1","org":"mufg-trust","why":"code-names-other-bank"}
       ]
     },
     {"id":"essay-ja","nothing_to_find":true},
     {
-      "id": "rib-bnp-fr",
-      "note": "The IBAN's bank code 30004 is BNP Paribas's, but the directory has no French bank codes, so the IBAN is tied only through the BIC on the next line.",
+      "id": "rib-fr",
+      "note": "The directory has no French bank codes, so the IBAN is tied by the BIC on the next line. The domestic bank code, branch code and account are the IBAN's own parts.",
       "orgs": [
-        {"id":"o1","page":1,"start":171,"end":182,"text":"BNP Paribas","org":"Q499707","by_name":"exact"}
+        {"id":"o1","page":1,"start":171,"end":188,"text":"La Banque Postale","resolved_by_document":{"org":"la-banque-postale","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q3206431"}}
       ],
       "not_orgs": [
-        {"page":1,"start":224,"end":227,"text":"BIC","org":"Q795981","why":"word-not-name"}
+        {"page":1,"start":230,"end":233,"text":"BIC","why":"word-not-name","entry":"Q795981"}
       ],
       "identifiers": [
-        {"id":"i1","page":1,"start":190,"end":223,"text":"FR76 3000 4000 0100 0123 4567 830","kind":"iban","value":"FR7630004000010001234567830","valid":true},
-        {"id":"i2","page":1,"start":230,"end":241,"text":"BNPAFRPPXXX","kind":"bic","value":"BNPAFRPPXXX","valid":true},
-        {"id":"i3","page":1,"start":302,"end":313,"text":"00012345678","kind":"account","value":"00012345678","valid":null}
+        {"id":"i1","page":1,"start":196,"end":229,"text":"FR14 2004 1010 0505 0001 3M02 606","kind":"iban","value":"FR1420041010050500013M02606","valid":true},
+        {"id":"i2","page":1,"start":236,"end":247,"text":"PSSTFRPPXXX","kind":"bic","value":"PSSTFRPPXXX","valid":true},
+        {"id":"i3","page":1,"start":308,"end":319,"text":"0500013M026","kind":"account","value":"0500013M026","valid":null,"same_account_as":"i1"},
+        {"id":"i4","page":1,"start":262,"end":267,"text":"20041","kind":"fr_bank_code","value":"20041","valid":true},
+        {"id":"i5","page":1,"start":283,"end":288,"text":"01005","kind":"fr_branch_code","value":"01005","valid":true},
+        {"id":"i6","page":1,"start":330,"end":332,"text":"06","kind":"fr_rib_key","value":"06","valid":true}
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q499707","mention":"o1","reasons":["paired-code"],"via":"i2"},
-        {"identifier":"i2","org":"Q499707","mention":"o1","reasons":["bic-institution"]},
-        {"identifier":"i3","org":"Q499707","mention":"o1","reasons":["paired-code"],"via":"i2"}
+        {"identifier":"i1","org":"la-banque-postale","mention":"o1","reasons":["paired-code"],"via":"i2"},
+        {"identifier":"i2","org":"la-banque-postale","mention":"o1","reasons":["bic-institution"]},
+        {"identifier":"i3","org":"la-banque-postale","mention":"o1","reasons":["paired-code","same-account"],"via":"i2"},
+        {"identifier":"i4","org":"la-banque-postale","mention":"o1","reasons":["inside-iban"]},
+        {"identifier":"i5","org":"la-banque-postale","mention":"o1","reasons":["inside-iban"]}
       ],
       "not_links": []
     },
     {
       "id": "scan-bob-letter",
       "orgs": [
-        {"id":"o1","page":1,"start":57,"end":71,"text":"BANK OF BARODA","org":"Q2003797","by_name":"exact"}
+        {"id":"o1","page":1,"start":57,"end":71,"text":"BANK OF BARODA","resolved_by_document":{"org":"bank-of-baroda","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2003797"}}
       ],
       "not_orgs": [],
       "identifiers": [
@@ -501,15 +673,15 @@
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q2003797","mention":"o1","reasons":["paired-code"],"via":"i2"},
-        {"identifier":"i2","org":"Q2003797","mention":"o1","reasons":["ifsc-prefix"]}
+        {"identifier":"i1","org":"bank-of-baroda","mention":"o1","reasons":["paired-code"],"via":"i2"},
+        {"identifier":"i2","org":"bank-of-baroda","mention":"o1","reasons":["ifsc-prefix"]}
       ],
       "not_links": []
     },
     {
       "id": "scan-pnb-deposit",
       "orgs": [
-        {"id":"o1","page":1,"start":55,"end":75,"text":"PUNJAB NATIONAL BANK","org":"Q2743499","by_name":"exact"}
+        {"id":"o1","page":1,"start":55,"end":75,"text":"PUNJAB NATIONAL BANK","resolved_by_document":{"org":"pnb","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2743499"}}
       ],
       "not_orgs": [],
       "identifiers": [
@@ -518,16 +690,16 @@
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q2743499","mention":"o1","reasons":["paired-code"],"via":"i2"},
-        {"identifier":"i2","org":"Q2743499","mention":"o1","reasons":["ifsc-prefix"]}
+        {"identifier":"i1","org":"pnb","mention":"o1","reasons":["paired-code"],"via":"i2"},
+        {"identifier":"i2","org":"pnb","mention":"o1","reasons":["ifsc-prefix"]}
       ],
       "not_links": []
     },
     {
       "id": "axis-statement-scanned-annex",
       "orgs": [
-        {"id":"o1","page":1,"start":60,"end":73,"text":"Axis Bank Ltd","org":"Q2003549","by_name":"exact"},
-        {"id":"o2","page":2,"start":39,"end":48,"text":"AXIS BANK","org":"Q2003549","by_name":"exact"}
+        {"id":"o1","page":1,"start":60,"end":73,"text":"Axis Bank Ltd","resolved_by_document":{"org":"axis-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2003549"}},
+        {"id":"o2","page":2,"start":39,"end":48,"text":"AXIS BANK","resolved_by_document":{"org":"axis-bank","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q2003549"}}
       ],
       "not_orgs": [],
       "identifiers": [
@@ -537,16 +709,18 @@
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q2003549","mention":"o1","reasons":["statement-header","paired-code"],"via":"i2"},
-        {"identifier":"i2","org":"Q2003549","mention":"o1","reasons":["ifsc-prefix"]}
+        {"identifier":"i1","org":"axis-bank","mention":"o1","reasons":["statement-header","paired-code"],"via":"i2"},
+        {"identifier":"i2","org":"axis-bank","mention":"o1","reasons":["ifsc-prefix"]}
       ],
       "not_links": [],
-      "statement": {"page":1,"start":206,"end":232,"text":"01 Apr 2026 to 30 Jun 2026","accounts":["i1","i3"],"from":"2026-04-01","to":"2026-06-30"}
+      "statement": {"page":1,"start":206,"end":232,"text":"01 Apr 2026 to 30 Jun 2026","accounts":["i1","i3"],"from":"2026-04-01","to":"2026-06-30","issuer":"o1"}
     },
     {
       "id": "utility-bill",
       "note": "The collection account is tied to its bank only by the IFSC beside it; the bank is never named.",
-      "orgs": [],
+      "orgs": [
+        {"id":"o1","page":1,"start":55,"end":84,"text":"Sample Power Distribution Ltd","resolved_by_document":{"org":"sample-power","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}}
+      ],
       "not_orgs": [],
       "identifiers": [
         {"id":"i1","page":1,"start":322,"end":336,"text":"57500000123456","kind":"account","value":"57500000123456","valid":null},
@@ -556,17 +730,20 @@
         {"page":1,"start":196,"end":208,"text":"170012345678","looks_like":"account","why":"consumer-number"}
       ],
       "links": [
-        {"identifier":"i1","org":"Q631047","mention":null,"reasons":["paired-code"],"via":"i2"},
-        {"identifier":"i2","org":"Q631047","mention":null,"reasons":["ifsc-prefix"]}
+        {"identifier":"i1","org":"hdfc-bank","mention":null,"reasons":["paired-code"],"via":"i2"},
+        {"identifier":"i2","org":"hdfc-bank","mention":null,"reasons":["ifsc-prefix"]}
       ],
-      "not_links": []
+      "not_links": [
+        {"identifier":"i1","org":"sample-power","why":"code-names-other-bank"},
+        {"identifier":"i2","org":"sample-power","why":"code-names-other-bank"}
+      ]
     },
     {
       "id": "hdfc-ltd-loan-2019",
-      "note": "HDFC Ltd has the match key of the bare name HDFC, which two entries hold; the full name on the next line resolves to the mortgage company, not the bank.",
+      "note": "HDFC Ltd has the match key of the bare name HDFC, which two directory entries hold; the full name on the next line, whose initials it is, settles it as the mortgage company.",
       "orgs": [
-        {"id":"o1","page":1,"start":60,"end":68,"text":"HDFC Ltd","org":null,"by_name":"clash","candidates":["Q631047","Q1446319"]},
-        {"id":"o2","page":1,"start":69,"end":116,"text":"Housing Development Finance Corporation Limited","org":"Q1446319","by_name":"exact"}
+        {"id":"o1","page":1,"start":60,"end":68,"text":"HDFC Ltd","resolved_by_document":{"org":"hdfc-ltd","evidence":[{"by":"mention","mention":"o2"}]},"directory":{"lookup":"clash","candidates":["Q631047","Q1446319"]}},
+        {"id":"o2","page":1,"start":69,"end":116,"text":"Housing Development Finance Corporation Limited","resolved_by_document":{"org":"hdfc-ltd","evidence":[{"by":"name"}]},"directory":{"lookup":"exact","id":"Q1446319"}}
       ],
       "not_orgs": [],
       "identifiers": [
@@ -574,16 +751,18 @@
       ],
       "not_identifiers": [],
       "links": [
-        {"identifier":"i1","org":"Q1446319","mention":"o2","reasons":["statement-header"]}
+        {"identifier":"i1","org":"hdfc-ltd","mention":"o2","reasons":["statement-header"]}
       ],
       "not_links": [
-        {"identifier":"i1","org":"Q631047","why":"name-not-this-bank"}
+        {"identifier":"i1","org":"hdfc-bank","why":"name-not-this-bank"}
       ],
-      "statement": {"page":1,"start":206,"end":232,"text":"01 Apr 2018 to 31 Mar 2019","accounts":["i1"],"from":"2018-04-01","to":"2019-03-31"}
+      "statement": {"page":1,"start":206,"end":232,"text":"01 Apr 2018 to 31 Mar 2019","accounts":["i1"],"from":"2018-04-01","to":"2019-03-31","issuer":"o1"}
     },
     {
       "id": "passport-asha-current",
-      "orgs": [],
+      "orgs": [
+        {"id":"o1","page":1,"start":366,"end":388,"text":"UTOPIA PASSPORT OFFICE","resolved_by_document":{"org":"utopia-passport-office","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}}
+      ],
       "not_orgs": [],
       "identifiers": [
         {"id":"i1","page":1,"start":173,"end":182,"text":"SMP001826","kind":"passport_number","value":"SMP001826","valid":null},
@@ -625,7 +804,9 @@
     },
     {
       "id": "passport-rohan",
-      "orgs": [],
+      "orgs": [
+        {"id":"o1","page":1,"start":367,"end":389,"text":"UTOPIA PASSPORT OFFICE","resolved_by_document":{"org":"utopia-passport-office","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}}
+      ],
       "not_orgs": [],
       "identifiers": [
         {"id":"i1","page":1,"start":173,"end":182,"text":"SMP002935","kind":"passport_number","value":"SMP002935","valid":null},
@@ -688,16 +869,18 @@
   ],
   "answers": {
     "latest_statement": [
-      {"account":"50100417263958","document":"hdfc-statement-sep"},
-      {"account":"4512369874","document":"kotak-statement"},
-      {"account":"GB29NWBK60161331926819","document":"natwest-statement"},
-      {"account":"NL91ABNA0417164300","document":"abn-amro-statement"},
-      {"account":"DE89370400440532013000","document":"commerzbank-kontoauszug"},
-      {"account":"4111111111111111","document":"hdfc-card-statement"},
-      {"account":"30123456789","document":"sbi-passbook-hindi"},
-      {"account":"4417352","document":"mizuho-statement-ja"},
-      {"account":"917010012345678","document":"axis-statement-scanned-annex"},
-      {"account":"612345678","document":"hdfc-ltd-loan-2019"}
+      {"account":"50100417263958","spellings":["50100417263958"],"document":"hdfc-statement-sep"},
+      {"account":"4512369874","spellings":["4512369874"],"document":"kotak-statement"},
+      {"account":"004512000789","spellings":["004512000789"],"document":"sahakari-statement"},
+      {"account":"88120457","spellings":["88120457"],"document":"credit-union-statement"},
+      {"account":"GB29NWBK60161331926819","spellings":["31926819","GB29NWBK60161331926819"],"document":"natwest-statement"},
+      {"account":"NL91ABNA0417164300","spellings":["NL91ABNA0417164300"],"document":"abn-amro-statement"},
+      {"account":"DE89370400440532013000","spellings":["DE89370400440532013000"],"document":"commerzbank-kontoauszug"},
+      {"account":"4111111111111111","spellings":["4111111111111111"],"document":"hdfc-card-statement"},
+      {"account":"30123456789","spellings":["30123456789"],"document":"sbi-passbook-hindi"},
+      {"account":"4417352","spellings":["4417352"],"document":"mizuho-statement-ja"},
+      {"account":"917010012345678","spellings":["917010012345678"],"document":"axis-statement-scanned-annex"},
+      {"account":"612345678","spellings":["612345678"],"document":"hdfc-ltd-loan-2019"}
     ],
     "current_passport": [
       {"holder":"KALPIT, ASHA","document":"passport-asha-current"},

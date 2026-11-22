@@ -1,5 +1,5 @@
 {
-	"version": 1,
+	"version": 2,
 	"documents": [
 		{
 			"id": "hdfc-statement-sep",
@@ -9,6 +9,16 @@
 			"title": "Statement A",
 			"created": "2026-08-03T09:00:00Z",
 			"about": "Latest of three monthly statements of one account; its file date is the oldest of the three. Names a later period in a note.",
+			"planted": {
+				"orgs": ["HDFC Bank Ltd"],
+				"identifiers": ["50100417263958", "HDFC0SAMPL1"],
+				"ignore": [
+					{
+						"text": "411000",
+						"why": "postal code"
+					}
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -42,6 +52,16 @@
 			"title": "Statement B",
 			"created": "2026-10-15T09:00:00Z",
 			"about": "Oldest of three monthly statements of one account; its file date is the newest of the three.",
+			"planted": {
+				"orgs": ["HDFC Bank Ltd"],
+				"identifiers": ["50100417263958", "HDFC0SAMPL1"],
+				"ignore": [
+					{
+						"text": "411000",
+						"why": "postal code"
+					}
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -74,6 +94,16 @@
 			"title": "Statement C",
 			"created": "2026-09-01T09:00:00Z",
 			"about": "Middle one of three monthly statements of one account.",
+			"planted": {
+				"orgs": ["HDFC Bank Ltd"],
+				"identifiers": ["50100417263958", "HDFC0SAMPL1"],
+				"ignore": [
+					{
+						"text": "411000",
+						"why": "postal code"
+					}
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -106,6 +136,10 @@
 			"title": "Savings statement",
 			"created": "2026-11-02T08:30:00Z",
 			"about": "Statement header names one bank and one account, with no code tying them.",
+			"planted": {
+				"orgs": ["Kotak Mahindra Bank"],
+				"identifiers": ["4512369874"]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -125,6 +159,63 @@
 			]
 		},
 		{
+			"id": "sahakari-statement",
+			"file": "sahakari-statement-oct.pdf",
+			"format": "pdf",
+			"lang": "en",
+			"title": "Savings statement",
+			"created": "2026-11-03T06:00:00Z",
+			"about": "Statement from a made-up co-operative bank that no directory holds: the header is the only tie between the bank and the account.",
+			"planted": {
+				"orgs": ["Sample Nagar Sahakari Bank Ltd", "Sample Nagar Sahakari Bank"],
+				"identifiers": ["004512000789"]
+			},
+			"pages": [
+				{
+					"lines": [
+						"SAMPLE DOCUMENT. Made up for testing. Not a real statement.",
+						"Sample Nagar Sahakari Bank Ltd",
+						"Savings account statement",
+						"Member: Asha Kalpit",
+						"Account number: 004512000789",
+						"Statement period: 01 Oct 2026 to 31 Oct 2026",
+						"Opening balance: INR 3,400.00",
+						"12 Oct 2026 Cash deposit 1,000.00 Cr 4,400.00",
+						"Closing balance: INR 4,400.00",
+						"Thank you for banking with Sample Nagar Sahakari Bank."
+					]
+				}
+			]
+		},
+		{
+			"id": "credit-union-statement",
+			"file": "member-savings-oct.pdf",
+			"format": "pdf",
+			"lang": "en",
+			"title": "Member savings statement",
+			"created": "2026-11-04T07:00:00Z",
+			"about": "Statement from a made-up credit union that no directory holds: the header is the only tie between it and the account.",
+			"planted": {
+				"orgs": ["Sampleton Credit Union"],
+				"identifiers": ["88120457"]
+			},
+			"pages": [
+				{
+					"lines": [
+						"SAMPLE DOCUMENT. Made up for testing. Not a real statement.",
+						"Sampleton Credit Union",
+						"Member savings statement",
+						"Member: Jane Q. Sample",
+						"Member account: 88120457",
+						"Period: 1 October 2026 to 31 October 2026",
+						"Balance brought forward GBP 410.00",
+						"15 Oct 2026 Payroll saving 50.00 460.00",
+						"Balance carried forward GBP 460.00"
+					]
+				}
+			]
+		},
+		{
 			"id": "natwest-statement",
 			"file": "current-account-sep.pdf",
 			"format": "pdf",
@@ -132,6 +223,10 @@
 			"title": "Current account statement",
 			"created": "2026-10-01T07:00:00Z",
 			"about": "British statement: an IBAN whose bank code is the bank's, a BIC, and the domestic account number.",
+			"planted": {
+				"orgs": ["National Westminster Bank Plc", "Example Cafe"],
+				"identifiers": ["60-16-13", "31926819", "GB29 NWBK 6016 1331 9268 19", "NWBKGB2L"]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -159,6 +254,10 @@
 			"title": "Account statement",
 			"created": "2026-09-02T06:00:00Z",
 			"about": "Dutch statement in English: an IBAN whose bank code is the first four letters of the bank's BIC.",
+			"planted": {
+				"orgs": ["ABN AMRO Bank N.V."],
+				"identifiers": ["NL91 ABNA 0417 1643 00"]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -184,6 +283,16 @@
 			"title": "Kontoauszug",
 			"created": "2026-11-01T06:00:00Z",
 			"about": "German statement: IBAN with the bank's Bankleitzahl, the bank's BIC, header naming the bank.",
+			"planted": {
+				"orgs": ["Commerzbank AG"],
+				"identifiers": ["DE89 3704 0044 0532 0130 00", "COBADEFFXXX"],
+				"ignore": [
+					{
+						"text": "50667",
+						"why": "postal code"
+					}
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -212,7 +321,11 @@
 			"lang": "de",
 			"title": "Brief",
 			"created": "2026-03-12T10:00:00Z",
-			"about": "German letter: two organisations whose names share words (Deutsche Bank, Deutsche Bundesbank) and an IBAN that ties to one of them.",
+			"about": "German letter: two organisations whose names share words (Deutsche Bank, Deutsche Bundesbank), the second in an inflected form.",
+			"planted": {
+				"orgs": ["Deutsche Bank", "Deutschen Bundesbank", "Deutsche Bank AG"],
+				"identifiers": []
+			},
 			"pages": [
 				{
 					"lines": [
@@ -222,7 +335,6 @@
 						"Berlin, 12.03.2026",
 						"Sehr geehrte Frau Mustermann,",
 						"ab dem 1. Mai 2026 gelten neue Meldegrenzen der Deutschen Bundesbank für Zahlungen ins Ausland.",
-						"Ihr Konto: DE65 1007 0000 0123 4567 89",
 						"Die Änderung betrifft Sie nur, wenn Sie mehr als 12.500 Euro ins Ausland senden.",
 						"Mit freundlichen Grüßen",
 						"Deutsche Bank AG, Filiale Berlin"
@@ -238,13 +350,23 @@
 			"title": "Rechnung",
 			"created": "2026-06-20T14:00:00Z",
 			"about": "German invoice: an IBAN with a wrong check digit beside a bank name, a phone number and an invoice number shaped like an account.",
+			"planted": {
+				"orgs": ["Musterfirma Schreinerei GmbH", "Commerzbank"],
+				"identifiers": ["+49 30 23125 471", "2026 0815 4711", "DE88 3704 0044 0532 0130 00"],
+				"ignore": [
+					{
+						"text": "10115",
+						"why": "postal code"
+					}
+				]
+			},
 			"pages": [
 				{
 					"lines": [
 						"MUSTERDOKUMENT. Für Tests erfunden. Keine echte Rechnung.",
 						"SAMPLE DOCUMENT. Made up for testing.",
 						"Musterfirma Schreinerei GmbH, Holzweg 3, 10115 Berlin",
-						"Telefon: +49 30 1234 5678",
+						"Telefon: +49 30 23125 471",
 						"Rechnung",
 						"Rechnungsnummer: 2026 0815 4711",
 						"Datum: 20.06.2026",
@@ -264,6 +386,15 @@
 			"title": "Invoice",
 			"created": "2026-05-14T11:00:00Z",
 			"about": "Numbers that look like identifiers: an IBAN with a wrong check digit, a card number that fails Luhn, a phone number, an invoice number shaped like an account.",
+			"planted": {
+				"orgs": ["Sample Supplies Ltd"],
+				"identifiers": [
+					"020 7946 0123",
+					"50100987654321",
+					"GB28 NWBK 6016 1331 9268 19",
+					"4111 1111 1111 1112"
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -289,6 +420,22 @@
 			"title": "Funds transfer receipt",
 			"created": "2026-09-22T05:12:00Z",
 			"about": "Transfer receipt with two banks and two accounts, each account tied to its bank by an IFSC; the bare name HDFC is an alias clash.",
+			"planted": {
+				"orgs": ["HDFC", "HDFC Bank", "Sample Traders", "ICICI Bank"],
+				"identifiers": [
+					"N2026092212345678",
+					"50100417263958",
+					"HDFC0SAMPL1",
+					"002101234567",
+					"ICIC0SAMPL2"
+				],
+				"ignore": [
+					{
+						"text": "Bank:",
+						"why": "field label"
+					}
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -315,6 +462,10 @@
 			"title": "Payment confirmation",
 			"created": "2026-10-14T08:00:00Z",
 			"about": "Transfer receipt with three banks and two accounts: the IBAN ties to its bank, the other account is tied to none of them.",
+			"planted": {
+				"orgs": ["Commerzbank", "BNP Paribas", "Mizuho Bank"],
+				"identifiers": ["TRX-2026-000417", "DE89 3704 0044 0532 0130 00", "7730194522"]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -334,6 +485,32 @@
 			]
 		},
 		{
+			"id": "transfer-rows",
+			"file": "bulk-transfer-advice.pdf",
+			"format": "pdf",
+			"lang": "en",
+			"title": "Bulk transfer advice",
+			"created": "2026-10-21T09:00:00Z",
+			"about": "Two rows, each with an IFSC at its start and an account at its end: the first account is nearer the second row's code, so only the row decides which code is its own.",
+			"planted": {
+				"orgs": ["Sample Traders"],
+				"identifiers": ["HDFC0SAMPL1", "50100417263958", "ICIC0SAMPL2", "002101234567"]
+			},
+			"pages": [
+				{
+					"lines": [
+						"SAMPLE DOCUMENT. Made up for testing. Not a real advice.",
+						"Bulk transfer advice",
+						"Row IFSC Party Account",
+						"1 HDFC0SAMPL1 Asha Kalpit, savings, Sample Nagar branch, Pune 50100417263958",
+						"2 ICIC0SAMPL2 Sample Traders, current account, Sample Road branch 002101234567",
+						"Amount: INR 4,500.00 from row 1 to row 2",
+						"Status: Successful"
+					]
+				}
+			]
+		},
+		{
 			"id": "hdfc-branch-letter",
 			"file": "branch-hours-letter.pdf",
 			"format": "pdf",
@@ -341,6 +518,10 @@
 			"title": "Letter",
 			"created": "2026-08-12T06:00:00Z",
 			"about": "Letter that names a bank and no account.",
+			"planted": {
+				"orgs": ["HDFC Bank Limited", "HDFC Bank"],
+				"identifiers": []
+			},
 			"pages": [
 				{
 					"lines": [
@@ -365,6 +546,10 @@
 			"title": "शाखा सूचना",
 			"created": "2026-09-05T06:00:00Z",
 			"about": "Hindi letter that names the bank in Devanagari and no account.",
+			"planted": {
+				"orgs": ["एचडीएफसी बैंक"],
+				"identifiers": []
+			},
 			"pages": [
 				{
 					"lines": [
@@ -390,6 +575,16 @@
 			"title": "Rent receipt",
 			"created": "2026-10-03T12:00:00Z",
 			"about": "An account number with no bank, and a phone number.",
+			"planted": {
+				"orgs": [],
+				"identifiers": ["33445566778899", "+44 7700 900417"],
+				"ignore": [
+					{
+						"text": "bank transfer",
+						"why": "payment method"
+					}
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -399,7 +594,7 @@
 						"for the flat at 14 Imaginary Lane, Sample Nagar, Pune.",
 						"Paid by bank transfer to account no. 33445566778899.",
 						"Landlord: R. Example",
-						"Phone: +91 98765 43210",
+						"Phone: +44 7700 900417",
 						"Date: 03 Oct 2026"
 					]
 				}
@@ -413,6 +608,20 @@
 			"title": "Fee payment",
 			"created": "2026-10-20T13:35:00Z",
 			"about": "An email saved as text: spelling variants hdfcbank and HDFC BANK, a reference number and a phone number.",
+			"planted": {
+				"orgs": ["hdfcbank", "HDFC BANK"],
+				"identifiers": ["N2026102098765", "+44 7700 900123"],
+				"ignore": [
+					{
+						"text": "School office",
+						"why": "a department named by its role, not an organisation"
+					},
+					{
+						"text": "office@example.org",
+						"why": "email address"
+					}
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -426,7 +635,7 @@
 						"",
 						"I paid the term fee today through hdfcbank netbanking. The HDFC BANK app",
 						"showed reference N2026102098765 for it.",
-						"If anything is missing, please call me on +91 90000 00000.",
+						"If anything is missing, please call me on +44 7700 900123.",
 						"",
 						"Thanks,",
 						"Asha"
@@ -442,6 +651,10 @@
 			"title": "Credit card statement",
 			"created": "2026-09-16T04:00:00Z",
 			"about": "Credit card statement: a card number from a published test range under a header naming one bank.",
+			"planted": {
+				"orgs": ["HDFC Bank", "Sample Grocers", "Example Books"],
+				"identifiers": ["4111 1111 1111 1111"]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -469,6 +682,10 @@
 			"title": "Premium receipt",
 			"created": "2026-07-11T09:00:00Z",
 			"about": "A company that is not a bank but has a bank's name inside its own; a card with no bank; a policy number.",
+			"planted": {
+				"orgs": ["HDFC Life Insurance Company Limited", "HDFC Life"],
+				"identifiers": ["21345678", "5555 5555 5555 4444"]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -492,6 +709,16 @@
 			"title": "Renewal notice",
 			"created": "2026-11-05T09:00:00Z",
 			"about": "An insurer whose name holds a bank's alias, and a separate real mention of that bank.",
+			"planted": {
+				"orgs": ["ICICI Lombard General Insurance Company Limited", "ICICI Bank"],
+				"identifiers": ["3001/123456789/00/000"],
+				"ignore": [
+					{
+						"text": "Motor insurance",
+						"why": "product name"
+					}
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -514,6 +741,19 @@
 			"title": "Fee payment banks",
 			"created": "2026-06-01T03:00:00Z",
 			"about": "A web page listing banks whose names contain each other (Bank of India inside State Bank of India).",
+			"planted": {
+				"orgs": [
+					"Sample Public School",
+					"State Bank of India",
+					"Bank of India",
+					"Central Bank of India",
+					"Union Bank of India",
+					"Bank of Baroda",
+					"Punjab National Bank",
+					"Punjab & Sind Bank"
+				],
+				"identifiers": []
+			},
 			"pages": [
 				{
 					"lines": [
@@ -540,6 +780,10 @@
 			"title": "Household notes",
 			"created": "2026-10-31T16:00:00Z",
 			"about": "Short names that two directory entries share: BOI, SBI, HDFC. Right answer: no organisation for each.",
+			"planted": {
+				"orgs": ["BOI", "SBI", "HDFC"],
+				"identifiers": []
+			},
 			"pages": [
 				{
 					"lines": [
@@ -560,6 +804,10 @@
 			"title": "पासबुक",
 			"created": "2026-10-02T05:00:00Z",
 			"about": "Hindi passbook page: bank named in Devanagari, account with the bank's IFSC.",
+			"planted": {
+				"orgs": ["स्टेट बैंक ऑफ़ इंडिया"],
+				"identifiers": ["30123456789", "SBIN0SAMPL4"]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -589,6 +837,10 @@
 			"title": "वेतन प्रमाण पत्र",
 			"created": "2026-06-10T07:00:00Z",
 			"about": "Hindi salary certificate: a PAN, a PAN-like code that is not one, a malformed PAN, and an account tied to a bank only by IFSC.",
+			"planted": {
+				"orgs": ["सैंपल टेक्नोलॉजीज़ प्राइवेट लिमिटेड"],
+				"identifiers": ["PNES12345A", "ABCPK1234F", "50100417263958", "HDFC0SAMPL1", "ABCDK1234F"]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -614,6 +866,10 @@
 			"title": "मसूर दाल",
 			"created": "2025-12-01T10:00:00Z",
 			"about": "Hindi recipe: nothing to find.",
+			"planted": {
+				"orgs": [],
+				"identifiers": []
+			},
 			"pages": [
 				{
 					"lines": [
@@ -642,6 +898,10 @@
 			"title": "取引明細",
 			"created": "2026-09-03T01:00:00Z",
 			"about": "Japanese statement whose header names one bank and one account, with no code.",
+			"planted": {
+				"orgs": ["みずほ銀行"],
+				"identifiers": ["4417352"]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -668,6 +928,20 @@
 			"title": "被仕向送金のお知らせ",
 			"created": "2026-10-16T02:00:00Z",
 			"about": "Japanese remittance notice: account tied to its bank by the BIC beside it; a look-alike trust bank whose name holds the bank's alias.",
+			"planted": {
+				"orgs": ["三菱UFJ銀行", "ABN AMRO", "三菱UFJ信託銀行"],
+				"identifiers": ["BOTKJPJT", "0123456"],
+				"ignore": [
+					{
+						"text": "受取銀行",
+						"why": "field label"
+					},
+					{
+						"text": "送金銀行",
+						"why": "field label"
+					}
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -694,6 +968,10 @@
 			"title": "秋の散歩",
 			"created": "2025-11-03T03:00:00Z",
 			"about": "Japanese short essay as a web page: nothing to find.",
+			"planted": {
+				"orgs": [],
+				"identifiers": []
+			},
 			"pages": [
 				{
 					"lines": [
@@ -707,13 +985,24 @@
 			]
 		},
 		{
-			"id": "rib-bnp-fr",
+			"id": "rib-fr",
 			"file": "releve-identite-bancaire.pdf",
 			"format": "pdf",
 			"lang": "fr",
 			"title": "Relevé d'identité bancaire",
 			"created": "2026-04-08T09:00:00Z",
-			"about": "French bank details: the BIC names the bank; the IBAN's bank code is not in the directory, so the IBAN is tied only through the BIC beside it.",
+			"about": "French bank details: the BIC names the bank; the IBAN's bank code is not in the directory, so the IBAN is tied through the BIC beside it. The domestic bank code, branch code, account number and RIB key are the IBAN's own parts.",
+			"planted": {
+				"orgs": ["La Banque Postale"],
+				"identifiers": [
+					"FR14 2004 1010 0505 0001 3M02 606",
+					"PSSTFRPPXXX",
+					"20041",
+					"01005",
+					"0500013M026",
+					"06"
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -721,10 +1010,10 @@
 						"SAMPLE DOCUMENT. Made up for testing.",
 						"Relevé d'identité bancaire",
 						"Titulaire : Claire Exemple",
-						"Banque : BNP Paribas",
-						"IBAN : FR76 3000 4000 0100 0123 4567 830",
-						"BIC : BNPAFRPPXXX",
-						"Code banque : 30004 Code guichet : 00001 Numéro de compte : 00012345678 Clé RIB : 30"
+						"Banque : La Banque Postale",
+						"IBAN : FR14 2004 1010 0505 0001 3M02 606",
+						"BIC : PSSTFRPPXXX",
+						"Code banque : 20041 Code guichet : 01005 Numéro de compte : 0500013M026 Clé RIB : 06"
 					]
 				}
 			]
@@ -737,6 +1026,10 @@
 			"title": "Scan",
 			"created": "2026-06-18T11:00:00Z",
 			"about": "Scanned letter, image only: bank name, account and the bank's IFSC.",
+			"planted": {
+				"orgs": ["BANK OF BARODA"],
+				"identifiers": ["12340100005678", "BARB0SAMPL6"]
+			},
 			"pages": [
 				{
 					"image": true,
@@ -767,6 +1060,10 @@
 			"title": "Scan",
 			"created": "2026-09-02T07:30:00Z",
 			"about": "Scanned deposit slip, image only: bank name, account and the bank's IFSC.",
+			"planted": {
+				"orgs": ["PUNJAB NATIONAL BANK"],
+				"identifiers": ["0123000100456789", "PUNB0SAMPL7"]
+			},
 			"pages": [
 				{
 					"image": true,
@@ -794,6 +1091,10 @@
 			"title": "Statement of account",
 			"created": "2026-07-01T05:00:00Z",
 			"about": "Text page plus a scanned page: an IFSC whose prefix (UTIB) is not the bank's name; the account appears on both pages.",
+			"planted": {
+				"orgs": ["Axis Bank Ltd", "AXIS BANK"],
+				"identifiers": ["917010012345678", "UTIB0SAMPL5"]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -832,6 +1133,16 @@
 			"title": "Electricity bill",
 			"created": "2026-09-05T06:00:00Z",
 			"about": "A biller's account tied to a bank only by the IFSC beside it; the bank is never named. A consumer number shaped like an account.",
+			"planted": {
+				"orgs": ["Sample Power Distribution Ltd"],
+				"identifiers": ["170012345678", "57500000123456", "HDFC0SAMPL3"],
+				"ignore": [
+					{
+						"text": "bank transfer",
+						"why": "payment method"
+					}
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -856,6 +1167,10 @@
 			"title": "Home loan statement",
 			"created": "2019-04-10T06:00:00Z",
 			"about": "A 2019 statement from the mortgage company whose short name is the bank's: HDFC Ltd is not HDFC Bank Ltd.",
+			"planted": {
+				"orgs": ["HDFC Ltd", "Housing Development Finance Corporation Limited"],
+				"identifiers": ["612345678"]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -880,6 +1195,13 @@
 			"title": "Passport",
 			"created": "2024-03-20T08:00:00Z",
 			"about": "Current passport of one family member (renewal of the expired one).",
+			"planted": {
+				"orgs": ["UTOPIA PASSPORT OFFICE"],
+				"identifiers": [
+					"SMP001826",
+					"P<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0018266UTO8804215F3403174<<<<<<<<<<<<<<<2"
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -911,6 +1233,13 @@
 			"title": "Scan",
 			"created": "2024-03-21T08:00:00Z",
 			"about": "Scanned, image only: the same person's expired passport, cancelled at renewal.",
+			"planted": {
+				"orgs": [],
+				"identifiers": [
+					"SMP000417",
+					"P<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0004175UTO8804215F1906095<<<<<<<<<<<<<<<0"
+				]
+			},
 			"pages": [
 				{
 					"image": true,
@@ -944,6 +1273,13 @@
 			"title": "Passport",
 			"created": "2023-01-09T08:00:00Z",
 			"about": "Passport of a second member of the same family.",
+			"planted": {
+				"orgs": ["UTOPIA PASSPORT OFFICE"],
+				"identifiers": [
+					"SMP002935",
+					"P<UTOKALPIT<<ROHAN<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0029356UTO1609307M2801049<<<<<<<<<<<<<<<8"
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -975,6 +1311,14 @@
 			"title": "Visa",
 			"created": "2026-02-02T08:00:00Z",
 			"about": "A visa page: holder, dates and a passport number, but not a passport.",
+			"planted": {
+				"orgs": [],
+				"identifiers": [
+					"VS0007731",
+					"SMP001826",
+					"V<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nVS00077317UTO8804215F2701312<<<<<<<<<<<<<<<<"
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -1002,6 +1346,13 @@
 			"title": "Passport",
 			"created": "2021-04-20T08:00:00Z",
 			"about": "Passport whose machine-readable zone fails its expiry check digit and disagrees with the printed expiry: the expiry cannot be told.",
+			"planted": {
+				"orgs": [],
+				"identifiers": [
+					"L898902C3",
+					"P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F3105140<<<<<<<<<<<<<<<2"
+				]
+			},
 			"pages": [
 				{
 					"lines": [
@@ -1030,6 +1381,10 @@
 			"title": "Lemon rice",
 			"created": "2025-08-15T10:00:00Z",
 			"about": "Recipe: nothing to find.",
+			"planted": {
+				"orgs": [],
+				"identifiers": []
+			},
 			"pages": [
 				{
 					"lines": [
@@ -1055,6 +1410,10 @@
 			"title": "Morning",
 			"created": "2024-01-07T07:00:00Z",
 			"about": "A short poem: nothing to find.",
+			"planted": {
+				"orgs": [],
+				"identifiers": []
+			},
 			"pages": [
 				{
 					"lines": [

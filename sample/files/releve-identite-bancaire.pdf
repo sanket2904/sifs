@@ -29,16 +29,16 @@ endobj
 << /Type /Font /Subtype /Type0 /BaseFont /T /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 5 0 R >>
 endobj
 9 0 obj
-<< /Length 589 >>
+<< /Length 595 >>
 stream
 BT /F2 10 Tf 50 760 Td (DOCUMENT D'EXEMPLE. Invent\351 pour des tests. Ce n'est pas un vrai RIB.) Tj ET
 BT /F2 10 Tf 50 746 Td (SAMPLE DOCUMENT. Made up for testing.) Tj ET
 BT /F2 10 Tf 50 732 Td (Relev\351 d'identit\351 bancaire) Tj ET
 BT /F2 10 Tf 50 718 Td (Titulaire : Claire Exemple) Tj ET
-BT /F2 10 Tf 50 704 Td (Banque : BNP Paribas) Tj ET
-BT /F2 10 Tf 50 690 Td (IBAN : FR76 3000 4000 0100 0123 4567 830) Tj ET
-BT /F2 10 Tf 50 676 Td (BIC : BNPAFRPPXXX) Tj ET
-BT /F2 10 Tf 50 662 Td (Code banque : 30004 Code guichet : 00001 Num\351ro de compte : 00012345678 Cl\351 RIB : 30) Tj ET
+BT /F2 10 Tf 50 704 Td (Banque : La Banque Postale) Tj ET
+BT /F2 10 Tf 50 690 Td (IBAN : FR14 2004 1010 0505 0001 3M02 606) Tj ET
+BT /F2 10 Tf 50 676 Td (BIC : PSSTFRPPXXX) Tj ET
+BT /F2 10 Tf 50 662 Td (Code banque : 20041 Code guichet : 01005 Num\351ro de compte : 0500013M026 Cl\351 RIB : 06) Tj ET
 endstream
 endobj
 10 0 obj
@@ -56,9 +56,9 @@ xref
 0000000877 00000 n 
 0000001050 00000 n 
 0000001176 00000 n 
-0000001816 00000 n 
+0000001822 00000 n 
 trailer
 << /Size 11 /Root 1 0 R /Info 3 0 R >>
 startxref
-1953
+1959
 %%EOF

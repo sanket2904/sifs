@@ -13,29 +13,73 @@ const doc = (labels, id) => labels.documents.find((d) => d.id === id);
 const MUTANTS = [
 	['span moved by one', (l) => doc(l, 'kotak-statement').orgs[0].start++, 'reads'],
 	[
-		'organisation id changed to another bank',
-		(l) => (doc(l, 'hdfc-branch-letter').orgs[0].org = 'Q1446319'),
-		'by_name exact, but the directory gives Q631047'
+		'directory lookup changed to another bank',
+		(l) => (doc(l, 'hdfc-branch-letter').orgs[0].directory.id = 'Q1446319'),
+		'directory exact Q1446319, but the directory gives Q631047'
 	],
 	[
-		'organisation id not in the directory',
-		(l) => (doc(l, 'transfer-untied').orgs[1].org = 'Q999999999'),
-		'is not in the directory'
+		'mention settled as an organisation it does not name',
+		(l) => (doc(l, 'hdfc-branch-letter').orgs[0].resolved_by_document.org = 'hdfc-ltd'),
+		'is not a name of hdfc-ltd'
 	],
 	[
-		'alias clash resolved to one bank',
+		'mention settled as an organisation that does not exist',
+		(l) => (doc(l, 'transfer-untied').orgs[1].resolved_by_document.org = 'no-such-bank'),
+		'names no organisation'
+	],
+	[
+		'alias clash looked up as one bank',
+		(l) => (doc(l, 'household-notes').orgs[0].directory = { lookup: 'exact', id: 'Q2004439' }),
+		'directory exact Q2004439, but the directory gives Q2004439, Q28457664'
+	],
+	[
+		'unsettled short name settled with no evidence',
 		(l) =>
-			Object.assign(doc(l, 'household-notes').orgs[0], {
-				org: 'Q2004439',
-				by_name: 'exact',
-				candidates: undefined
+			(doc(l, 'household-notes').orgs[2].resolved_by_document = {
+				org: 'hdfc-bank',
+				evidence: [{ by: 'name' }]
 			}),
-		'by_name exact, but the directory gives Q2004439, Q28457664'
+		'"HDFC" is not a name of hdfc-bank'
+	],
+	[
+		"document evidence pointed at the other bank's code",
+		(l) =>
+			(doc(l, 'neft-receipt-tied').orgs[0].resolved_by_document.evidence = [
+				{ by: 'code', identifier: 'i4' }
+			]),
+		'ICIC0SAMPL2 does not spell "HDFC"'
 	],
 	[
 		'look-alike label removed',
 		(l) => doc(l, 'school-fee-banks').not_orgs.pop(),
-		'which no org or not_org label covers'
+		'which no org or not_org label of Q2004439 covers'
+	],
+	[
+		'exclusion of the second alias holder removed',
+		(l) => {
+			const d = doc(l, 'hdfc-statement-sep');
+			d.not_orgs = d.not_orgs.filter((n) => n.entry !== 'Q1446319');
+		},
+		'which no org or not_org label of Q1446319 covers'
+	],
+	[
+		'merchant left unlabelled',
+		(l) => {
+			const d = doc(l, 'natwest-statement');
+			d.orgs.pop();
+			d.not_links = d.not_links.filter((n) => n.org !== 'example-cafe');
+		},
+		'planted org "Example Cafe" at page 1'
+	],
+	[
+		'organisation span clipped to the directory name',
+		(l) =>
+			Object.assign(doc(l, 'deutsche-bank-brief').orgs[1], {
+				start: 214,
+				text: 'Bundesbank',
+				directory: { lookup: 'exact', id: 'Q162222' }
+			}),
+		'planted org "Deutschen Bundesbank"'
 	],
 	[
 		'invalid IBAN marked valid',
@@ -58,14 +102,39 @@ const MUTANTS = [
 		'is not "33445566778899" normalized'
 	],
 	[
+		'account label truncated by one digit',
+		(l) =>
+			Object.assign(doc(l, 'neft-receipt-tied').identifiers[2], {
+				end: 292,
+				text: '00210123456',
+				value: '00210123456'
+			}),
+		'covers part of a token, not the whole token'
+	],
+	[
 		'decoy label removed',
 		(l) => doc(l, 'rent-receipt').not_identifiers.pop(),
-		'which no identifier or not_identifier label covers'
+		'which no identifier or not_identifier label holds whole'
+	],
+	[
+		'sort code left unlabelled',
+		(l) => {
+			const d = doc(l, 'natwest-statement');
+			d.identifiers = d.identifiers.filter((i) => i.id !== 'i4');
+			d.links = d.links.filter((k) => k.identifier !== 'i4');
+			d.not_links = d.not_links.filter((k) => k.identifier !== 'i4');
+		},
+		'planted identifier "60-16-13"'
+	],
+	[
+		'domestic account not tied to its IBAN',
+		(l) => delete doc(l, 'rib-fr').identifiers[2].same_account_as,
+		'so same_account_as is i1'
 	],
 	[
 		'IBAN linked to the wrong bank',
-		(l) => Object.assign(doc(l, 'deutsche-bank-brief').links[0], { org: 'Q162222', mention: 'o2' }),
-		'is not a bank code of Q162222'
+		(l) => (doc(l, 'commerzbank-kontoauszug').links[0].org = 'deutsche-bank'),
+		'is not a bank code of deutsche-bank'
 	],
 	[
 		'reason that holds left out',
@@ -87,7 +156,7 @@ const MUTANTS = [
 		(l) =>
 			doc(l, 'transfer-untied').links.push({
 				identifier: 'i2',
-				org: 'Q2882956',
+				org: 'mizuho-bank',
 				mention: 'o3',
 				reasons: ['statement-header']
 			}),
@@ -98,7 +167,7 @@ const MUTANTS = [
 		(l) =>
 			(doc(l, 'natwest-statement').links[0] = {
 				identifier: 'i1',
-				org: 'Q2740021',
+				org: 'natwest',
 				mention: 'o1',
 				reasons: ['paired-code'],
 				via: 'i3'
@@ -106,9 +175,31 @@ const MUTANTS = [
 		'is not on the same or the next line'
 	],
 	[
+		'account paired with the nearer code of the next row',
+		(l) =>
+			(doc(l, 'transfer-rows').links[1] = {
+				identifier: 'i2',
+				org: 'icici-bank',
+				mention: null,
+				reasons: ['paired-code'],
+				via: 'i3'
+			}),
+		'has a code of its own on its line'
+	],
+	[
+		'wrong-bank pair removed',
+		(l) => doc(l, 'neft-receipt-tied').not_links.splice(4, 1),
+		'i2: has neither a link nor a not_link to icici-bank'
+	],
+	[
 		'not_link reason that is false',
 		(l) => (doc(l, 'transfer-untied').not_links[2].why = 'invalid-identifier'),
 		'invalid-identifier, but the identifier passes its check'
+	],
+	[
+		'code-backed exclusion given the weaker reason',
+		(l) => (doc(l, 'neft-receipt-tied').not_links[0].why = 'held-at-other'),
+		'so why is code-names-other-bank'
 	],
 	[
 		'statement period changed',
@@ -116,8 +207,33 @@ const MUTANTS = [
 		'the text gives 2026-09-01 and 2026-09-30'
 	],
 	[
+		'statement period pointed at the next-statement reminder',
+		(l) =>
+			Object.assign(doc(l, 'hdfc-statement-sep').statement, {
+				start: 630,
+				end: 656,
+				text: '01 Oct 2026 to 31 Oct 2026',
+				from: '2026-10-01',
+				to: '2026-10-31'
+			}),
+		"is not the statement's own period field"
+	],
+	[
+		'statement issuer set to a merchant',
+		(l) => (doc(l, 'hdfc-card-statement').statement.issuer = 'o2'),
+		'is not the first organisation the document names'
+	],
+	[
 		'latest statement answer changed',
 		(l) => (l.answers.latest_statement[0].document = 'hdfc-statement-jul'),
+		'latest_statement should be'
+	],
+	[
+		'domestic spelling dropped from the answer',
+		(l) =>
+			(l.answers.latest_statement.find((a) => a.document === 'natwest-statement').spellings = [
+				'GB29NWBK60161331926819'
+			]),
 		'latest_statement should be'
 	],
 	[
