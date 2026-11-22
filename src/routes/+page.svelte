@@ -34,6 +34,9 @@
 	/** @type {ReturnType<typeof setTimeout> | undefined} */
 	let refreshTimer;
 	let latest = 0;
+	/** The search a refresh runs for, -1 for none, and whether the index changed again since it asked. */
+	let refreshing = -1;
+	let changedAgain = false;
 	/** index::query::MAX_BYTES + 1: the query sent is bounded, and the backend still sees that it was cut. */
 	const SENT_CHARS = 4097;
 
@@ -136,12 +139,23 @@
 	/**
 	 * Searches names and contents again for the query shown, whose rows stay
 	 * until the answer replaces them. Not while the user is typing: that
-	 * search will see the change.
+	 * search will see the change. Changes while one runs wait for its answer,
+	 * then search once more: cancelling it for each would show nothing new
+	 * while the index keeps changing.
 	 */
-	function refresh() {
+	async function refresh() {
 		if (!searched || searched !== query.trim()) return;
+		if (refreshing === latest) {
+			changedAgain = true;
+			return;
+		}
 		cancel();
-		searchAll(latest, searched, performance.now());
+		const id = (refreshing = latest);
+		do {
+			changedAgain = false;
+			await searchAll(id, searched, performance.now());
+		} while (changedAgain && id === latest);
+		if (refreshing === id) refreshing = -1;
 	}
 
 	function clear() {

@@ -53,14 +53,15 @@ fn an_edit_before_the_first_scan_after_the_upgrade_is_read() {
 
 // --- 3. the name shortlist ---
 
-#[test]
-fn a_file_matching_by_name_and_contents_wins_past_the_name_shortlist() {
+/// CANDIDATES files named name match typed by name only, and one more by
+/// name and contents: it ranks first whether or not it is in the shortlist.
+fn wins_past_the_name_shortlist(name: &str, typed: &str) {
     let (_dir, mut index) = db();
     let records: Vec<FileRecord> = (0..CANDIDATES as i64)
         .map(|n| FileRecord {
-            path: format!("/home/Documents/{n:04}/tapir.txt"),
+            path: format!("/home/Documents/{n:04}/{name}"),
             root: "/home".into(),
-            name: "tapir.txt".into(),
+            name: name.into(),
             ext: "txt".into(),
             is_dir: false,
             size: 0,
@@ -70,17 +71,34 @@ fn a_file_matching_by_name_and_contents_wins_past_the_name_shortlist() {
         })
         .collect();
     index.upsert(&records, 1).unwrap();
-    let wanted = file(&mut index, "/home/Documents/zzzz/tapir.txt", NOW, &[("", "tapir")]);
-    let got = all(&index, "tapir", 60);
+    let wanted = file(&mut index, &format!("/home/Documents/zzzz/{name}"), NOW, &[("", typed)]);
+    let got = all(&index, typed, 60);
     assert!(got.names_capped, "{} names match", CANDIDATES + 1);
     assert_eq!(got.hits[0].file.path, wanted, "the both-match bonus puts it first");
     assert!(!got.hits[0].fuzzy);
     assert!(got.hits[0].found.is_some());
-    index.conn.execute("DELETE FROM files WHERE path = '/home/Documents/0000/tapir.txt'", []).unwrap();
-    let shortlisted = all(&index, "tapir", 60);
+    index.conn.execute("DELETE FROM files WHERE path = ?1", [format!("/home/Documents/0000/{name}")]).unwrap();
+    let shortlisted = all(&index, typed, 60);
     assert!(!shortlisted.names_capped);
     assert_eq!(shortlisted.hits[0].file.path, wanted);
     assert_eq!(got.hits[0].score, shortlisted.hits[0].score, "the same score in the shortlist or out of it");
+}
+
+#[test]
+fn a_file_matching_by_name_and_contents_wins_past_the_name_shortlist() {
+    wins_past_the_name_shortlist("tapir.txt", "tapir");
+}
+
+/// The name search folds case as SQLite does, which Rust's lowercase does
+/// not match: the final sigma here, and a letter's other form below.
+#[test]
+fn a_greek_capital_name_matching_by_name_and_contents_wins_past_the_name_shortlist() {
+    wins_past_the_name_shortlist("ΚΟΣΜΟΣ.txt", "ΚΟΣΜΟΣ");
+}
+
+#[test]
+fn a_name_with_another_form_of_a_letter_matching_by_name_and_contents_wins_past_the_name_shortlist() {
+    wins_past_the_name_shortlist("ϐeta.txt", "βeta");
 }
 
 #[test]

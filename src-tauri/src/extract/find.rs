@@ -8,7 +8,7 @@ use crate::index::stop::{stopped, Stop, Until};
 use crate::index::tokenize::Tokenizer;
 use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::{ControlFlow, Range};
 use std::time::Duration;
 
@@ -165,11 +165,17 @@ pub fn search_all(index: &Index, typed: &str, limit: usize, now: i64, until: &Un
     }
     // A name that matches too but was not among the names kept keeps its
     // tier and the bonus.
+    let ids: Vec<i64> = by_contents.values().map(|(_, _, part)| part.file).collect();
+    let named = search::names_among(index, &query.terms, &ids)?.unwrap_or_else(|| {
+        timed_out = true;
+        HashSet::new()
+    });
     for (file, score, part) in by_contents.into_values() {
         let prior = kind_prior(file.is_dir, &file.ext) + place_prior(&file.path);
-        let (by, score) = match search::name_score(&file, &query.terms, prior, now) {
-            Some(name) => (By::Name, name + BOTH),
-            None => (By::Contents, score),
+        let (by, score) = if named.contains(&file.path) {
+            (By::Name, search::name_score(&file, &query.terms, prior, now) + BOTH)
+        } else {
+            (By::Contents, score)
         };
         candidates.push(Candidate { prior, file, by, score, part: Some(part) });
     }

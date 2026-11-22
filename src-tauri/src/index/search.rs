@@ -110,7 +110,7 @@ pub(crate) fn matches(index: &Index, query: &Query, now: i64, until: &Until, ord
     }
     let whole = terms.join(" ");
     let mut best = Best { keep: CANDIDATES, items: Vec::new(), worst: None, dropped: false };
-    let finished = each_candidate(index, terms, |row| {
+    let finished = each_candidate(index, terms, None, |row| {
         let file = Fields::of(row)?;
         let kind = kind_prior(file.is_dir, file.ext);
         if best.beats(&order.best_key(kind, recency(file.modified, now))) {
@@ -140,16 +140,27 @@ pub(crate) fn matches(index: &Index, query: &Query, now: i64, until: &Until, ord
     Ok(Names { hits, capped, timed_out })
 }
 
-/// The score a file whose name contains every term has in the name search;
-/// None if it doesn't. For a file found another way, which may be one of
-/// many names left out of the CANDIDATES best.
-pub(crate) fn name_score(file: &FileRecord, terms: &[String], prior: f64, now: i64) -> Option<f64> {
-    let name = file.name.to_lowercase();
-    if terms.is_empty() || !terms.iter().all(|t| name.contains(t.as_str())) {
-        return None;
+/// Of the files with these ids, the paths of those whose name contains every
+/// term, decided by the same statement as matches: for files found another
+/// way, which may be among many names left out of the CANDIDATES best.
+/// None if stopped first.
+pub(crate) fn names_among(index: &Index, terms: &[String], ids: &[i64]) -> Result<Option<HashSet<String>>> {
+    let mut found = HashSet::new();
+    if terms.is_empty() || ids.is_empty() {
+        return Ok(Some(found));
     }
+    let ids = format!("[{}]", ids.iter().map(i64::to_string).collect::<Vec<_>>().join(","));
+    let finished = each_candidate(index, terms, Some(ids), |row| {
+        found.insert(Fields::of(row)?.path.to_owned());
+        Ok(())
+    })?;
+    Ok(finished.then_some(found))
+}
+
+/// The score in the name search of a file names_among found.
+pub(crate) fn name_score(file: &FileRecord, terms: &[String], prior: f64, now: i64) -> f64 {
     let fields = Fields { path: &file.path, name: &file.name, ext: &file.ext, is_dir: file.is_dir, modified: file.modified };
-    Some(rank(fields, terms, &terms.join(" "), prior, now))
+    rank(fields, terms, &terms.join(" "), prior, now)
 }
 
 /// The keep best matches offered, in memory for at most twice as many.
@@ -240,9 +251,10 @@ fn each_row(index: &Index, sql: &str, params: &[String], mut each: impl FnMut(&R
     }
 }
 
-/// Calls each with every file (COLUMNS) whose name contains every term.
-/// Ok(false) if stopped first.
-fn each_candidate(index: &Index, terms: &[String], each: impl FnMut(&Row) -> Result<()>) -> Result<bool> {
+/// Calls each with every file (COLUMNS) whose name contains every term,
+/// and whose id is in the JSON array among if given. Ok(false) if stopped
+/// first.
+fn each_candidate(index: &Index, terms: &[String], among: Option<String>, each: impl FnMut(&Row) -> Result<()>) -> Result<bool> {
     let (long, short): (Vec<&String>, Vec<&String>) = terms.iter().partition(|t| t.chars().count() >= 3);
     let mut params: Vec<String> = Vec::new();
     let mut sql = if long.is_empty() {
@@ -258,6 +270,10 @@ fn each_candidate(index: &Index, terms: &[String], each: impl FnMut(&Row) -> Res
     for term in &short {
         params.push(format!("%{}%", escape_like(term)));
         sql.push_str(&format!(" AND f.name LIKE ?{} ESCAPE '\\'", params.len()));
+    }
+    if let Some(ids) = among {
+        params.push(ids);
+        sql.push_str(&format!(" AND f.id IN (SELECT value FROM json_each(?{}))", params.len()));
     }
     each_row(index, &sql, &params, each)
 }
