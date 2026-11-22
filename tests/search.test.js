@@ -142,6 +142,39 @@ test('P1: an error for the new query takes the old rows down', async () => {
 	assert.equal(h.view().error, 'names failed');
 });
 
+test('P1: the bound runs from when the rows stopped matching the box, however long the typing goes on', async () => {
+	const h = harness();
+	await h.typed('alpha', [row('alpha-a')]);
+	const wrongFrom = h.now;
+	for (const q of ['b', 'be', 'bet', 'beta', 'beta1']) {
+		h.search.type(q);
+		await h.advance(1000);
+	}
+	assert(h.views.filter((v) => v.at >= wrongFrom + TYPING + ATTEMPT).every((v) => v.rows.length === 0), 'no alpha rows from the bound on');
+	const cleared = h.views.find((v) => v.at === wrongFrom + TYPING + ATTEMPT);
+	assert.deepEqual(cleared?.rows, [], 'gone at the bound, with no reply');
+	assert.equal(cleared.searching, true, 'and the window says it is still searching');
+});
+
+test('P1: a reply for the current query before the bound shows, and the bound then runs from the next edit', async () => {
+	const h = harness();
+	await h.typed('alpha', [row('alpha-a')]);
+	h.search.type('b');
+	await h.advance(1000);
+	h.search.type('be');
+	await h.advance(TYPING);
+	await h.reply(h.calls.length - 1, [row('be-names')]);
+	assert.deepEqual(h.names(), ['be-names']);
+	await h.advance(500);
+	const editAt = h.now;
+	h.search.type('bet');
+	await h.advance(TYPING + ATTEMPT - 1);
+	assert.deepEqual(h.names(), ['be-names'], 'rows of the last query shown stay until their own bound');
+	await h.advance(1);
+	assert.equal(h.now, editAt + TYPING + ATTEMPT);
+	assert.deepEqual(h.names(), []);
+});
+
 test('P1: replies of the old query in any order with the new one never put old rows back', async () => {
 	for (const order of permutations([0, 1, 2])) {
 		const h = harness();
@@ -198,6 +231,34 @@ test('P2: after ten minutes of lost replies and changes, the backend answering a
 	assert.equal(h.calls.at(-1).at, h.now - 100, 'and the next change searches at once');
 });
 
+test('P2: a rejected refresh is searched again, and the deleted row goes', async () => {
+	const h = harness({ answer: (c, i) => (i >= 3 ? { after: 10, value: all([]) } : undefined) });
+	await h.typed('alpha', [row('deleted')]);
+	h.search.changed();
+	await h.advance(20);
+	await h.fail(2, 'transient failure');
+	assert.equal(h.view().error, 'transient failure');
+	assert.deepEqual(h.names(), ['deleted'], 'rows kept with the error');
+	await h.advance(600_000);
+	assert.deepEqual(h.names(), []);
+	assert.equal(h.view().error, '', 'the success clears the error');
+	assert.equal(h.view().pending, false);
+});
+
+test('P2: a retry rejected, then the first search for the same version succeeding: the success shows', async () => {
+	const h = harness();
+	await h.typed('alpha', [row('old')]);
+	h.search.changed();
+	await h.advance(6000);
+	assert.deepEqual(h.calls.slice(2).map((c) => c.at - h.calls[2].at), [0, ATTEMPT + 4000]);
+	await h.advance(10);
+	await h.fail(3, 'transient failure');
+	await h.advance(10);
+	await h.reply(2, all([row('fresh')]));
+	assert.deepEqual(h.names(), ['fresh']);
+	assert.equal(h.view().error, '');
+});
+
 test('P2: against a backend that answers in 5 s, the last change shows', async () => {
 	let snapshot = 0;
 	const h = harness({ answer: (c, i) => (i >= 2 ? { after: 5000, value: all([row(`v${snapshot}`)]) } : undefined) });
@@ -243,6 +304,28 @@ test('P3: against a backend that never answers, searches per minute follow the s
 	}
 	assert.deepEqual(totals[0], totals[1], 'ten times the changes, the same searches');
 	const h = harness();
+	h.search.type('alpha');
+	await h.advance(600_000);
+	const alone = countPerMinute(h.calls, 0, 10);
+	assert(alone[0] <= 5 && alone.slice(1).every((n) => n <= 2), `a typed query alone: ${alone}`);
+});
+
+test('P3: against a backend that always rejects, searches per minute follow the same schedule, however many changes', async () => {
+	const reject = (c, i) => (i >= 2 ? { after: 10, error: 'down' } : undefined);
+	for (const gap of [1000, 100]) {
+		const h = harness({ answer: reject });
+		await h.typed('alpha', [row('a')]);
+		const from = h.calls.length;
+		const t0 = h.now;
+		for (let i = 0; i < 600_000 / gap; i++) {
+			h.search.changed();
+			await h.advance(gap);
+		}
+		const perMinute = countPerMinute(h.calls.slice(from), t0, 10);
+		assert(perMinute[0] <= 5 && perMinute.slice(1).every((n) => n <= 2), `changes every ${gap} ms: ${perMinute}`);
+		assert.equal(h.view().error, 'down');
+	}
+	const h = harness({ answer: () => ({ after: 10, error: 'down' }) });
 	h.search.type('alpha');
 	await h.advance(600_000);
 	const alone = countPerMinute(h.calls, 0, 10);

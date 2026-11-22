@@ -86,6 +86,8 @@ export function createSearch({ invoke, now, setTimer, clearTimer, show }) {
 	let sent = '';
 	let epoch = 0;
 	let since = 0;
+	/** @type {number | null} When the box moved away from the query SHOWN is for; null while SHOWN is for the box. */
+	let wrongSince = null;
 	/** @type {Shown} */
 	let shown = { epoch: 0, rank: -1, rows: [], flags: NONE, error: '', ms: null };
 	// This query's searches. Names go once; names with contents until SHOWN answers WANTED.
@@ -109,6 +111,7 @@ export function createSearch({ invoke, now, setTimer, clearTimer, show }) {
 	/** @param {Shown} next */
 	function render(next) {
 		shown = next;
+		if (shown.epoch === epoch) wrongSince = null;
 		const mine = shown.epoch === epoch && !!query;
 		const { rows, flags, error, ms } = shown;
 		show({ rows, flags, error, ms, pending: !!query && !(mine && shown.rank % 2 === 1), searching: mine && shown.rank < 0 });
@@ -127,10 +130,10 @@ export function createSearch({ invoke, now, setTimer, clearTimer, show }) {
 		if (names === 'running' || names === 'done') contentsAt = Math.min(contentsAt, t);
 	}
 
-	/** @param {number} t */
-	function giveUp(t) {
+	/** @param {number} at when the search was given up */
+	function giveUp(at) {
 		lost++;
-		retryAt = t + RETRY[Math.min(lost, RETRY.length) - 1];
+		retryAt = at + RETRY[Math.min(lost, RETRY.length) - 1];
 	}
 
 	/**
@@ -147,18 +150,27 @@ export function createSearch({ invoke, now, setTimer, clearTimer, show }) {
 	}
 
 	/**
-	 * Any reply proves the backend answers. It changes the screen only if it
-	 * is for this query, for the newest version searched, and ranks above
-	 * what is shown.
+	 * Only rows answer. An error is shown, but its search counts as given up
+	 * at its ATTEMPT, as if no reply had come: the version stays unanswered,
+	 * is searched again on the same schedule, and a later success still
+	 * shows. Rows prove the backend answers. A reply changes the screen only
+	 * if it is for this query, for the newest version searched, and ranks
+	 * above what is shown.
 	 * @param {Attempt} a
 	 * @param {Answer} answer
 	 */
 	function reply(a, answer) {
 		if (stopped || a.epoch !== epoch) return;
 		const t = now();
-		open--;
-		lost = 0;
-		if (running === a) running = null;
+		const failed = 'error' in answer;
+		if (running === a) {
+			running = null;
+			if (failed) giveUp(a.started + ATTEMPT);
+		}
+		if (!failed) {
+			open--;
+			lost = 0;
+		}
 		if (a.kind === 'names' && names === 'running') {
 			names = 'done';
 			contentsAt = t + CONTENTS;
@@ -167,7 +179,7 @@ export function createSearch({ invoke, now, setTimer, clearTimer, show }) {
 		const mine = shown.epoch === epoch;
 		if (a.version >= newest && rank > (mine ? shown.rank : -1)) {
 			if ('error' in answer) {
-				render(mine ? { ...shown, rank, error: answer.error } : { epoch, rank, rows: [], flags: NONE, error: answer.error, ms: null });
+				render(mine ? { ...shown, error: answer.error } : { epoch, rank: -1, rows: [], flags: NONE, error: answer.error, ms: null });
 			} else {
 				render({ epoch, rank, rows: answer.rows, flags: answer.flags, error: '', ms: Math.round(t - a.from) });
 			}
@@ -191,13 +203,12 @@ export function createSearch({ invoke, now, setTimer, clearTimer, show }) {
 			running = null;
 			giveUp(t);
 		}
-		const bound = since + TYPING + ATTEMPT;
-		if (names === 'running' && t >= bound) {
+		if (names === 'running' && t >= since + TYPING + ATTEMPT) {
 			names = 'done';
 			contentsAt = t;
 			giveUp(t);
 		}
-		if (shown.epoch !== epoch && t >= bound) render({ epoch, rank: -1, rows: [], flags: NONE, error: '', ms: null });
+		if (wrongSince !== null && t >= wrongSince + TYPING + ATTEMPT) render({ epoch, rank: -1, rows: [], flags: NONE, error: '', ms: null });
 		const gate = gateAt();
 		if (gate !== null && t >= gate) {
 			if (names === 'running') names = 'done';
@@ -214,7 +225,8 @@ export function createSearch({ invoke, now, setTimer, clearTimer, show }) {
 		const due = new Map();
 		if (!stopped && query) {
 			if (names === 'due') due.set('typing', since + TYPING);
-			if (names === 'running' || shown.epoch !== epoch) due.set('bound', since + TYPING + ATTEMPT);
+			if (names === 'running') due.set('names', since + TYPING + ATTEMPT);
+			if (wrongSince !== null) due.set('wrong', wrongSince + TYPING + ATTEMPT);
 			if (running) due.set('attempt', running.started + ATTEMPT);
 			if (readAt !== null) due.set('read', readAt);
 			const gate = gateAt();
@@ -245,6 +257,7 @@ export function createSearch({ invoke, now, setTimer, clearTimer, show }) {
 			sent = bounded(q);
 			epoch = version;
 			since = now();
+			wrongSince ??= since;
 			names = q ? 'due' : 'none';
 			running = null;
 			newest = -1;
