@@ -265,7 +265,7 @@ struct Read {
     stop: Stop,
     /// Whether the sink kept any of the image's frames.
     received: bool,
-    /// The processor time the helper used on it, or the most it could have.
+    /// The processor time the helper used on it, while it could be measured.
     cpu: Duration,
 }
 
@@ -328,7 +328,6 @@ impl Running {
             max_pixels: caps.pixels,
         };
         let mut order = Order::new(request.id);
-        let began = Instant::now();
         let watch = Watch { deadline: sink.deadline(), cpu, memory: caps.memory, cpu_before: self.process.usage().cpu };
         self.intake.restart();
         let watched = match self.process.send(&watch, &request.encode()) {
@@ -338,7 +337,7 @@ impl Running {
             }
             Err(watched) => watched,
         };
-        let used = self.used_since(&watch, began);
+        let used = self.process.usage().cpu.saturating_sub(watch.cpu_before);
         let nothing_yet = order.step == (Step::Facts { seen: 0 });
         let stop = match watched {
             Watched::Taken(Taken::Stop(Stop::End(outcome))) => {
@@ -357,19 +356,6 @@ impl Running {
             Watched::Ended(_) | Watched::Unreadable(_) => Stop::Crashed,
         };
         Read { stop, received: order.received(), cpu: used }
-    }
-
-    /// The processor time it used since watch's start, at began. A helper
-    /// that has ended may be reaped, and then its usage reads as none; it is
-    /// charged the most it could have used, every processor all the while,
-    /// so a retry can only get less.
-    fn used_since(&mut self, watch: &Watch, began: Instant) -> Duration {
-        let measured = self.process.usage().cpu.saturating_sub(watch.cpu_before);
-        if matches!(self.process.try_wait(), Ok(None)) {
-            return measured;
-        }
-        let processors = std::thread::available_parallelism().map_or(u32::MAX, |n| u32::try_from(n.get()).unwrap_or(u32::MAX));
-        measured.max(began.elapsed().saturating_mul(processors))
     }
 }
 
