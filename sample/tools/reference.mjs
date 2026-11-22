@@ -4,10 +4,10 @@
 // On the OCR text set, whatever the OCR text does not hold is left out, since
 // no extractor could find it there.
 import { writeFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
 import { SAMPLE } from './generate.mjs';
 import { locate, readsBack } from './lib/find.mjs';
 import { readLabels } from './lib/labels.mjs';
+import { isMain } from './lib/main.mjs';
 import { readTextSet, TEXT_SETS } from './text.mjs';
 
 // Keys of its own, so a pass proves the scorer maps keys, not label ids.
@@ -125,7 +125,7 @@ export function reference(labels, textSet, directory) {
 	};
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
 	const [directory, set, path] = process.argv.slice(2);
 	if (!['on', 'off'].includes(directory) || !TEXT_SETS.includes(set) || !path) {
 		console.error('usage: node sample/tools/reference.mjs <on|off> <text|text-ocr> <output.json>');

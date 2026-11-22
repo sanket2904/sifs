@@ -1,15 +1,15 @@
 // Scores one extractor output against labels.json, as sample/FORMAT.md says:
 //   node sample/tools/score.mjs <output.json> [--json <path>]
 // Prints a table and writes the score as JSON (default: <output>.score.json).
-// Exits 1 when any link, merge or answer is wrong, 2 when the output breaks
-// the format. Leaving something out never fails.
+// Exits 1 when any link, merge, card or answer is wrong, 2 when the output
+// breaks the format. Leaving something out never fails.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { SAMPLE } from './generate.mjs';
 import { KINDS } from './lib/ids.mjs';
 import { locate, readsBack } from './lib/find.mjs';
 import { readLabels } from './lib/labels.mjs';
+import { isMain } from './lib/main.mjs';
 import { readTextSet, TEXT_SETS } from './text.mjs';
 
 export class FormatError extends Error {}
@@ -43,6 +43,18 @@ const MEASURES = [
 	'answer_current_passport'
 ];
 
+// A day of the calendar, YYYY-MM-DD.
+const isDate = (v) => {
+	if (typeof v !== 'string' || !DATE.test(v)) return false;
+	const [y, m, d] = v.split('-').map(Number);
+	const day = new Date(Date.UTC(y, m - 1, d));
+	return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d;
+};
+const spanKey = (s) => `${s.page}:${s.start}:${s.end}`;
+
+// Checks everything FORMAT.md says a well-formed output is, and returns it
+// with every reference resolved: keys to cards, identifier ids to entries.
+// Scoring trusts this structure and reads nothing raw.
 function parseOutput(output, textSet) {
 	const fail = (where, what) => {
 		throw new FormatError(`${where}: ${what}`);
@@ -64,24 +76,48 @@ function parseOutput(output, textSet) {
 	if (output.text_set !== textSet.index.text_set)
 		fail('text_set', `is ${output.text_set}, but the text set read is ${textSet.index.text_set}`);
 	if (!isObject(output.organisations)) fail('organisations', 'must map keys to organisations');
-	for (const [key, org] of Object.entries(output.organisations)) {
-		const where = `organisations.${key}`;
-		if (!isObject(org) || typeof org.name !== 'string') fail(where, 'needs a name');
-		if (org.directory !== null && typeof org.directory !== 'string')
+	const cards = new Map();
+	for (const [key, card] of Object.entries(output.organisations)) {
+		const where = `organisations[${JSON.stringify(key)}]`;
+		if (!key) fail(where, 'a key must be a non-empty string');
+		if (!isObject(card)) fail(where, 'must be {name, directory}');
+		if (card.name !== null && (typeof card.name !== 'string' || !card.name))
+			fail(where, 'name must be a name or null');
+		if (card.directory !== null && (typeof card.directory !== 'string' || !card.directory))
 			fail(where, 'directory must be a directory id or null');
+		cards.set(key, { name: card.name, directory: card.directory });
 	}
-	const orgKey = (key, where) => {
-		if (key !== null && !Object.hasOwn(output.organisations, key))
-			fail(where, `${JSON.stringify(key)} is not in organisations`);
+	const orgKey = (key, where, nullable) => {
+		if (key === null && nullable) return null;
+		if (typeof key !== 'string' || !cards.has(key))
+			fail(where, `${JSON.stringify(key)} is not a key in organisations`);
+		return key;
 	};
 	const span = (s, pages, where) => {
 		if (!isObject(s)) fail(where, 'must be a span');
 		if (!Number.isInteger(s.page) || s.page < 1 || s.page > pages.length)
 			fail(where, `page ${s.page} is not a page of the document`);
-		if (!Number.isInteger(s.start) || !Number.isInteger(s.end) || s.start > s.end)
-			fail(where, 'start and end must be whole numbers, start <= end');
+		const length = [...pages[s.page - 1].text].length;
+		if (
+			!Number.isInteger(s.start) ||
+			!Number.isInteger(s.end) ||
+			s.start < 0 ||
+			s.start > s.end ||
+			s.end > length
+		)
+			fail(where, `start and end must be whole numbers, 0 <= start <= end <= ${length}`);
 		if (typeof s.text !== 'string' || !readsBack(pages[s.page - 1].text, s))
 			fail(where, `${JSON.stringify(s.text)} is not the text at ${s.start}..${s.end}`);
+		return { page: s.page, start: s.start, end: s.end, text: s.text };
+	};
+	// One physical occurrence is one row.
+	const oneRowPerSpan = (rows, where) => {
+		const at = new Map();
+		rows.forEach((row, i) => {
+			const k = spanKey(row);
+			if (at.has(k)) fail(`${where}[${i}]`, `has the span of ${where}[${at.get(k)}]`);
+			at.set(k, i);
+		});
 	};
 	const seen = new Set();
 	const docs = new Map();
@@ -93,59 +129,57 @@ function parseOutput(output, textSet) {
 		if (seen.has(doc.id)) fail(where, `${doc.id} appears twice`);
 		seen.add(doc.id);
 		const pages = input.pages;
-		const orgs = list(doc.orgs, `${where}.orgs`);
-		orgs.forEach((m, i) => {
+		const mentions = list(doc.orgs, `${where}.orgs`).map((m, i) => {
 			const w = `${where}.orgs[${i}]`;
-			span(m, pages, w);
-			if (m.org === undefined) fail(w, 'org must be a key or null');
-			orgKey(m.org, w);
+			const at = span(m, pages, w);
 			if (m.settled_by !== undefined && m.settled_by !== null && !SETTLED_BY.has(m.settled_by))
 				fail(w, `settled_by must be one of ${[...SETTLED_BY].join(', ')}`);
+			return { ...at, org: orgKey(m.org, w, true), settled_by: m.settled_by ?? null };
 		});
+		oneRowPerSpan(mentions, `${where}.orgs`);
 		const identifiers = new Map();
 		list(doc.identifiers, `${where}.identifiers`).forEach((id, i) => {
 			const w = `${where}.identifiers[${i}]`;
-			span(id, pages, w);
+			const at = span(id, pages, w);
 			if (typeof id.id !== 'string' || identifiers.has(id.id)) fail(w, 'id must be unique');
 			if (!Object.hasOwn(KINDS, id.kind)) fail(w, `kind ${JSON.stringify(id.kind)} is not known`);
 			if (typeof id.value !== 'string') fail(w, 'value must be text');
 			if (![true, false, null].includes(id.valid)) fail(w, 'valid must be true, false or null');
-			identifiers.set(id.id, id);
+			identifiers.set(id.id, { id: id.id, ...at, kind: id.kind, value: id.value, valid: id.valid });
 		});
+		oneRowPerSpan([...identifiers.values()], `${where}.identifiers`);
 		const ident = (id, w) => {
 			if (!identifiers.has(id))
 				fail(w, `${JSON.stringify(id)} is not an identifier of the document`);
 			return identifiers.get(id);
 		};
+		const optionalIdent = (id, w) => (id === null || id === undefined ? null : ident(id, w));
 		const links = list(doc.links, `${where}.links`).map((link, i) => {
 			const w = `${where}.links[${i}]`;
 			if (!isObject(link)) fail(w, 'must be an object');
 			const identifier = ident(link.identifier, w);
-			if (link.org === null || link.org === undefined) fail(w, 'org must be a key');
-			orgKey(link.org, w);
+			const org = orgKey(link.org, w, false);
 			if (!Array.isArray(link.reasons) || !link.reasons.length) fail(w, 'needs a reason');
 			for (const r of link.reasons)
 				if (!REASONS.has(r)) fail(w, `reason ${JSON.stringify(r)} is not known`);
-			const via = link.via === undefined || link.via === null ? null : ident(link.via, w);
-			return { identifier, org: link.org, reasons: link.reasons, via };
+			return { identifier, org, reasons: link.reasons, via: optionalIdent(link.via, w) };
 		});
 		let statement = null;
 		if (doc.statement !== undefined && doc.statement !== null) {
 			const w = `${where}.statement`;
 			const s = doc.statement;
 			if (!isObject(s)) fail(w, 'must be an object');
-			if (!DATE.test(s.from) || !DATE.test(s.to)) fail(w, 'from and to must be YYYY-MM-DD');
+			if (!isDate(s.from) || !isDate(s.to)) fail(w, 'from and to must be dates, YYYY-MM-DD');
 			const accounts = list(s.accounts, `${w}.accounts`).map((id) => ident(id, w));
 			if (s.issuer === undefined) fail(w, 'issuer must be a key or null');
-			orgKey(s.issuer, w);
-			statement = { from: s.from, to: s.to, accounts, issuer: s.issuer };
+			statement = { from: s.from, to: s.to, accounts, issuer: orgKey(s.issuer, w, true) };
 		}
 		let passport = null;
 		if (doc.passport !== undefined && doc.passport !== null) {
 			const w = `${where}.passport`;
 			const p = doc.passport;
 			if (!isObject(p)) fail(w, 'must be an object');
-			const holder = p.holder;
+			const holder = p.holder ?? null;
 			if (
 				holder !== null &&
 				(!isObject(holder) ||
@@ -153,13 +187,28 @@ function parseOutput(output, textSet) {
 					typeof holder.given !== 'string')
 			)
 				fail(w, 'holder must be {surname, given} or null');
-			const number = p.number === null || p.number === undefined ? null : ident(p.number, w);
-			if (p.expiry !== null && p.expiry !== 'cannot-tell' && !DATE.test(p.expiry))
-				fail(w, 'expiry must be YYYY-MM-DD, "cannot-tell" or null');
-			if (![true, false, null].includes(p.current)) fail(w, 'current must be true, false or null');
-			passport = { holder, number, expiry: p.expiry, current: p.current };
+			const number = optionalIdent(p.number, `${w}.number`);
+			const mrz = optionalIdent(p.mrz, `${w}.mrz`);
+			if (p.issued !== undefined && p.issued !== null && !isDate(p.issued))
+				fail(w, 'issued must be a date, YYYY-MM-DD, or null');
+			const expiry = p.expiry ?? null;
+			if (expiry !== null && expiry !== 'cannot-tell' && !isDate(expiry))
+				fail(w, 'expiry must be a date, YYYY-MM-DD, "cannot-tell" or null');
+			const expiryAt =
+				p.expiry_at === undefined || p.expiry_at === null
+					? null
+					: span(p.expiry_at, pages, `${w}.expiry_at`);
+			const current = p.current ?? null;
+			if (![true, false, null].includes(current)) fail(w, 'current must be true, false or null');
+			passport = { holder, number, mrz, issued: p.issued ?? null, expiry, expiryAt, current };
 		}
-		docs.set(doc.id, { orgs, identifiers: [...identifiers.values()], links, statement, passport });
+		docs.set(doc.id, {
+			orgs: mentions,
+			identifiers: [...identifiers.values()],
+			links,
+			statement,
+			passport
+		});
 	});
 	const answers = isObject(output.answers) ? output.answers : fail('answers', 'must be an object');
 	const latest = list(answers.latest_statement, 'answers.latest_statement').map((a, i) => {
@@ -176,7 +225,7 @@ function parseOutput(output, textSet) {
 		extractor: output.extractor,
 		directory: output.directory,
 		textSet: output.text_set,
-		organisations: output.organisations,
+		cards,
 		docs,
 		answers: { latest, passports }
 	};
@@ -196,25 +245,26 @@ function tallies() {
 }
 const zero = () => ({ right: 0, wrong: 0, left_out: 0, impossible: 0 });
 
-// Pairs labelled items with output items that have the same key, in order of
-// occurrence, so a text that appears twice pairs first with first.
+// Pairs labelled items with output items that have the same key. Equal keys
+// pair by position on the page (page, then start), first with first, so the
+// order of an output's rows never changes a pairing.
+const byPosition = (a, b) => a.page - b.page || a.start - b.start;
 function pair(labelled, output, keyOf) {
 	const waiting = new Map();
-	for (const o of output) {
-		const k = keyOf(o, 'output');
+	for (const o of [...output].sort(byPosition)) {
+		const k = keyOf(o);
 		if (!waiting.has(k)) waiting.set(k, []);
 		waiting.get(k).push(o);
 	}
 	const partner = new Map();
-	for (const l of labelled) {
-		const queue = waiting.get(keyOf(l, 'label'));
+	for (const l of [...labelled].sort(byPosition)) {
+		const queue = waiting.get(keyOf(l));
 		if (queue?.length) partner.set(l, queue.shift());
 	}
 	const used = new Set(partner.values());
-	return { partner, unmatched: output.filter((o) => !used.has(o)) };
+	return { partner, unmatched: [...output].sort(byPosition).filter((o) => !used.has(o)) };
 }
 
-const spanKey = (s) => `${s.page}:${s.start}:${s.end}`;
 const squash = (v) => v.replace(/\s/gu, '');
 const normName = (v) =>
 	v
@@ -223,8 +273,12 @@ const normName = (v) =>
 		.replace(/\s+/gu, ' ')
 		.replace(/\s*,\s*/u, ', ')
 		.trim();
+const same = (a, b) => a.kind === b.kind && a.value === b.value;
+// Identifier kinds that carry their institution inside them, so an extractor
+// can know a bank from the code alone.
+const CODE_KINDS = new Set(['ifsc', 'bic', 'iban']);
 
-export function score(labels, textSet, rawOutput) {
+export function score(labels, textSet, rawOutput, directory) {
 	const out = parseOutput(rawOutput, textSet);
 	const mode = out.directory;
 	const byValue = out.textSet !== 'text';
@@ -245,6 +299,29 @@ export function score(labels, textSet, rawOutput) {
 			return dirToLocal.get(m.directory.id) ?? `directory:${m.directory.id}`;
 		return null;
 	};
+	const directoryIdOf = (t) =>
+		t.startsWith('directory:') ? t.slice(10) : (labels.organisations[t]?.directory ?? null);
+
+	// The names a card for an organisation may carry: its labelled spellings,
+	// the text of every labelled mention of it, and with the directory on its
+	// directory entry's names.
+	const names = new Map();
+	const addName = (t, name) => {
+		if (!names.has(t)) names.set(t, new Set());
+		names.get(t).add(normName(name));
+	};
+	for (const [id, o] of Object.entries(labels.organisations))
+		for (const name of [o.name, ...o.names]) addName(id, name);
+	for (const d of labels.documents)
+		for (const m of d.orgs ?? []) if (target(m)) addName(target(m), m.text);
+	const entryNames = new Map(
+		mode === 'on'
+			? directory.entries.map((e) => [e.id, [e.name, ...e.names.map((n) => n.text)]])
+			: []
+	);
+	const nameFits = (t, name) =>
+		names.get(t)?.has(normName(name)) ||
+		(entryNames.get(directoryIdOf(t)) ?? []).some((n) => normName(n) === normName(name));
 
 	const pagesOf = (id) => textSet.docs.get(id).pages;
 	const possible = (docId, s, value) =>
@@ -276,6 +353,11 @@ export function score(labels, textSet, rawOutput) {
 			label.identifiers.filter((i) => !possible(id, i, i.value)).map((i) => i.id)
 		);
 		const impossibleMention = new Set(label.orgs.filter((m) => !possible(id, m)).map((m) => m.id));
+		const idents = pair(label.identifiers, output.identifiers, identKey);
+		// The labelled identifier an output identifier is: the one it pairs
+		// with, when the kind and value agree.
+		const labelOf = new Map();
+		for (const [l, o] of idents.partner) if (same(l, o)) labelOf.set(o, l);
 		return {
 			id,
 			lang: langOf(id),
@@ -285,38 +367,53 @@ export function score(labels, textSet, rawOutput) {
 			impossibleIdent,
 			impossibleMention,
 			mentions: pair(label.orgs, output.orgs, mentionKey),
-			idents: pair(label.identifiers, output.identifiers, identKey)
+			idents,
+			labelOf
 		};
 	});
 
 	// Organisation keys. A key maps to the labelled organisations its
-	// mentions land on; a key with no mention evidence, to the organisations
-	// the labels link its linked identifiers to.
-	const evidence = new Map();
-	const note = (key, t) => {
+	// mentions land on. A key no mention lands on maps to the organisations
+	// the labels link its linked codes to (an IFSC, a BIC or an IBAN names its
+	// bank by itself); an account tied to it never says who it is.
+	const byMention = new Map();
+	const byCode = new Map();
+	const note = (evidence, key, t) => {
 		if (!evidence.has(key)) evidence.set(key, new Set());
-		if (t) evidence.get(key).add(t);
+		evidence.get(key).add(t);
 	};
 	for (const w of work)
-		for (const [l, o] of w.mentions.partner) if (o.org && target(l)) note(o.org, target(l));
+		for (const [l, o] of w.mentions.partner)
+			if (o.org && target(l)) note(byMention, o.org, target(l));
 	for (const w of work)
 		for (const link of w.output.links) {
-			if (evidence.get(link.org)?.size) continue;
-			for (const l of w.label.links) {
-				const li = w.identById.get(l.identifier);
-				if (li.kind === link.identifier.kind && li.value === link.identifier.value)
-					note(`link:${link.org}`, l.org);
-			}
+			const code = w.labelOf.get(link.identifier);
+			if (!code || !CODE_KINDS.has(code.kind)) continue;
+			for (const l of w.label.links)
+				if (same(w.identById.get(l.identifier), code)) note(byCode, link.org, l.org);
 		}
-	const targetsOf = (key) =>
-		evidence.get(key)?.size ? evidence.get(key) : (evidence.get(`link:${key}`) ?? new Set());
-	const keys = Object.keys(out.organisations);
+	const targetsOf = (key) => byMention.get(key) ?? byCode.get(key) ?? new Set();
+	const keys = [...out.cards.keys()];
 	const merges = keys
 		.filter((k) => targetsOf(k).size > 1)
 		.map((k) => ({ key: k, organisations: [...targetsOf(k)].sort() }));
 	const merged = new Set(merges.map((m) => m.key));
-	const mapped = (key) =>
-		key && !merged.has(key) && targetsOf(key).size === 1 ? [...targetsOf(key)][0] : null;
+	const single = (key) => (targetsOf(key).size === 1 ? [...targetsOf(key)][0] : null);
+
+	// A card states who it is. A name or a directory id that belongs to
+	// another organisation puts this organisation's papers on a wrong card.
+	const wrongCards = [];
+	for (const k of keys) {
+		const t = single(k);
+		if (t === null) continue;
+		const { name, directory: id } = out.cards.get(k);
+		const claims = [];
+		if (name !== null && !nameFits(t, name)) claims.push(`name ${JSON.stringify(name)}`);
+		if (id !== null && id !== directoryIdOf(t)) claims.push(`directory id ${id}`);
+		if (claims.length) wrongCards.push({ key: k, organisation: t, claims });
+	}
+	const wrongCard = new Map(wrongCards.map((c) => [c.key, c]));
+	const mapped = (key) => (!merged.has(key) && !wrongCard.has(key) ? single(key) : null);
 	const reach = new Map();
 	for (const k of keys)
 		for (const t of targetsOf(k)) {
@@ -329,21 +426,19 @@ export function score(labels, textSet, rawOutput) {
 		.sort((a, b) => a.organisation.localeCompare(b.organisation));
 	const keyVerdict = (key, want) => {
 		if (merged.has(key)) return `key ${key} merges ${[...targetsOf(key)].join(' and ')}`;
+		const card = wrongCard.get(key);
+		if (card)
+			return `key ${key} is ${card.organisation} but its card claims ${card.claims.join(' and ')}`;
 		const got = mapped(key);
 		if (got === null) return `key ${key} lands on no labelled organisation`;
 		return got === want ? null : `key ${key} is ${got}, not ${want}`;
 	};
 
 	for (const k of keys) {
-		const t = mapped(k);
+		const t = single(k);
 		if (t === null) continue;
-		const want =
-			mode === 'off'
-				? null
-				: t.startsWith('directory:')
-					? t.slice(10)
-					: (labels.organisations[t]?.directory ?? null);
-		const got = out.organisations[k].directory ?? null;
+		const want = mode === 'off' ? null : directoryIdOf(t);
+		const got = out.cards.get(k).directory;
 		const what = `${k} (${t}) directory ${got ?? 'none'}`;
 		if (got === want) add('org_directory', null, 'right', null, what);
 		else if (got === null) add('org_directory', null, 'left_out', null, `${what}, labels ${want}`);
@@ -414,7 +509,9 @@ export function score(labels, textSet, rawOutput) {
 			// An extractor that repairs the OCR text can still find it.
 			if (!o) add(measure, lang, w.impossibleIdent.has(l.id) ? 'impossible' : 'left_out', id, what);
 			else {
-				const diff = ['kind', 'value', 'valid'].filter((f) => o[f] !== l[f]);
+				// A label's valid of null is not scored: the kind has no check, or the checks disagree.
+				const fields = l.valid === null ? ['kind', 'value'] : ['kind', 'value', 'valid'];
+				const diff = fields.filter((f) => o[f] !== l[f]);
 				add(
 					measure,
 					lang,
@@ -437,8 +534,8 @@ export function score(labels, textSet, rawOutput) {
 			);
 		}
 
-		// Links, by identifier kind and value and the organisation.
-		const same = (li, oi) => li.kind === oi.kind && li.value === oi.value;
+		// Links, by identifier kind and value and the organisation. Rows for
+		// the same link are one link with the union of their reasons and vias.
 		const labelLinks = label.links.map((l) => ({
 			...l,
 			ident: w.identById.get(l.identifier),
@@ -450,24 +547,44 @@ export function score(labels, textSet, rawOutput) {
 				...label.links.map((l) => l.org)
 			].filter(Boolean)
 		);
-		const done = new Set();
+		const groups = new Map();
 		for (const link of output.links) {
-			const oi = link.identifier;
-			const what = `${oi.kind} ${oi.value} at ${link.org}`;
+			const ident = w.labelOf.get(link.identifier) ?? null;
 			const t = mapped(link.org);
-			const seenAs = `${oi.kind}\0${oi.value}\0${t ?? `key:${link.org}`}`;
-			if (done.has(seenAs)) continue;
-			done.add(seenAs);
-			if (t === null) {
-				add('links', lang, 'wrong', id, `${what}: ${keyVerdict(link.org, null)}`);
+			const shown = ident ?? link.identifier;
+			const k = [
+				ident ? 'labelled' : 'unlabelled',
+				shown.kind,
+				shown.value,
+				t ?? `key:${link.org}`
+			].join('\0');
+			if (!groups.has(k))
+				groups.set(k, { ident, shown, org: link.org, t, reasons: new Set(), vias: [] });
+			const g = groups.get(k);
+			for (const r of link.reasons) g.reasons.add(r);
+			const via = link.via && w.labelOf.get(link.via);
+			if (via) g.vias.push(via);
+		}
+		const groupOrder = (a, b) =>
+			byPosition(a.shown, b.shown) || (a.t ?? a.org).localeCompare(b.t ?? b.org);
+		for (const g of [...groups.values()].sort(groupOrder)) {
+			const what = `${g.shown.kind} ${g.shown.value} at ${g.org}`;
+			const reasons = [...g.reasons].sort();
+			if (g.t === null) {
+				add('links', lang, 'wrong', id, `${what}: ${keyVerdict(g.org, null)}`);
 				continue;
 			}
-			const right = labelLinks.find((l) => l.org === t && same(l.ident, oi));
+			if (!g.ident) {
+				add('links', lang, 'wrong', id, `${what} (${g.t}): no such identifier in the labels`);
+				continue;
+			}
+			const right = labelLinks.find((l) => l.org === g.t && same(l.ident, g.ident));
 			if (right) {
-				const holds = link.reasons.filter(
+				const via = right.via && w.identById.get(right.via);
+				const holds = reasons.filter(
 					(r) =>
 						right.reasons.includes(r) &&
-						(r !== 'paired-code' || (link.via && same(w.identById.get(right.via), link.via)))
+						(r !== 'paired-code' || (via && g.vias.some((v) => same(v, via))))
 				);
 				right.found ||= holds.length > 0;
 				add(
@@ -476,24 +593,22 @@ export function score(labels, textSet, rawOutput) {
 					holds.length ? 'right' : 'wrong',
 					id,
 					holds.length
-						? `${what} (${t})`
-						: `${what} (${t}): no reason given holds (${link.reasons.join(', ')})`
+						? `${what} (${g.t})`
+						: `${what} (${g.t}): no reason given holds (${reasons.join(', ')})`
 				);
 				continue;
 			}
-			const li = label.identifiers.find((i) => same(i, oi));
-			const notLink =
-				li && label.not_links.find((n) => n.org === t && same(w.identById.get(n.identifier), oi));
+			const notLink = label.not_links.find(
+				(n) => n.org === g.t && same(w.identById.get(n.identifier), g.ident)
+			);
 			const why = notLink
 				? `a not_link (${notLink.why})`
-				: !li
-					? 'not a labelled identifier'
-					: li.valid === false
-						? 'the identifier is invalid'
-						: !inDocument.has(t)
-							? `the document does not settle ${t}`
-							: 'nothing ties them';
-			add('links', lang, 'wrong', id, `${what} (${t}): ${why}`);
+				: g.ident.valid === false
+					? 'the identifier is invalid'
+					: !inDocument.has(g.t)
+						? `the document does not settle ${g.t}`
+						: 'nothing ties them';
+			add('links', lang, 'wrong', id, `${what} (${g.t}): ${why}`);
 		}
 		for (const l of labelLinks) {
 			if (l.found) continue;
@@ -686,7 +801,9 @@ export function score(labels, textSet, rawOutput) {
 		[...rows].sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b))
 	);
 	const failed =
-		merges.length > 0 || [...rows].some(([m, r]) => FAILING.has(m) && r.total.wrong > 0);
+		merges.length > 0 ||
+		wrongCards.length > 0 ||
+		[...rows].some(([m, r]) => FAILING.has(m) && r.total.wrong > 0);
 	return {
 		extractor: out.extractor,
 		directory: mode,
@@ -694,6 +811,7 @@ export function score(labels, textSet, rawOutput) {
 		failed,
 		measures,
 		merges,
+		wrong_cards: wrongCards,
 		splits,
 		...items
 	};
@@ -720,6 +838,7 @@ export function table(result) {
 		})
 	]);
 	body.push(['wrong merges', '', String(result.merges.length), '', '', ...langs.map(() => '')]);
+	body.push(['wrong cards', '', String(result.wrong_cards.length), '', '', ...langs.map(() => '')]);
 	body.push(['splits', String(result.splits.length), '', '', '', ...langs.map(() => '')]);
 	const widths = head.map((h, i) => Math.max(h.length, ...body.map((row) => row[i].length)));
 	const line = (row) =>
@@ -731,6 +850,8 @@ export function table(result) {
 	];
 	for (const m of result.merges)
 		out.push(`WRONG MERGE: key ${m.key} covers ${m.organisations.join(', ')}`);
+	for (const c of result.wrong_cards)
+		out.push(`WRONG CARD: key ${c.key} is ${c.organisation} but claims ${c.claims.join(' and ')}`);
 	for (const s of result.splits)
 		out.push(`split: ${s.organisation} over keys ${s.keys.join(', ')}`);
 	for (const kind of ['wrong', 'impossible', 'left_out'])
@@ -738,13 +859,13 @@ export function table(result) {
 			out.push(`${kind.replace('_', ' ')}: ${i.measure} ${i.document ?? ''} ${i.what}`);
 	out.push(
 		result.failed
-			? 'FAIL: a link, a merge or an answer is wrong'
-			: 'pass: no wrong link, merge or answer'
+			? 'FAIL: a link, a merge, a card or an answer is wrong'
+			: 'pass: no wrong link, merge, card or answer'
 	);
 	return out.join('\n');
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
 	const args = process.argv.slice(2);
 	const at = args.indexOf('--json');
 	const jsonPath = at >= 0 ? args.splice(at, 2)[1] : null;
@@ -756,7 +877,12 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
 	try {
 		const output = JSON.parse(readFileSync(path, 'utf8'));
 		const textSet = readTextSet(TEXT_SETS.includes(output.text_set) ? output.text_set : 'text');
-		const result = score(readLabels(new URL('labels.json', SAMPLE)), textSet, output);
+		const result = score(
+			readLabels(new URL('labels.json', SAMPLE)),
+			textSet,
+			output,
+			JSON.parse(readFileSync(new URL('directory/banks.json', SAMPLE), 'utf8'))
+		);
 		console.log(table(result));
 		writeFileSync(
 			jsonPath ?? path.replace(/\.json$/, '') + '.score.json',

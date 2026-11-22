@@ -9,25 +9,25 @@
 //                                       committed file differs from what
 //                                       this tool writes
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { FILES, loadSpec, pageText, SAMPLE, SUMS } from './generate.mjs';
+import { fileURLToPath } from 'node:url';
+import { FILES, loadSpec, pageText, SAMPLE } from './generate.mjs';
 import { readLabels } from './lib/labels.mjs';
+import { isMain } from './lib/main.mjs';
 
 export const TEXT_SETS = ['text', 'text-ocr'];
 
-const fileHashes = () =>
-	new Map(
-		readFileSync(new URL(SUMS, FILES), 'utf8')
-			.trimEnd()
-			.split('\n')
-			.map((line) => [line.slice(66), line.slice(0, 64)])
-	);
+// Hashed from the file's bytes, not read from SHA256SUMS, so --check fails
+// when a file changes and its recorded hash does not.
+const fileHash = (file) =>
+	createHash('sha256')
+		.update(readFileSync(new URL(file, FILES)))
+		.digest('hex');
 
 // readScan(doc, pageIndex) gives a scanned page's text; without it a scanned
 // page holds the spec's text, as a perfect reading would.
 export function textSet(spec, readScan) {
-	const hashes = fileHashes();
 	const files = new Map();
 	for (const doc of spec.documents) {
 		const { id, file, format, lang, created } = doc;
@@ -35,7 +35,7 @@ export function textSet(spec, readScan) {
 			text: page.image && readScan ? readScan(doc, i) : pageText(page),
 			scanned: Boolean(page.image)
 		}));
-		files.set(`${id}.json`, { id, file, sha256: hashes.get(file), format, lang, created, pages });
+		files.set(`${id}.json`, { id, file, sha256: fileHash(file), format, lang, created, pages });
 	}
 	return files;
 }
@@ -107,7 +107,7 @@ function vision(spec) {
 	);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
 	if (process.argv.includes('--check')) {
 		const problems = checkTextSets();
 		for (const problem of problems) console.error(problem);

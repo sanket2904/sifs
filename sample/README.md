@@ -65,7 +65,7 @@ Each entry in `documents` has an `id` from `spec.json`, an optional `note`, and 
 | --- | --- |
 | `orgs` | An organisation mentioned: the full span of its name, `id`, `resolved_by_document`, and `directory`. |
 | `not_orgs` | A directory name in the text that is not a mention of that entry: a span, `entry` (a directory id), and `why`. A name that sits inside a longer mention has one not_org for each entry holding it, other than the mention's own. |
-| `identifiers` | A span, `id`, `kind`, `value` (the text with spaces removed, and hyphens for a sort code), `valid` (`true` or `false`; `null` for a kind with no check, and for a PAN with serial `0000`, which has the shape but is never issued), and `same_account_as` for a domestic account number whose IBAN is in the same document. |
+| `identifiers` | A span, `id`, `kind`, `value` (the text with its spaces removed; a sort code also has its hyphens removed, so `60-16-13` is `601613`; a machine-readable zone keeps the line feed between its two lines), `valid` (`true` or `false`; `null` for a kind with no check, and for a PAN with serial `0000`, which has the shape but is never issued), and `same_account_as` for a domestic account number whose IBAN is in the same document. |
 | `not_identifiers` | Text shaped like an identifier that is not one: a span, `looks_like` (a kind), and `why`. |
 | `links` | Identifier held at organisation: `identifier`, `org` (a local id), `mention` (the `orgs` id that names it, or `null`), `reasons`, and `via` for `paired-code`. |
 | `not_links` | A pair that must not be linked: `identifier`, `org` (a local id), and `why`. |
