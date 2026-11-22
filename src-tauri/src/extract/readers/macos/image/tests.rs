@@ -209,10 +209,15 @@ fn misbehave(how: &str, first: bool, request: &Request, send: &mut Send) -> std:
             send(text())?;
             send(Frame::End { id, outcome: Outcome::Read })
         }
-        // Each helper uses 250 ms of processor time; the first then ends
-        // idle, and is reaped before its usage is read.
-        "busy, then idle in the first helper" => {
-            busy(Duration::from_millis(250));
+        // Each helper uses 250 ms of processor time on each of its threads;
+        // the first then ends idle, and is reaped before its usage is read.
+        "busy, then idle in the first helper" | "busy on four threads, then idle in the first helper" => {
+            let threads = if how.contains("four") { 4 } else { 1 };
+            std::thread::scope(|s| {
+                for _ in 0..threads {
+                    s.spawn(|| busy(Duration::from_millis(250)));
+                }
+            });
             if first {
                 helper::exit(helper::Exit::Idle)
             }
@@ -955,6 +960,18 @@ fn a_helper_that_ends_idle_after_using_processor_time_leaves_the_retry_only_what
     image.helper.env.push((LOG.into(), log.clone().into()));
     let got = read_path(&image, Path::new("/nonexistent/any.png"), Duration::from_secs(60));
     assert_eq!(failed(got), "used more than 400 ms of processor time", "250 ms each, 500 ms in all");
+    assert!(started(&log).iter().all(|&pid| gone(pid)));
+}
+
+#[test]
+fn a_helper_gone_before_its_usage_is_read_is_charged_for_every_processor() {
+    let dir = Dir::new();
+    let log = dir.0.path().join("pids");
+    let caps = Caps { cpu: Duration::from_millis(1500), ..Caps::default() };
+    let mut image = reader(caps, Some("busy on four threads, then idle in the first helper"));
+    image.helper.env.push((LOG.into(), log.clone().into()));
+    let got = read_path(&image, Path::new("/nonexistent/any.png"), Duration::from_secs(60));
+    assert_eq!(failed(got), "used more than 1500 ms of processor time", "1 s each, 2 s in all");
     assert!(started(&log).iter().all(|&pid| gone(pid)));
 }
 
