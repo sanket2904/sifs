@@ -142,8 +142,9 @@ pub trait Reader: Send + Sync + 'static {
         false
     }
     fn read(&self, path: &Path, sink: &mut Sink) -> Result<(), ReadError>;
-    /// Ends what it keeps running between files, such as a helper process.
-    /// The worker calls it as it stops; a later read starts it again.
+    /// Ends what it keeps running between files, such as a helper process,
+    /// for good: the worker calls it as it stops, and a read after it
+    /// starts nothing to keep.
     fn stop(&self) {}
 }
 

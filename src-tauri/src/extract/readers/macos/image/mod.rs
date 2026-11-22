@@ -30,6 +30,7 @@ use std::time::{Duration, Instant};
 
 pub(crate) const DAMAGED: &str = "damaged, or not an image macOS can read";
 pub(crate) const CRASHED: &str = "the image reader crashed";
+pub(crate) const STOPPED_READER: &str = "the image reader was stopped";
 
 /// What an image read may take on, on top of the worker's limits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,17 +84,37 @@ pub struct Image {
 /// the lock watches it: a read while it serves an image, its watcher thread
 /// while it waits for the next. Dropped with the reader, it ends the helper.
 #[derive(Default)]
-struct Slot(Arc<Mutex<Option<Running>>>);
+struct Slot(Arc<Mutex<Held>>);
+
+#[derive(Default)]
+struct Held {
+    running: Option<Running>,
+    /// Set by stop, for good: no helper starts after it.
+    stopped: bool,
+}
+
+impl Held {
+    /// The helper there is, or a new one from start; none once stopped.
+    fn helper(&mut self, start: impl FnOnce() -> Result<Running, ReadError>) -> Result<&mut Running, ReadError> {
+        if self.stopped {
+            return Err(ReadError::Other(STOPPED_READER.into()));
+        }
+        if self.running.is_none() {
+            self.running = Some(start()?);
+        }
+        Ok(self.running.as_mut().expect("started above"))
+    }
+}
 
 impl Slot {
-    fn lock(&self) -> MutexGuard<'_, Option<Running>> {
+    fn lock(&self) -> MutexGuard<'_, Held> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
 impl Drop for Slot {
     fn drop(&mut self) {
-        *self.lock() = None;
+        self.lock().running = None;
     }
 }
 
@@ -133,10 +154,10 @@ impl Reader for Image {
     }
 
     fn read(&self, path: &Path, sink: &mut Sink) -> Result<(), ReadError> {
-        let mut running = self.running.lock();
-        let mut read = self.request(&mut running, path, sink)?;
-        if read.stop == Stop::Idle {
-            read = self.request(&mut running, path, sink)?;
+        let mut held = self.running.lock();
+        let mut read = self.request(&mut held, path, sink)?;
+        if matches!(read.stop, Stop::Idle | Stop::Leftover(_)) {
+            read = self.request(&mut held, path, sink)?;
         }
         let ended = matches!(read.stop, Stop::End(_));
         let why = match read.stop {
@@ -149,7 +170,7 @@ impl Reader for Image {
             Stop::Memory => format!("used more than {} of memory", describe_size(self.caps.memory)),
             Stop::Output => format!("sent more than {}", describe_size(self.caps.output as u64)),
             Stop::Crashed | Stop::Idle => CRASHED.into(),
-            Stop::Broken(why) => why,
+            Stop::Broken(why) | Stop::Leftover(why) => why,
         };
         if read.received || ended {
             sink.fact(fact::STOPPED, why);
@@ -159,31 +180,30 @@ impl Reader for Image {
         }
     }
 
-    /// Kills and reaps the helper, once any read using it ends. The next
-    /// read starts another.
+    /// Kills and reaps the helper, once any read using it ends. No read
+    /// after starts another.
     fn stop(&self) {
-        *self.running.lock() = None;
+        let mut held = self.running.lock();
+        held.stopped = true;
+        held.running = None;
     }
 }
 
 impl Image {
     /// One request, on the helper there is or a new one. A helper that
     /// stopped, or must go after it, is gone after.
-    fn request(&self, slot: &mut Option<Running>, path: &Path, sink: &mut Sink) -> Result<Read, ReadError> {
-        if slot.as_mut().is_some_and(|running| running.must_go(self.caps)) {
-            *slot = None;
+    fn request(&self, held: &mut Held, path: &Path, sink: &mut Sink) -> Result<Read, ReadError> {
+        if held.running.as_mut().is_some_and(|running| running.must_go(self.caps)) {
+            held.running = None;
         }
-        let running = match slot {
-            Some(running) => running,
-            None => slot.insert(self.start()?),
-        };
+        let running = held.helper(|| self.start())?;
         let read = running.request(path, sink, self.caps);
         let ended = matches!(read.stop, Stop::End(_));
         if ended {
             running.wait_from_now();
         }
         if !ended || running.must_go(self.caps) {
-            *slot = None;
+            held.running = None;
         }
         Ok(read)
     }
@@ -202,14 +222,14 @@ impl Image {
 
 /// Watches the helper started as started while it waits between images
 /// (a read holds the lock while it serves one), until it leaves the slot.
-fn watch_between_images(slot: &Mutex<Option<Running>>, started: u64, caps: Caps) {
+fn watch_between_images(slot: &Mutex<Held>, started: u64, caps: Caps) {
     loop {
         std::thread::sleep(POLL);
-        let mut slot = slot.lock().unwrap_or_else(PoisonError::into_inner);
-        match slot.as_mut() {
+        let mut held = slot.lock().unwrap_or_else(PoisonError::into_inner);
+        match held.running.as_mut() {
             Some(running) if running.started == started => {
                 if running.must_go(caps) {
-                    *slot = None;
+                    held.running = None;
                     return;
                 }
             }
@@ -230,6 +250,9 @@ enum Stop {
     Crashed,
     /// It broke the protocol, and how.
     Broken(String),
+    /// It broke the protocol before sending anything for the image, as
+    /// bytes an earlier image left in the pipe do, and how.
+    Leftover(String),
     /// It ended by itself, idle, before sending anything for the image.
     Idle,
 }
@@ -244,7 +267,8 @@ struct Read {
 struct Running {
     process: Process,
     intake: Intake<Frame>,
-    last_id: u64,
+    /// It sent something after an image's end: it reads no more images.
+    sent_past_an_end: bool,
     /// Which helper this is, among all the readers have started.
     started: u64,
     /// When it last finished an image, and its processor time then.
@@ -262,7 +286,7 @@ impl Running {
         Ok(Running {
             process,
             intake: Intake::new(frame::decoder(caps.chars)),
-            last_id: 0,
+            sent_past_an_end: false,
             started: STARTED.fetch_add(1, Ordering::Relaxed),
             waiting_since: Instant::now(),
             cpu_then: Duration::ZERO,
@@ -274,11 +298,15 @@ impl Running {
         self.cpu_then = self.process.usage().cpu;
     }
 
-    /// Whether a helper waiting for an image must go: it has waited its
-    /// idle time or ended by itself, or it holds more memory than a kept
-    /// helper may, or it has used an image's processor time since its last.
+    /// Whether a helper waiting for an image must go: it sent something
+    /// after its last image's end, it has waited its idle time or ended by
+    /// itself, or it holds more memory than a kept helper may, or it has
+    /// used an image's processor time since its last.
     fn must_go(&mut self, caps: Caps) -> bool {
-        if self.waiting_since.elapsed() >= caps.idle || !matches!(self.process.try_wait(), Ok(None)) {
+        if self.sent_past_an_end
+            || self.waiting_since.elapsed() >= caps.idle
+            || !matches!(self.process.try_wait(), Ok(None))
+        {
             return true;
         }
         let usage = self.process.usage();
@@ -286,9 +314,8 @@ impl Running {
     }
 
     fn request(&mut self, path: &Path, sink: &mut Sink, caps: Caps) -> Read {
-        self.last_id += 1;
         let request = Request {
-            id: self.last_id,
+            id: fresh_id(),
             path: path.into(),
             deadline_ms: sink.deadline().saturating_duration_since(Instant::now()).as_millis() as u64,
             max_chars: caps.chars,
@@ -304,23 +331,33 @@ impl Running {
             }
             Err(watched) => watched,
         };
+        let nothing_yet = order.step == (Step::Facts { seen: 0 });
         let stop = match watched {
-            Watched::Taken(Taken::Stop(Stop::End(_))) if !self.intake.decoder.is_empty() => {
-                Stop::Broken("the image reader sent a frame after the end".into())
+            Watched::Taken(Taken::Stop(Stop::End(outcome))) => {
+                self.sent_past_an_end = !self.intake.decoder.is_empty() || order.sent > caps.output;
+                Stop::End(outcome)
             }
+            Watched::Taken(Taken::Stop(Stop::Broken(why))) if nothing_yet => Stop::Leftover(why),
             Watched::Taken(Taken::Stop(stop)) => stop,
+            Watched::Taken(Taken::Bad(why)) if nothing_yet => Stop::Leftover(format!("the image reader sent {why}")),
             Watched::Taken(Taken::Bad(why)) => Stop::Broken(format!("the image reader sent {why}")),
             Watched::Taken(Taken::Output) => Stop::Output,
             Watched::Time => Stop::Time,
             Watched::Cpu => Stop::Cpu,
             Watched::Memory => Stop::Memory,
-            Watched::Ended(Ended::Exited(status)) if status.code() == Some(Exit::Idle as i32) && order.step == (Step::Facts { seen: 0 }) => {
-                Stop::Idle
-            }
+            Watched::Ended(Ended::Exited(status)) if status.code() == Some(Exit::Idle as i32) && nothing_yet => Stop::Idle,
             Watched::Ended(_) | Watched::Unreadable(_) => Stop::Crashed,
         };
         Read { stop, received: order.received() }
     }
+}
+
+/// A request's id, random: no byte the helper sent before the request can
+/// carry it, so none can pass for the request's reply.
+fn fresh_id() -> u64 {
+    let mut id = [0u8; 8];
+    unsafe { libc::arc4random_buf(id.as_mut_ptr().cast(), id.len()) };
+    u64::from_ne_bytes(id)
 }
 
 /// Where an image's frames are, in the order the protocol allows: facts,
@@ -330,7 +367,8 @@ struct Order {
     step: Step,
     /// Whether the sink kept any of it: a fact, or a character of text.
     kept: bool,
-    /// The bytes the helper sent for it.
+    /// The bytes the helper sent for it: past the output cap with its end,
+    /// some came after the end.
     sent: usize,
 }
 
@@ -346,14 +384,10 @@ impl Order {
         Order { id, step: Step::Facts { seen: 0 }, kept: false, sent: 0 }
     }
 
-    /// Takes the helper's output for the image. An end that came with bytes
-    /// past the output cap is the cap, as it would be had they come apart.
+    /// Takes the helper's output for the image.
     fn take(&mut self, intake: &mut Intake<Frame>, bytes: &[u8], cap: usize, sink: &mut Sink) -> Option<Taken<Stop>> {
         self.sent += bytes.len();
-        match intake.take(bytes, cap, |frame| self.frame(frame, sink)) {
-            Some(Taken::Stop(Stop::End(_))) if self.sent > cap => Some(Taken::Output),
-            taken => taken,
-        }
+        intake.take(bytes, cap, |frame| self.frame(frame, sink))
     }
 
     fn frame(&mut self, frame: Frame, sink: &mut Sink) -> Option<Stop> {

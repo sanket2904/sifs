@@ -14,7 +14,8 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::{mpsc, Arc};
 
 const HELPER_TEST: &str = "extract::readers::macos::image::tests::helper";
 /// How a test helper misbehaves, for every request.
@@ -23,6 +24,33 @@ const MISBEHAVE: &str = "SIFS_IMAGE_TEST";
 const LOG: &str = "SIFS_IMAGE_TEST_LOG";
 /// A folder a test and its helper leave each other files in.
 const SIGNALS: &str = "SIFS_IMAGE_TEST_SIGNALS";
+/// Where a test helper splits what it sends in two.
+const SPLIT: &str = "SIFS_IMAGE_TEST_SPLIT";
+
+/// In a test helper, the requests it has been given so far, and the first's id.
+static CALLS: AtomicUsize = AtomicUsize::new(0);
+static FIRST_ID: AtomicU64 = AtomicU64::new(0);
+
+/// An image's whole reply, text then end, then either a whole reply aimed
+/// at the request after it, by the id that request would have were ids
+/// counted, or bytes that aren't a frame; and where the first reply ends.
+fn reply_then(id: u64, words: &str, frames_after: bool) -> (Vec<u8>, usize) {
+    let next = id.wrapping_add(1);
+    let mut bytes = Frame::Text { id, text: words.into(), cut: false }.encode();
+    bytes.extend(Frame::End { id, outcome: Outcome::Read }.encode());
+    let end = bytes.len();
+    if frames_after {
+        bytes.extend(Frame::Text { id: next, text: "stale".into(), cut: false }.encode());
+        bytes.extend(Frame::End { id: next, outcome: Outcome::Read }.encode());
+    } else {
+        bytes.extend([b'?', 0, 0, 0, 0]);
+    }
+    (bytes, end)
+}
+
+/// Text that makes the first reply of reply_then 64 KiB: what one read of
+/// the helper's output takes.
+const ONE_READ: usize = 64 * 1024 - 28;
 
 pub(super) fn helper_args() -> Vec<OsString> {
     ["--exact", HELPER_TEST, "--nocapture"].map(OsString::from).to_vec()
@@ -42,8 +70,8 @@ fn helper() {
         writeln!(file, "{}", std::process::id()).unwrap();
     }
     let how = std::env::var(MISBEHAVE).unwrap_or_default();
-    if how == "answer without reading" {
-        answer_without_reading();
+    if how == "answer one, then stop reading" {
+        answer_one_then_stop_reading();
     }
     serve_and_exit(idle, |request, send| misbehave(&how, first, request, send));
 }
@@ -60,29 +88,34 @@ fn wait_for(name: &str) {
     }
 }
 
-/// Answers requests 1, 2, ... in turn without reading its stdin, each once
-/// the test has written the last one's id to "ack", until the pipe holding
-/// the requests is full; it leaves "full" in signals() when it sees that.
-/// It ends itself after 10 s.
-fn answer_without_reading() -> ! {
+/// Answers its first request, then reads no more of its stdin; it leaves
+/// "full" in signals() once what it hasn't read fills the pipe. It ends
+/// itself after 10 s.
+fn answer_one_then_stop_reading() -> ! {
     std::thread::spawn(|| {
         std::thread::sleep(Duration::from_secs(10));
         helper::exit(helper::Exit::Late)
     });
     let mut out = std::io::stdout().lock();
     out.write_all(MARKER).and_then(|_| out.flush()).unwrap();
-    let mut id = 0;
-    loop {
-        id += 1;
-        out.write_all(&Frame::End { id, outcome: Outcome::Read }.encode()).and_then(|_| out.flush()).unwrap();
-        while fs::read_to_string(signals().join("ack")).unwrap_or_default() != id.to_string() {
-            let mut stdin: libc::stat = unsafe { std::mem::zeroed() };
-            unsafe { libc::fstat(0, &mut stdin) };
-            if stdin.st_size > 0 && stdin.st_size >= stdin.st_blksize as libc::off_t {
-                fs::write(signals().join("full"), "").unwrap();
-            }
-            std::thread::sleep(Duration::from_millis(1));
+    let mut requests = frame::requests();
+    let mut buf = [0u8; 4096];
+    let request = loop {
+        if let Some(request) = requests.next_frame().unwrap() {
+            break request;
         }
+        let n = unsafe { libc::read(0, buf.as_mut_ptr().cast(), buf.len()) };
+        assert!(n > 0, "stdin closed before a request");
+        requests.push(&buf[..n as usize]);
+    };
+    out.write_all(&Frame::End { id: request.id, outcome: Outcome::Read }.encode()).and_then(|_| out.flush()).unwrap();
+    loop {
+        let mut stdin: libc::stat = unsafe { std::mem::zeroed() };
+        unsafe { libc::fstat(0, &mut stdin) };
+        if stdin.st_size > 0 && stdin.st_size >= stdin.st_blksize as libc::off_t {
+            fs::write(signals().join("full"), "").unwrap();
+        }
+        std::thread::sleep(Duration::from_millis(1));
     }
 }
 
@@ -168,8 +201,45 @@ fn misbehave(how: &str, first: bool, request: &Request, send: &mut Send) -> std:
         "idle in the first helper" if first => helper::exit(helper::Exit::Idle),
         "another id" => {
             send(width())?;
-            send(Frame::Fact { id: id + 1, key: FactKey::Height, value: "2".into() })?;
+            send(Frame::Fact { id: id.wrapping_add(1), key: FactKey::Height, value: "2".into() })?;
             park()
+        }
+        // The first helper sends, in one write, its reply and one aimed at
+        // the next request; then it waits.
+        "early, in one write" if first => {
+            if CALLS.fetch_add(1, Ordering::SeqCst) > 0 {
+                park()
+            }
+            raw(&reply_then(id, &"x".repeat(ONE_READ), true).0)
+        }
+        // The first helper sends its reply and what follows it in two
+        // writes, split at SPLIT: both at once if the split is before its
+        // own end, the second only once the next request has come if not.
+        "early, split" | "garbage, split" if first => {
+            let split: usize = std::env::var(SPLIT).unwrap().parse().unwrap();
+            let frames_after = how == "early, split";
+            if CALLS.fetch_add(1, Ordering::SeqCst) == 0 {
+                FIRST_ID.store(id, Ordering::SeqCst);
+                let (bytes, end) = reply_then(id, "first", frames_after);
+                raw(&bytes[..split])?;
+                return if split < end { raw(&bytes[split..]) } else { Ok(()) };
+            }
+            let (bytes, end) = reply_then(FIRST_ID.load(Ordering::SeqCst), "first", frames_after);
+            if split >= end {
+                raw(&bytes[split..])?;
+            }
+            park()
+        }
+        "an end, then bytes past the cap" => {
+            if CALLS.fetch_add(1, Ordering::SeqCst) == 0 {
+                return send(Frame::End { id, outcome: Outcome::Read });
+            }
+            raw(&[&width_then_end(id)[..], &[0; 128]].concat())?;
+            park()
+        }
+        "early, in one write" | "early, split" | "garbage, split" => {
+            send(Frame::Text { id, text: "second".into(), cut: false })?;
+            send(Frame::End { id, outcome: Outcome::Read })
         }
         "a fact twice" => {
             send(width())?;
@@ -299,8 +369,13 @@ fn gone(pid: u32) -> bool {
     !alive
 }
 
+/// The helpers started, in order, by the process ids they logged.
+fn started(log: &Path) -> Vec<u32> {
+    fs::read_to_string(log).unwrap_or_default().lines().map(|line| line.parse().unwrap()).collect()
+}
+
 fn helper_pid(image: &Image) -> Option<u32> {
-    image.running.lock().as_ref().map(|running| running.process.id())
+    image.running.lock().running.as_ref().map(|running| running.process.id())
 }
 
 struct Dir(tempfile::TempDir);
@@ -614,7 +689,6 @@ fn a_helper_breaking_the_protocol_is_stopped_and_the_frames_before_kept() {
         ("text twice", "the image reader sent the text twice"),
         ("an unknown frame", "the image reader sent an unknown frame (63)"),
         ("a bad frame after a whole one", "the image reader sent an unknown frame (63)"),
-        ("a frame after the end", "the image reader sent a frame after the end"),
     ] {
         let image = reader(Caps::default(), Some(how));
         let (got, facts) = read_path(&image, Path::new("/nonexistent/any.png"), Duration::from_secs(60)).unwrap();
@@ -631,6 +705,32 @@ fn a_helper_breaking_the_protocol_is_stopped_and_the_frames_before_kept() {
     let (_, facts) = read_misbehaving("a frame too long", Caps::default(), Duration::from_secs(60)).unwrap();
     let why = format!("the image reader sent a frame too long to be one ({} bytes)", frame::max_frame(100_000) + 1);
     assert_eq!(fact(&facts, fact::STOPPED), Some(why.as_str()));
+}
+
+/// The bytes of a width fact and an end, whatever their id.
+fn width_then_end(id: u64) -> Vec<u8> {
+    let mut bytes = Frame::Fact { id, key: FactKey::Width, value: "1".into() }.encode();
+    bytes.extend(Frame::End { id, outcome: Outcome::Read }.encode());
+    bytes
+}
+
+#[test]
+fn an_image_keeps_its_end_and_a_helper_sending_past_it_reads_no_more() {
+    let image = reader(Caps::default(), Some("a frame after the end"));
+    let (got, facts) = read_path(&image, Path::new("/nonexistent/any.png"), Duration::from_secs(60)).unwrap();
+    assert_eq!((text(&got), fact(&facts, fact::WIDTH), fact(&facts, fact::HEIGHT)), (String::new(), Some("1"), None));
+    assert_eq!(fact(&facts, fact::STOPPED), None, "the image was read to its end");
+    assert_eq!(helper_pid(&image), None, "replaced");
+
+    // The second request's end at its output cap's last byte, more after it.
+    let mut helper = Image::default().helper;
+    helper.env.push((MISBEHAVE.into(), "an end, then bytes past the cap".into()));
+    let mut running = Running::start(&helper, Caps::default()).unwrap();
+    let mut read = |caps| running.request(Path::new("/nonexistent/any.png"), &mut Sink::new(100, Instant::now() + Duration::from_secs(60)), caps);
+    assert_eq!(read(Caps::default()).stop, Stop::End(Outcome::Read));
+    let at_the_cap = Caps { output: width_then_end(0).len(), ..Caps::default() };
+    assert_eq!(read(at_the_cap).stop, Stop::End(Outcome::Read));
+    assert!(running.must_go(Caps::default()), "it reads no more images");
 }
 
 /// What a request with id 1 takes from bytes, fed whole, a byte at a time
@@ -736,20 +836,48 @@ fn text_the_sink_keeps_none_of_is_not_received() {
     }
 }
 
-#[test]
-fn an_end_with_bytes_past_the_output_cap_is_the_cap() {
-    let end = wire(&[Frame::End { id: 1, outcome: Outcome::Read }]);
-    let over = [&end[..], &[0; 128]].concat();
-    let take = |bytes: &[u8], output| {
-        let mut intake = Intake::new(frame::decoder(100));
-        let mut sink = Sink::new(100, Instant::now() + Duration::from_secs(60));
-        Order::new(1).take(&mut intake, bytes, output, &mut sink)
+/// What a read got: its text and why it stopped, if it did; or its error.
+type Words = Result<(String, Option<String>), String>;
+
+/// Two images on one reader whose first helper misbehaves as how says:
+/// what each got, the helpers started, and whether the first is gone.
+fn two_images(how: &str, env: &[(&str, String)]) -> (Words, Words, usize, bool) {
+    let dir = Dir::new();
+    let log = dir.0.path().join("helpers.log");
+    let mut image = reader(Caps::default(), Some(how));
+    image.helper.env.push((LOG.into(), log.clone().into()));
+    image.helper.env.extend(env.iter().map(|(k, v)| (OsString::from(k), OsString::from(v))));
+    let words = |got: Got| match got {
+        Ok((got, facts)) => Ok((text(&got), fact(&facts, fact::STOPPED).map(String::from))),
+        Err(e) => Err(format!("{e:?}")),
     };
-    let ended = Some(Taken::Stop(Stop::End(Outcome::Read)));
-    assert_eq!(take(&end, end.len()), ended, "an end at the cap, nothing past it");
-    assert_eq!(take(&over, end.len()), Some(Taken::Output), "the cap at the end's last byte");
-    assert_eq!(take(&over, end.len() - 1), Some(Taken::Output), "the cap a byte before it");
-    assert_eq!(take(&over, over.len()), ended, "everything within the cap");
+    let any = Path::new("/nonexistent/any.png");
+    let first = words(read_path(&image, any, Duration::from_secs(10)));
+    let second = words(read_path(&image, any, Duration::from_secs(10)));
+    let helpers = started(&log);
+    (first, second, helpers.len(), helpers.first().is_some_and(|pid| gone(*pid)))
+}
+
+#[test]
+fn a_reply_sent_with_the_last_images_is_never_the_next_images() {
+    let (first, second, helpers, first_gone) = two_images("early, in one write", &[]);
+    assert_eq!(first, Ok(("x".repeat(ONE_READ), None)), "the first image's own reply");
+    assert_eq!(second, Ok(("second".into(), None)), "the next image's own words, not the reply sent before it");
+    assert_eq!(helpers, 2, "a new helper read the next image");
+    assert!(first_gone, "the helper that sent it is gone");
+}
+
+#[test]
+fn a_reply_sent_early_is_never_the_next_images_wherever_the_pipe_splits_it() {
+    let right = (Ok(("first".to_string(), None)), Ok(("second".to_string(), None)), 2, true);
+    for (how, frames_after) in [("early, split", true), ("garbage, split", false)] {
+        let (bytes, _) = reply_then(0, "first", frames_after);
+        let wrong: Vec<_> = (0..=bytes.len())
+            .map(|split| (split, two_images(how, &[(SPLIT, split.to_string())])))
+            .filter(|(_, got)| *got != right)
+            .collect();
+        assert!(wrong.is_empty(), "{how}: the same at every split of the {} bytes: {wrong:?}", bytes.len());
+    }
 }
 
 #[test]
@@ -829,26 +957,20 @@ fn sifs_ends_a_kept_helper_at_its_idle_time_whatever_the_helper_does() {
 #[test]
 fn a_helper_that_doesnt_read_its_requests_is_killed_at_the_deadline() {
     let dir = Dir::new();
-    let mut image = reader(Caps::default(), Some("answer without reading"));
+    let mut image = reader(Caps::default(), Some("answer one, then stop reading"));
     image.helper.env.push((SIGNALS.into(), dir.0.path().into()));
-    // Requests of 1 KB fill the pipe after a few dozen.
-    let path = PathBuf::from(format!("/{}", "a".repeat(1000)));
+    read_path(&image, Path::new("/nonexistent/any.png"), Duration::from_secs(60)).expect("the first request is answered");
+    let pid = helper_pid(&image).unwrap();
+    // The helper can't answer a request it hasn't read (it can't know its
+    // id), so only one too long for the pipe is left unread: 256 KB.
+    let path = PathBuf::from(format!("/{}", "a".repeat(256 * 1024)));
     let deadline = Duration::from_millis(500);
-    for id in 1..=1000 {
-        let started = Instant::now();
-        let got = read_path(&image, &path, deadline);
-        if let Err(ReadError::Other(why)) = &got {
-            assert_eq!(why, "took longer than 60 s", "request {id}");
-            assert!(id > 1, "requests were answered before one waited");
-            assert!(dir.0.path().join("full").exists(), "the helper saw its request pipe full");
-            assert!(started.elapsed() < deadline + HELPER_SLACK * 3 / 4, "killed at the deadline: {:?}", started.elapsed());
-            assert_eq!(helper_pid(&image), None);
-            return;
-        }
-        assert!(got.is_ok(), "request {id}: {got:?}");
-        fs::write(dir.0.path().join("ack"), id.to_string()).unwrap();
-    }
-    panic!("the pipe never filled");
+    let started = Instant::now();
+    assert_eq!(failed(read_path(&image, &path, deadline)), "took longer than 60 s");
+    assert!(started.elapsed() < deadline + HELPER_SLACK * 3 / 4, "killed at the deadline: {:?}", started.elapsed());
+    assert!(dir.0.path().join("full").exists(), "the helper saw its request pipe full");
+    assert_eq!(helper_pid(&image), None);
+    assert!(gone(pid));
 }
 
 #[test]
@@ -874,7 +996,10 @@ fn stopping_the_worker_ends_the_helper_whoever_holds_the_reader() {
     let root = fs::canonicalize(dir.path()).unwrap().join("home");
     fs::create_dir_all(&root).unwrap();
     draw::text(&root.join("tiny.png"), Format::Png, (2, 16), &[], &Meta::default());
-    let image = Arc::new(Image::default());
+    let log = dir.path().join("helpers.log");
+    let mut image = Image::default();
+    image.helper.env.push((LOG.into(), log.clone().into()));
+    let image = Arc::new(image);
     let registry = Arc::new(Registry::with(vec![image.clone()]));
     let db = dir.path().join("sifs.db");
     let mut index = Index::open(&db).unwrap();
@@ -889,8 +1014,149 @@ fn stopping_the_worker_ends_the_helper_whoever_holds_the_reader() {
     let pid = helper_pid(&image).unwrap();
     assert_eq!(worker.stop().reads, 1);
     assert!(gone(pid), "killed and reaped as the worker stopped, with the reader still held");
-    read_path(&image, &root.join("tiny.png"), Duration::from_secs(60)).unwrap();
-    assert!(helper_pid(&image).is_some_and(|again| again != pid), "a later read starts another");
+    for _ in 0..2 {
+        assert_eq!(failed(read_path(&image, &root.join("tiny.png"), Duration::from_secs(60))), STOPPED_READER);
+    }
+    registry.stop();
+    assert_eq!(helper_pid(&image), None);
+    assert_eq!(started(&log), [pid], "no helper started after the stop");
+}
+
+/// The image reader, through a reader that holds each read at its start
+/// until told to go on, and panics the worker as it asks for the limits a
+/// third time: just after the worker dispatched a read.
+struct Paused {
+    image: Arc<Image>,
+    limits_asked: AtomicUsize,
+    entered: mpsc::Sender<()>,
+    go_on: Mutex<mpsc::Receiver<()>>,
+    done: mpsc::Sender<Result<(), String>>,
+}
+
+impl Reader for Paused {
+    fn id(&self) -> &'static str {
+        self.image.id()
+    }
+
+    fn version(&self) -> u32 {
+        self.image.version()
+    }
+
+    fn exts(&self) -> &'static [&'static str] {
+        self.image.exts()
+    }
+
+    fn class(&self) -> Class {
+        self.image.class()
+    }
+
+    fn limits(&self) -> Limits {
+        if self.limits_asked.fetch_add(1, Ordering::SeqCst) == 2 {
+            panic!("the worker panics just after it dispatched a read");
+        }
+        self.image.limits()
+    }
+
+    fn read(&self, path: &Path, sink: &mut Sink) -> Result<(), ReadError> {
+        self.entered.send(()).unwrap();
+        self.go_on.lock().unwrap().recv().unwrap();
+        let got = self.image.read(path, sink);
+        self.done.send(got.as_ref().map(drop).map_err(|e| format!("{e:?}"))).unwrap();
+        got
+    }
+
+    fn stop(&self) {
+        self.image.stop();
+    }
+}
+
+#[test]
+fn a_read_dispatched_as_the_worker_panics_starts_no_helper() {
+    let dir = Dir::new();
+    let tiny = dir.sized("tiny.png", (2, 16), &[]);
+    let root = fs::canonicalize(dir.0.path()).unwrap().join("indexed");
+    fs::create_dir_all(&root).unwrap();
+    fs::copy(&tiny, root.join("image.png")).unwrap();
+    let log = dir.0.path().join("helpers.log");
+    let mut image = Image::default();
+    image.helper.env.push((LOG.into(), log.clone().into()));
+    let image = Arc::new(image);
+    read_path(&image, &tiny, Duration::from_secs(60)).unwrap();
+    let before = helper_pid(&image).unwrap();
+    let ((entered, wait_entered), (go_on, wait_go_on), (done, wait_done)) = (mpsc::channel(), mpsc::channel(), mpsc::channel());
+    let paused = Arc::new(Paused { image: image.clone(), limits_asked: AtomicUsize::new(0), entered, go_on: Mutex::new(wait_go_on), done });
+    let registry = Arc::new(Registry::with(vec![paused.clone()]));
+    let db = dir.0.path().join("sifs.db");
+    let mut index = Index::open(&db).unwrap();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let root = root.to_str().unwrap();
+    index.add_folder(root, 0).unwrap();
+    scan(&mut index, root, &Rules::new(&[], root).unwrap(), |_| {}).unwrap();
+    let worker = Worker::start(db, registry, WorkerOptions { concurrency: 2, ..WorkerOptions::default() }).unwrap();
+    wait_entered.recv_timeout(Duration::from_secs(10)).unwrap();
+    eventually("the worker to panic", || paused.limits_asked.load(Ordering::SeqCst) >= 3);
+    drop(worker);
+    assert!(gone(before), "the helper is reaped as the worker's thread ends");
+    go_on.send(()).unwrap();
+    let got = wait_done.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert_eq!(got, Err(format!("{:?}", ReadError::Other(STOPPED_READER.into()))), "the read is refused");
+    assert_eq!(helper_pid(&image), None);
+    assert_eq!(started(&log), [before], "no helper started after the worker ended");
+}
+
+#[test]
+fn a_read_racing_a_stop_ends_before_the_stop_reaps_its_helper_or_is_refused() {
+    let dir = Dir::new();
+    let tiny = dir.sized("tiny.png", (2, 16), &[]);
+    let (mut reaped, mut refused) = (0, 0);
+    for round in 0..400 {
+        if reaped >= 20 && refused >= 20 {
+            break;
+        }
+        let log = dir.0.path().join(format!("{round}.log"));
+        let mut image = Image::default();
+        image.helper.env.push((LOG.into(), log.clone().into()));
+        let image = Arc::new(image);
+        let registry = Registry::with(vec![image.clone()]);
+        // Both spin until told to go, then one spins a while longer: the
+        // read on even rounds, the stop on odd ones, longer each round.
+        let go = AtomicBool::new(false);
+        let head_start = |which| if round % 2 == which { round * 200 } else { 0 };
+        let wait_then = |spins: usize| {
+            while !go.load(Ordering::SeqCst) {
+                std::hint::spin_loop();
+            }
+            (0..spins).for_each(|_| std::hint::spin_loop());
+        };
+        let got = std::thread::scope(|scope| {
+            let read = scope.spawn(|| {
+                wait_then(head_start(0));
+                read_path(&image, &tiny, Duration::from_secs(60))
+            });
+            let stop = scope.spawn(|| {
+                wait_then(head_start(1));
+                registry.stop();
+            });
+            go.store(true, Ordering::SeqCst);
+            stop.join().unwrap();
+            read.join().unwrap()
+        });
+        let helpers = started(&log);
+        match got {
+            Ok(_) => {
+                reaped += 1;
+                assert_eq!(helpers.len(), 1, "round {round}: one helper for the read");
+            }
+            Err(ReadError::Other(why)) if why == STOPPED_READER => {
+                refused += 1;
+                assert!(helpers.is_empty(), "round {round}: none started for a refused read");
+            }
+            got => panic!("round {round}: {got:?}"),
+        }
+        assert_eq!(helper_pid(&image), None, "round {round}: nothing kept after the stop");
+        assert!(helpers.iter().all(|pid| gone(*pid)), "round {round}: every helper started is reaped");
+    }
+    assert!(reaped >= 20 && refused >= 20, "both orders seen: {reaped} reaped, {refused} refused");
 }
 
 #[test]
@@ -933,13 +1199,13 @@ fn a_helper_that_died_just_before_an_image_is_replaced() {
     read_path(&image, &a, Duration::from_secs(60)).unwrap();
     // Held, so its watcher can't see it die first.
     let mut slot = image.running.lock();
-    let pid = slot.as_ref().unwrap().process.id();
+    let pid = slot.running.as_ref().unwrap().process.id();
     unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
-    eventually("the helper to die", || slot.as_mut().unwrap().process.try_wait().unwrap().is_some());
+    eventually("the helper to die", || slot.running.as_mut().unwrap().process.try_wait().unwrap().is_some());
     let mut sink = Sink::new(image.caps.chars, Instant::now() + Duration::from_secs(60));
     assert_eq!(image.request(&mut slot, &a, &mut sink).unwrap().stop, Stop::End(Outcome::Read));
     assert_eq!(text(&sink.finish().0), "Again");
-    assert_ne!(slot.as_ref().map(|running| running.process.id()), Some(pid));
+    assert_ne!(slot.running.as_ref().map(|running| running.process.id()), Some(pid));
 }
 
 #[test]
@@ -952,7 +1218,7 @@ fn a_helper_keeping_too_much_memory_is_replaced_after_its_image() {
     let mut sink = Sink::new(image.caps.chars, Instant::now() + Duration::from_secs(60));
     assert_eq!(image.request(&mut slot, &a, &mut sink).unwrap().stop, Stop::End(Outcome::Read));
     assert_eq!(text(&sink.finish().0), "Kept");
-    assert!(slot.is_none(), "Vision alone takes more than 1 MB");
+    assert!(slot.running.is_none(), "Vision alone takes more than 1 MB");
 }
 
 #[test]

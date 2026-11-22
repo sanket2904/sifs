@@ -25,6 +25,7 @@ pub(super) fn max_frame(chars: usize) -> usize {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Request {
+    /// New and random for each request.
     pub id: u64,
     pub path: PathBuf,
     /// How long it has: the helper ends itself a second after.
