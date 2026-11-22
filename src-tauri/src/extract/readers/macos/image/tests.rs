@@ -958,6 +958,32 @@ fn the_helper_is_ended_at_its_idle_time_and_the_next_image_starts_another() {
     assert_ne!(helper_pid(&image), Some(first));
 }
 
+#[test]
+#[ignore = "waits out the default 30 s idle time; run with --ignored"]
+fn a_helper_paused_around_its_idle_exit_still_lets_the_next_image_be_read() {
+    let dir = Dir::new();
+    let path = dir.text("receipt.png", Format::Png, &["Harbour Cafe"], &Meta::default());
+    let image = Image::default();
+    assert_eq!(text(&read_path(&image, &path, Duration::from_secs(60)).unwrap().0), "Harbour Cafe");
+    // Holding the slot keeps SIFS from ending the helper at its idle time,
+    // so the next request reaches it just before its own idle exit, while
+    // it is not scheduled.
+    let slot = image.running.lock();
+    let pid = slot.running.as_ref().unwrap().process.id();
+    std::thread::sleep(image.caps.idle - Duration::from_millis(400));
+    assert_eq!(unsafe { libc::kill(pid as libc::pid_t, libc::SIGSTOP) }, 0);
+    drop(slot);
+    let resume = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1500));
+        unsafe { libc::kill(pid as libc::pid_t, libc::SIGCONT) };
+    });
+    let got = read_path(&image, &path, Duration::from_secs(60));
+    resume.join().unwrap();
+    image.stop();
+    assert!(gone(pid));
+    assert_eq!(text(&got.expect("a pause of 1.5 s is not 10 s of processor time").0), "Harbour Cafe");
+}
+
 /// A helper that sends its end and then, told to go on, misbehaves.
 fn kept_then(how: &str, caps: Caps) -> (Image, u32, PathBuf, Dir) {
     let dir = Dir::new();
