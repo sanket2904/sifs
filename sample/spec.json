@@ -11,7 +11,10 @@
 			"about": "Latest of three monthly statements of one account; its file date is the oldest of the three. Names a later period in a note.",
 			"planted": {
 				"orgs": ["HDFC Bank Ltd"],
-				"identifiers": ["50100417263958", "HDFC0SAMPL1"],
+				"identifiers": [
+					{ "text": "50100417263958", "kind": "account" },
+					{ "text": "HDFC0SAMPL1", "kind": "ifsc" }
+				],
 				"ignore": [
 					{
 						"text": "411000",
@@ -54,7 +57,10 @@
 			"about": "Oldest of three monthly statements of one account; its file date is the newest of the three.",
 			"planted": {
 				"orgs": ["HDFC Bank Ltd"],
-				"identifiers": ["50100417263958", "HDFC0SAMPL1"],
+				"identifiers": [
+					{ "text": "50100417263958", "kind": "account" },
+					{ "text": "HDFC0SAMPL1", "kind": "ifsc" }
+				],
 				"ignore": [
 					{
 						"text": "411000",
@@ -96,7 +102,10 @@
 			"about": "Middle one of three monthly statements of one account.",
 			"planted": {
 				"orgs": ["HDFC Bank Ltd"],
-				"identifiers": ["50100417263958", "HDFC0SAMPL1"],
+				"identifiers": [
+					{ "text": "50100417263958", "kind": "account" },
+					{ "text": "HDFC0SAMPL1", "kind": "ifsc" }
+				],
 				"ignore": [
 					{
 						"text": "411000",
@@ -138,7 +147,9 @@
 			"about": "Statement header names one bank and one account, with no code tying them.",
 			"planted": {
 				"orgs": ["Kotak Mahindra Bank"],
-				"identifiers": ["4512369874"]
+				"identifiers": [
+					{ "text": "1234567890", "kind": "account" }
+				]
 			},
 			"pages": [
 				{
@@ -147,7 +158,7 @@
 						"Kotak Mahindra Bank",
 						"Savings Account Statement",
 						"Customer: Neha Udaharan",
-						"Account No. 4512369874",
+						"Account No. 1234567890",
 						"Branch: Sample Road, Mumbai",
 						"Period: 01 Oct 2026 - 31 Oct 2026",
 						"Opening balance INR 8,200.00",
@@ -168,7 +179,9 @@
 			"about": "Statement from a made-up co-operative bank that no directory holds: the header is the only tie between the bank and the account.",
 			"planted": {
 				"orgs": ["Sample Nagar Sahakari Bank Ltd", "Sample Nagar Sahakari Bank"],
-				"identifiers": ["004512000789"]
+				"identifiers": [
+					{ "text": "004512000789", "kind": "account" }
+				]
 			},
 			"pages": [
 				{
@@ -197,7 +210,9 @@
 			"about": "Statement from a made-up credit union that no directory holds: the header is the only tie between it and the account.",
 			"planted": {
 				"orgs": ["Sampleton Credit Union"],
-				"identifiers": ["88120457"]
+				"identifiers": [
+					{ "text": "88120457", "kind": "account" }
+				]
 			},
 			"pages": [
 				{
@@ -225,7 +240,12 @@
 			"about": "British statement: an IBAN whose bank code is the bank's, a BIC, and the domestic account number.",
 			"planted": {
 				"orgs": ["National Westminster Bank Plc", "Example Cafe"],
-				"identifiers": ["60-16-13", "31926819", "GB29 NWBK 6016 1331 9268 19", "NWBKGB2L"]
+				"identifiers": [
+					{ "text": "60-16-13", "kind": "gb_sort_code" },
+					{ "text": "31926819", "kind": "account" },
+					{ "text": "GB29 NWBK 6016 1331 9268 19", "kind": "iban" },
+					{ "text": "NWBKGB2L", "kind": "bic" }
+				]
 			},
 			"pages": [
 				{
@@ -256,7 +276,9 @@
 			"about": "Dutch statement in English: an IBAN whose bank code is the first four letters of the bank's BIC.",
 			"planted": {
 				"orgs": ["ABN AMRO Bank N.V."],
-				"identifiers": ["NL91 ABNA 0417 1643 00"]
+				"identifiers": [
+					{ "text": "NL91 ABNA 0417 1643 00", "kind": "iban" }
+				]
 			},
 			"pages": [
 				{
@@ -285,11 +307,18 @@
 			"about": "German statement: IBAN with the bank's Bankleitzahl, the bank's BIC, header naming the bank.",
 			"planted": {
 				"orgs": ["Commerzbank AG"],
-				"identifiers": ["DE89 3704 0044 0532 0130 00", "COBADEFFXXX"],
+				"identifiers": [
+					{ "text": "DE89 3704 0044 0532 0130 00", "kind": "iban" },
+					{ "text": "COBADEFFXXX", "kind": "bic" }
+				],
 				"ignore": [
 					{
 						"text": "50667",
 						"why": "postal code"
+					},
+					{
+						"text": "10/2026",
+						"why": "statement number, a document reference; references are out of scope"
 					}
 				]
 			},
@@ -352,7 +381,11 @@
 			"about": "German invoice: an IBAN with a wrong check digit beside a bank name, a phone number and an invoice number shaped like an account.",
 			"planted": {
 				"orgs": ["Musterfirma Schreinerei GmbH", "Commerzbank"],
-				"identifiers": ["+49 30 23125 471", "2026 0815 4711", "DE88 3704 0044 0532 0130 00"],
+				"identifiers": [
+					{ "text": "+49 30 23125 471", "looks_like": "account", "not": "phone-number" },
+					{ "text": "2026 0815 4711", "looks_like": "account", "not": "invoice-number" },
+					{ "text": "DE88 3704 0044 0532 0130 00", "kind": "iban" }
+				],
 				"ignore": [
 					{
 						"text": "10115",
@@ -389,10 +422,10 @@
 			"planted": {
 				"orgs": ["Sample Supplies Ltd"],
 				"identifiers": [
-					"020 7946 0123",
-					"50100987654321",
-					"GB28 NWBK 6016 1331 9268 19",
-					"4111 1111 1111 1112"
+					{ "text": "020 7946 0123", "looks_like": "account", "not": "phone-number" },
+					{ "text": "50100987654321", "looks_like": "account", "not": "invoice-number" },
+					{ "text": "GB28 NWBK 6016 1331 9268 19", "kind": "iban" },
+					{ "text": "4111 1111 1111 1112", "kind": "card" }
 				]
 			},
 			"pages": [
@@ -423,11 +456,11 @@
 			"planted": {
 				"orgs": ["HDFC", "HDFC Bank", "Sample Traders", "ICICI Bank"],
 				"identifiers": [
-					"N2026092212345678",
-					"50100417263958",
-					"HDFC0SAMPL1",
-					"002101234567",
-					"ICIC0SAMPL2"
+					{ "text": "N2026092212345678", "looks_like": "account", "not": "reference-number" },
+					{ "text": "50100417263958", "kind": "account" },
+					{ "text": "HDFC0SAMPL1", "kind": "ifsc" },
+					{ "text": "002101234567", "kind": "account" },
+					{ "text": "ICIC0SAMPL2", "kind": "ifsc" }
 				],
 				"ignore": [
 					{
@@ -464,7 +497,11 @@
 			"about": "Transfer receipt with three banks and two accounts: the IBAN ties to its bank, the other account is tied to none of them.",
 			"planted": {
 				"orgs": ["Commerzbank", "BNP Paribas", "Mizuho Bank"],
-				"identifiers": ["TRX-2026-000417", "DE89 3704 0044 0532 0130 00", "7730194522"]
+				"identifiers": [
+					{ "text": "TRX-2026-000417", "looks_like": "account", "not": "reference-number" },
+					{ "text": "DE89 3704 0044 0532 0130 00", "kind": "iban" },
+					{ "text": "7730194522", "kind": "account" }
+				]
 			},
 			"pages": [
 				{
@@ -494,7 +531,12 @@
 			"about": "Two rows, each with an IFSC at its start and an account at its end: the first account is nearer the second row's code, so only the row decides which code is its own.",
 			"planted": {
 				"orgs": ["Sample Traders"],
-				"identifiers": ["HDFC0SAMPL1", "50100417263958", "ICIC0SAMPL2", "002101234567"]
+				"identifiers": [
+					{ "text": "HDFC0SAMPL1", "kind": "ifsc" },
+					{ "text": "50100417263958", "kind": "account" },
+					{ "text": "ICIC0SAMPL2", "kind": "ifsc" },
+					{ "text": "002101234567", "kind": "account" }
+				]
 			},
 			"pages": [
 				{
@@ -577,7 +619,10 @@
 			"about": "An account number with no bank, and a phone number.",
 			"planted": {
 				"orgs": [],
-				"identifiers": ["33445566778899", "+44 7700 900417"],
+				"identifiers": [
+					{ "text": "33445566778899", "kind": "account" },
+					{ "text": "+44 7700 900417", "looks_like": "account", "not": "phone-number" }
+				],
 				"ignore": [
 					{
 						"text": "bank transfer",
@@ -610,7 +655,10 @@
 			"about": "An email saved as text: spelling variants hdfcbank and HDFC BANK, a reference number and a phone number.",
 			"planted": {
 				"orgs": ["hdfcbank", "HDFC BANK"],
-				"identifiers": ["N2026102098765", "+44 7700 900123"],
+				"identifiers": [
+					{ "text": "N2026102098765", "looks_like": "account", "not": "reference-number" },
+					{ "text": "+44 7700 900123", "looks_like": "account", "not": "phone-number" }
+				],
 				"ignore": [
 					{
 						"text": "School office",
@@ -653,7 +701,9 @@
 			"about": "Credit card statement: a card number from a published test range under a header naming one bank.",
 			"planted": {
 				"orgs": ["HDFC Bank", "Sample Grocers", "Example Books"],
-				"identifiers": ["4111 1111 1111 1111"]
+				"identifiers": [
+					{ "text": "4242 4242 4242 4242", "kind": "card" }
+				]
 			},
 			"pages": [
 				{
@@ -661,7 +711,7 @@
 						"SAMPLE DOCUMENT. Made up for testing. Not a real statement.",
 						"HDFC Bank Credit Card Statement",
 						"Card holder: Asha Kalpit",
-						"Card number: 4111 1111 1111 1111",
+						"Card number: 4242 4242 4242 4242",
 						"Statement period: 16 Aug 2026 to 15 Sep 2026",
 						"Payment due date: 05 Oct 2026",
 						"Total amount due: INR 9,120.40",
@@ -684,7 +734,10 @@
 			"about": "A company that is not a bank but has a bank's name inside its own; a card with no bank; a policy number.",
 			"planted": {
 				"orgs": ["HDFC Life Insurance Company Limited", "HDFC Life"],
-				"identifiers": ["21345678", "5555 5555 5555 4444"]
+				"identifiers": [
+					{ "text": "21345678", "looks_like": "account", "not": "policy-number" },
+					{ "text": "5555 5555 5555 4444", "kind": "card" }
+				]
 			},
 			"pages": [
 				{
@@ -711,7 +764,9 @@
 			"about": "An insurer whose name holds a bank's alias, and a separate real mention of that bank.",
 			"planted": {
 				"orgs": ["ICICI Lombard General Insurance Company Limited", "ICICI Bank"],
-				"identifiers": ["3001/123456789/00/000"],
+				"identifiers": [
+					{ "text": "3001/123456789/00/000", "looks_like": "account", "not": "policy-number" }
+				],
 				"ignore": [
 					{
 						"text": "Motor insurance",
@@ -806,7 +861,10 @@
 			"about": "Hindi passbook page: bank named in Devanagari, account with the bank's IFSC.",
 			"planted": {
 				"orgs": ["स्टेट बैंक ऑफ़ इंडिया"],
-				"identifiers": ["30123456789", "SBIN0SAMPL4"]
+				"identifiers": [
+					{ "text": "30123456789", "kind": "account" },
+					{ "text": "SBIN0SAMPL4", "kind": "ifsc" }
+				]
 			},
 			"pages": [
 				{
@@ -839,7 +897,13 @@
 			"about": "Hindi salary certificate: a PAN, a PAN-like code that is not one, a malformed PAN, and an account tied to a bank only by IFSC.",
 			"planted": {
 				"orgs": ["सैंपल टेक्नोलॉजीज़ प्राइवेट लिमिटेड"],
-				"identifiers": ["PNES12345A", "ABCPK1234F", "50100417263958", "HDFC0SAMPL1", "ABCDK1234F"]
+				"identifiers": [
+					{ "text": "PNESX2345A", "looks_like": "in_pan", "not": "tax-account-number" },
+					{ "text": "ABCPK0000F", "kind": "in_pan" },
+					{ "text": "50100417263958", "kind": "account" },
+					{ "text": "HDFC0SAMPL1", "kind": "ifsc" },
+					{ "text": "ABCDK0000F", "kind": "in_pan" }
+				]
 			},
 			"pages": [
 				{
@@ -848,12 +912,12 @@
 						"SAMPLE DOCUMENT. Made up for testing.",
 						"वेतन प्रमाण पत्र, वित्त वर्ष 2025-26",
 						"नियोक्ता: सैंपल टेक्नोलॉजीज़ प्राइवेट लिमिटेड",
-						"नियोक्ता का टैन (TAN): PNES12345A",
+						"नियोक्ता का टैन (TAN): PNESX2345A",
 						"कर्मचारी: आशा कल्पित",
-						"पैन (PAN): ABCPK1234F",
+						"पैन (PAN): ABCPK0000F",
 						"वेतन खाता: 50100417263958 (IFSC: HDFC0SAMPL1)",
 						"कुल वेतन: 10,20,000.00 रुपये",
-						"पुराने फ़ॉर्म में गलत लिखा पैन: ABCDK1234F"
+						"पुराने फ़ॉर्म में गलत लिखा पैन: ABCDK0000F"
 					]
 				}
 			]
@@ -900,7 +964,9 @@
 			"about": "Japanese statement whose header names one bank and one account, with no code.",
 			"planted": {
 				"orgs": ["みずほ銀行"],
-				"identifiers": ["4417352"]
+				"identifiers": [
+					{ "text": "12345678", "kind": "account" }
+				]
 			},
 			"pages": [
 				{
@@ -910,7 +976,7 @@
 						"みずほ銀行",
 						"普通預金 取引明細",
 						"お名前: 山田 太郎 様",
-						"口座番号: 4417352",
+						"口座番号: 12345678",
 						"期間: 2026年8月1日～2026年8月31日",
 						"前月繰越: 125,000円",
 						"8月10日 給与振込 280,000円",
@@ -930,7 +996,10 @@
 			"about": "Japanese remittance notice: account tied to its bank by the BIC beside it; a look-alike trust bank whose name holds the bank's alias.",
 			"planted": {
 				"orgs": ["三菱UFJ銀行", "ABN AMRO", "三菱UFJ信託銀行"],
-				"identifiers": ["BOTKJPJT", "0123456"],
+				"identifiers": [
+					{ "text": "BOTKJPJT", "kind": "bic" },
+					{ "text": "0123456", "kind": "account" }
+				],
 				"ignore": [
 					{
 						"text": "受取銀行",
@@ -995,12 +1064,12 @@
 			"planted": {
 				"orgs": ["La Banque Postale"],
 				"identifiers": [
-					"FR14 2004 1010 0505 0001 3M02 606",
-					"PSSTFRPPXXX",
-					"20041",
-					"01005",
-					"0500013M026",
-					"06"
+					{ "text": "FR14 2004 1010 0505 0001 3M02 606", "kind": "iban" },
+					{ "text": "PSSTFRPPXXX", "kind": "bic" },
+					{ "text": "20041", "kind": "fr_bank_code" },
+					{ "text": "01005", "kind": "fr_branch_code" },
+					{ "text": "0500013M026", "kind": "account" },
+					{ "text": "06", "kind": "fr_rib_key" }
 				]
 			},
 			"pages": [
@@ -1028,7 +1097,10 @@
 			"about": "Scanned letter, image only: bank name, account and the bank's IFSC.",
 			"planted": {
 				"orgs": ["BANK OF BARODA"],
-				"identifiers": ["12340100005678", "BARB0SAMPL6"]
+				"identifiers": [
+					{ "text": "12340100005678", "kind": "account" },
+					{ "text": "BARB0SAMPL6", "kind": "ifsc" }
+				]
 			},
 			"pages": [
 				{
@@ -1062,7 +1134,10 @@
 			"about": "Scanned deposit slip, image only: bank name, account and the bank's IFSC.",
 			"planted": {
 				"orgs": ["PUNJAB NATIONAL BANK"],
-				"identifiers": ["0123000100456789", "PUNB0SAMPL7"]
+				"identifiers": [
+					{ "text": "0123000100456789", "kind": "account" },
+					{ "text": "PUNB0SAMPL7", "kind": "ifsc" }
+				]
 			},
 			"pages": [
 				{
@@ -1093,7 +1168,10 @@
 			"about": "Text page plus a scanned page: an IFSC whose prefix (UTIB) is not the bank's name; the account appears on both pages.",
 			"planted": {
 				"orgs": ["Axis Bank Ltd", "AXIS BANK"],
-				"identifiers": ["917010012345678", "UTIB0SAMPL5"]
+				"identifiers": [
+					{ "text": "917010012345678", "kind": "account" },
+					{ "text": "UTIB0SAMPL5", "kind": "ifsc" }
+				]
 			},
 			"pages": [
 				{
@@ -1135,7 +1213,11 @@
 			"about": "A biller's account tied to a bank only by the IFSC beside it; the bank is never named. A consumer number shaped like an account.",
 			"planted": {
 				"orgs": ["Sample Power Distribution Ltd"],
-				"identifiers": ["170012345678", "57500000123456", "HDFC0SAMPL3"],
+				"identifiers": [
+					{ "text": "170012345678", "looks_like": "account", "not": "consumer-number" },
+					{ "text": "57500000123456", "kind": "account" },
+					{ "text": "HDFC0SAMPL3", "kind": "ifsc" }
+				],
 				"ignore": [
 					{
 						"text": "bank transfer",
@@ -1169,7 +1251,9 @@
 			"about": "A 2019 statement from the mortgage company whose short name is the bank's: HDFC Ltd is not HDFC Bank Ltd.",
 			"planted": {
 				"orgs": ["HDFC Ltd", "Housing Development Finance Corporation Limited"],
-				"identifiers": ["612345678"]
+				"identifiers": [
+					{ "text": "612345678", "kind": "account" }
+				]
 			},
 			"pages": [
 				{
@@ -1198,8 +1282,8 @@
 			"planted": {
 				"orgs": ["UTOPIA PASSPORT OFFICE"],
 				"identifiers": [
-					"SMP001826",
-					"P<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0018266UTO8804215F3403174<<<<<<<<<<<<<<<2"
+					{ "text": "SMP001826", "kind": "passport_number" },
+					{ "text": "P<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0018266UTO8804215F3403174<<<<<<<<<<<<<<<2", "kind": "mrz" }
 				]
 			},
 			"pages": [
@@ -1236,8 +1320,8 @@
 			"planted": {
 				"orgs": [],
 				"identifiers": [
-					"SMP000417",
-					"P<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0004175UTO8804215F1906095<<<<<<<<<<<<<<<0"
+					{ "text": "SMP000417", "kind": "passport_number" },
+					{ "text": "P<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0004175UTO8804215F1906095<<<<<<<<<<<<<<<0", "kind": "mrz" }
 				]
 			},
 			"pages": [
@@ -1276,8 +1360,8 @@
 			"planted": {
 				"orgs": ["UTOPIA PASSPORT OFFICE"],
 				"identifiers": [
-					"SMP002935",
-					"P<UTOKALPIT<<ROHAN<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0029356UTO1609307M2801049<<<<<<<<<<<<<<<8"
+					{ "text": "SMP002935", "kind": "passport_number" },
+					{ "text": "P<UTOKALPIT<<ROHAN<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0029356UTO1609307M2801049<<<<<<<<<<<<<<<8", "kind": "mrz" }
 				]
 			},
 			"pages": [
@@ -1314,9 +1398,9 @@
 			"planted": {
 				"orgs": [],
 				"identifiers": [
-					"VS0007731",
-					"SMP001826",
-					"V<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nVS00077317UTO8804215F2701312<<<<<<<<<<<<<<<<"
+					{ "text": "VS0007731", "looks_like": "passport_number", "not": "visa-number" },
+					{ "text": "SMP001826", "kind": "passport_number" },
+					{ "text": "V<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nVS00077317UTO8804215F2701312<<<<<<<<<<<<<<<<", "kind": "mrz" }
 				]
 			},
 			"pages": [
@@ -1349,8 +1433,8 @@
 			"planted": {
 				"orgs": [],
 				"identifiers": [
-					"L898902C3",
-					"P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F3105140<<<<<<<<<<<<<<<2"
+					{ "text": "L898902C3", "kind": "passport_number" },
+					{ "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F3105140<<<<<<<<<<<<<<<2", "kind": "mrz" }
 				]
 			},
 			"pages": [

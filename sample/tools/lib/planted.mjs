@@ -1,8 +1,9 @@
 // Every organisation and identifier a document's author put in its text is
 // listed in spec.json under "planted". This proves the labels against that
-// list: each planted token is labelled with its exact span, each label is a
-// planted token, and every organisation-shaped word or identifier-shaped
-// number on a page lies inside a planted token or an "ignore" entry.
+// list: each planted token is labelled with its exact span (an identifier as
+// the kind it was planted as), each label is a planted token, and every
+// organisation-shaped word or identifier-shaped number on a page lies inside a
+// planted token or an "ignore" entry.
 
 const ORG_WORDS =
 	/(?<![\p{L}\p{M}\p{N}])(bank|bundesbank|commerzbank|ltd|limited|gmbh|ag|plc|corporation|company|office|school|insurance|lombard|traders|supplies|grocers|books|cafe|paribas|union|sahakari|distribution)(?![\p{L}\p{M}\p{N}])|बैंक|लिमिटेड|銀行/giu;
@@ -57,6 +58,26 @@ function hits(pages, patterns) {
 	return found;
 }
 
+// Why a planted identifier's label is not what spec.json planted, or null.
+// spec.json gives each one either the kind it was planted as, or the kind it
+// only looks like and why it is not one.
+function plantedAs(entry, [list, label]) {
+	const want =
+		entry.kind !== undefined && entry.not === undefined
+			? { list: 'identifier', kind: entry.kind }
+			: entry.not !== undefined && entry.kind === undefined
+				? { list: 'not_identifier', kind: entry.looks_like, why: entry.not }
+				: null;
+	if (!want) return 'in spec.json needs either kind, or looks_like and not';
+	const got =
+		list === 'identifier'
+			? { list, kind: label.kind }
+			: { list, kind: label.looks_like, why: label.why };
+	return JSON.stringify(got) === JSON.stringify(want)
+		? null
+		: `is planted as ${Object.values(want).join(' ')}, its label is ${Object.values(got).join(' ')}`;
+}
+
 // Returns { rows, problems } for one document. rows lists each planted token
 // occurrence and the label that holds it.
 export function planted(source, doc, pages) {
@@ -79,23 +100,30 @@ export function planted(source, doc, pages) {
 		['org', plan.orgs],
 		['identifier', plan.identifiers]
 	]) {
-		for (const text of list) {
-			const at = occurrences(pages, text);
-			if (!at.length) problems.push(`planted ${kind} ${JSON.stringify(text)} is not in the text`);
-			tokens[kind].push(...at);
+		for (const item of list) {
+			const entry = typeof item === 'string' ? { text: item } : item;
+			const at = occurrences(pages, entry.text);
+			if (!at.length)
+				problems.push(`planted ${kind} ${JSON.stringify(entry.text)} is not in the text`);
+			tokens[kind].push(...at.map((t) => ({ ...t, entry })));
 		}
 		for (const token of tokens[kind]) {
 			if (tokens[kind].some((t) => t !== token && longer(token, t) && inside(token, t))) continue;
 			const label = labels[kind].find(([, l]) => same(l, token));
+			const { entry, ...at } = token;
 			rows.push({
 				kind,
-				...token,
+				...at,
 				label: label ? `${label[0]} ${label[1].id ?? ''}`.trim() : null
 			});
 			if (!label)
 				problems.push(
 					`planted ${kind} ${JSON.stringify(token.text)} at page ${token.page} ${token.start}..${token.end} has no label with exactly that span`
 				);
+			else if (kind === 'identifier') {
+				const problem = plantedAs(entry, label);
+				if (problem) problems.push(`planted identifier ${JSON.stringify(token.text)} ${problem}`);
+			}
 		}
 	}
 	for (const [list, kind] of [

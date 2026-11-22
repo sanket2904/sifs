@@ -4,11 +4,9 @@ Forty-three made-up documents, the right answers for each, and a bank directory 
 
 An organisation exists because a document shows it: a statement header, a code inside an account number, a name in the text. The directory is a hint that adds a public id and other spellings. It is never the source of truth, so the labels give a right answer with the directory switched on and with it switched off.
 
-Every document says on its face that it is a made-up sample. People, addresses and amounts are invented. Real banks are named in plain text only; the other organisations, such as Sample Traders and Sample Nagar Sahakari Bank, are invented. Passports use the ICAO specimen state Utopia (`UTO`). Card numbers come from published test ranges. Account numbers come from these sources:
+Every document says on its face that it is a made-up sample. People, addresses and amounts are invented. Real banks are named in plain text only; the other organisations, such as Sample Traders and Sample Nagar Sahakari Bank, are invented. Passports use the ICAO specimen state Utopia (`UTO`).
 
-- `GB29 NWBK 6016 1331 9268 19` (with sort code `60-16-13` and account `31926819`), `NL91 ABNA 0417 1643 00`, `DE89 3704 0044 0532 0130 00` and `FR14 2004 1010 0505 0001 3M02 606` (with its domestic parts) are the examples of the SWIFT IBAN Registry, as compiled in `registry.txt` of github.com/globalcitizen/php-iban (LGPL 3.0; only single values are copied). `DE88…` and `GB28…` are two of them with the check digits changed, so they fail.
-- Phone numbers are in ranges reserved for fiction: `020 7946 0123` and `+44 7700 900xxx` in Ofcom's drama ranges, and `+49 30 23125 471` in the Bundesnetzagentur's drama numbers for Berlin. India has no documented range, so no Indian phone number appears.
-- All other account numbers, IFSC branch parts (`SAMPL…`) and reference numbers are invented for the sample.
+Which numbers could belong to someone. These are public test values: the IBANs `GB29 NWBK 6016 1331 9268 19` (with sort code `60-16-13` and account `31926819`), `NL91 ABNA 0417 1643 00`, `DE89 3704 0044 0532 0130 00` and `FR14 2004 1010 0505 0001 3M02 606` (with bank code `20041`, branch code `01005`, account `0500013M026` and key `06`) are the examples of the SWIFT IBAN Registry, as compiled in `registry.txt` of github.com/globalcitizen/php-iban (LGPL 3.0; only single values are copied); the cards `4242 4242 4242 4242` and `5555 5555 5555 4444` are Stripe's Visa and Mastercard test cards (docs.stripe.com/testing, "Simulate a payment by card brand"); `L898902C3` is the specimen passport number of ICAO Doc 9303; and the phone numbers `020 7946 0123` and `+44 7700 900xxx` are in Ofcom's drama ranges and `+49 30 23125 471` in the Bundesnetzagentur's drama numbers for Berlin (India has no documented range, so no Indian phone number appears). These fail their checksum: `DE88…` and `GB28…` (registry examples with the check digits changed), the card `4111 1111 1111 1112` (Luhn), and the machine-readable zone of `passport-bad-mrz`. These break a rule the issuer publishes, so they cannot be assigned: the PAN `ABCPK0000F`, because the Income Tax Department issues serials 0001 to 9999 ("How PAN is formed", incometaxindia.gov.in), which is why its `valid` is `null` (a shape check accepts it, a strict check rejects it); the misspelt PAN `ABCDK0000F` and the TAN-field value `PNESX2345A`, whose fourth letter is not one of the holder statuses that page lists, and which has five letters, not the four of the Department's TAN form `AAAA99999A`; and the Mizuho account `12345678`, which has eight digits where the Zengin transfer format holds a seven-digit account number (field 口座番号 N(7) in MUFG BizSTATION's 総合振込 record format). These are invented digit strings under a real institution's name: the accounts `1234567890` (Kotak Mahindra Bank), `50100417263958` and `57500000123456` (HDFC Bank), `002101234567` (ICICI Bank), `30123456789` (SBI), `12340100005678` (Bank of Baroda), `0123000100456789` (PNB), `917010012345678` (Axis Bank), `612345678` (HDFC Ltd) and `0123456` (MUFG Bank), and the policy numbers `21345678` (HDFC Life) and `3001/123456789/00/000` (ICICI Lombard). An Indian account number has no national format and no check digit, and no bank publishes a reserved range, so a number under an Indian bank's name cannot be shown to be unassigned. The IFSC codes beside these accounts use the invented branch part `SAMPL…`, and each page says it is a sample. `0123456` has the valid Japanese length and could carry an eighth digit like the Mizuho account. All other numbers stand under invented names or none.
 
 Nothing here depends on one language's test runner. The tools need only Node.js (version 22 or later) and no packages.
 
@@ -21,11 +19,11 @@ node sample/tools/check.mjs
 The check regenerates every document in memory and compares it byte for byte with `files/` and `files/SHA256SUMS`. Then it proves each label against the text the document was generated from:
 
 - Every span reads back the labelled text, and an organisation or identifier label holds a whole token, never part of one.
-- Every organisation and identifier that `spec.json` lists under `planted` is labelled with exactly its span, and every label is a planted token. Every organisation-shaped word (`Bank`, `Ltd`, `GmbH`, `Office`, `銀行`, `बैंक` and others) and every identifier-shaped number on a page lies inside a planted token or an `ignore` entry. `node sample/tools/planted.mjs` prints this proof per document.
-- Every mention's `directory` field is what the directory gives for its spelling, and every `resolved_by_document` holds by the evidence it cites.
+- Every organisation and identifier that `spec.json` lists under `planted` is labelled with exactly its span and as the kind `spec.json` planted it, and every label is a planted token. Every organisation-shaped word (`Bank`, `Ltd`, `GmbH`, `Office`, `銀行`, `बैंक` and others) and every identifier-shaped number on a page lies inside a planted token or an `ignore` entry. `node sample/tools/planted.mjs` prints this proof per document.
+- Every mention's `directory` field is what the directory gives for its spelling, and every `resolved_by_document` holds by the evidence it cites. A mention is `null` only when the document gives no evidence for it: not its own full name, not a short form of another mention, not a code that spells it. No not_org overlaps a mention of the same entry.
 - Every link's identifier is in the same document, and each reason holds. A link lists every reason that holds, and every valid IBAN, BIC or IFSC whose code names a directory entry is linked to it.
 - Every held identifier has a link or a not_link to every organisation the document names or ties it to, and no not_link pair has a reason that would make it a link.
-- Every statement period is the statement's own period field, every passport expiry is read from its span, and `current` and the answers follow from the dates.
+- Every statement period is the statement's own period field. Every passport's `issued` is its date of issue field and its `expiry_at` is its date of expiry field, and `current` and the answers follow from the dates.
 - Every directory name on a page is covered, for each entry that holds the name, by a mention of that entry or a not_org of it. Every identifier-shaped number lies whole inside one label.
 
 On macOS, `node sample/tools/check.mjs --pdfkit` also reads every PDF through PDFKit and requires its text to equal the spec text exactly. Image pages must read as empty.
@@ -45,7 +43,7 @@ Git does not keep modified times. Run `generate.mjs` after a checkout if a test 
 
 | Path | What it is |
 | --- | --- |
-| `spec.json` | One entry per document: `id`, `file`, `format` (`pdf`, `txt` or `html`), `lang`, `title`, `created` (the file date), `about`, `planted`, and `pages`. A page is a list of `lines`, with `"image": true` for a scanned page. `planted` lists the `orgs` and `identifiers` the author put in the text, and `ignore` entries (`text`, `why`) for words or numbers that look like one and are not. |
+| `spec.json` | One entry per document: `id`, `file`, `format` (`pdf`, `txt` or `html`), `lang`, `title`, `created` (the file date), `about`, `planted`, and `pages`. A page is a list of `lines`, with `"image": true` for a scanned page. `planted` lists the `orgs` and `identifiers` the author put in the text, and `ignore` entries (`text`, `why`) for words or numbers that look like one and are out of scope. Each planted identifier is `text` with the `kind` it was planted as, or, for a decoy, the kind it `looks_like` and why it is `not` one; its label must agree. |
 | `files/` | The generated documents and `SHA256SUMS` (readable by `shasum -a 256 -c`). |
 | `labels.json` | The right answers, format version 2. |
 | `directory/banks.json` | The bank directory. |
@@ -67,7 +65,7 @@ Each entry in `documents` has an `id` from `spec.json`, an optional `note`, and 
 | --- | --- |
 | `orgs` | An organisation mentioned: the full span of its name, `id`, `resolved_by_document`, and `directory`. |
 | `not_orgs` | A directory name in the text that is not a mention of that entry: a span, `entry` (a directory id), and `why`. A name that sits inside a longer mention has one not_org for each entry holding it, other than the mention's own. |
-| `identifiers` | A span, `id`, `kind`, `value` (the text with spaces removed, and hyphens for a sort code), `valid` (`true` or `false`, or `null` for a kind with no check), and `same_account_as` for a domestic account number whose IBAN is in the same document. |
+| `identifiers` | A span, `id`, `kind`, `value` (the text with spaces removed, and hyphens for a sort code), `valid` (`true` or `false`; `null` for a kind with no check, and for a PAN with serial `0000`, which has the shape but is never issued), and `same_account_as` for a domestic account number whose IBAN is in the same document. |
 | `not_identifiers` | Text shaped like an identifier that is not one: a span, `looks_like` (a kind), and `why`. |
 | `links` | Identifier held at organisation: `identifier`, `org` (a local id), `mention` (the `orgs` id that names it, or `null`), `reasons`, and `via` for `paired-code`. |
 | `not_links` | A pair that must not be linked: `identifier`, `org` (a local id), and `why`. |
@@ -97,7 +95,7 @@ Links and not_links use local ids, so the same links are right in both modes. Th
 
 Score links by identifier kind, value, and organisation. The same account in two places in one document is one link.
 
-Identifier kinds are `iban`, `bic`, `card` (Luhn), `ifsc` (shape), `in_pan` (shape, Indian PAN), `mrz` (passport TD3 or visa MRV-A, all check digits), `gb_sort_code` (shape), `fr_bank_code` and `fr_branch_code` (shape), `fr_rib_key` (recomputed from the bank code, branch code and account on its line), `account`, and `passport_number`. The last two have no check.
+Identifier kinds are `iban`, `bic`, `card` (Luhn), `ifsc` (shape), `in_pan` (shape and holder status, Indian PAN; serial `0000` gives `null`), `mrz` (passport TD3 or visa MRV-A, all check digits), `gb_sort_code` (shape), `fr_bank_code` and `fr_branch_code` (shape), `fr_rib_key` (recomputed from the bank code, branch code and account on its line), `account`, and `passport_number`. The last two have no check.
 
 ### Link reasons
 
@@ -136,7 +134,7 @@ A link lists every reason that holds. An extractor that gives any one of them is
 | Organisations in no directory that issue a document or appear in one | `rechnung-falsche-iban`, `invoice-lookalike-numbers`, `neft-receipt-tied`, `transfer-rows`, `natwest-statement`, `hdfc-card-statement`, `school-fee-banks`, `pan-form-hindi`, `utility-bill`, `passport-asha-current`, `passport-rohan` |
 | Statement header plus merchants in the transactions | `natwest-statement`, `hdfc-card-statement` |
 | Two banks and two accounts, each tied by its IFSC on the same line | `neft-receipt-tied` |
-| Two rows where each account is nearer the other row's code: only the row decides | `transfer-rows` |
+| Two rows where the first row's account is nearer the second row's code, so matching the nearest code fails: only the row decides | `transfer-rows` |
 | Three banks and two accounts; one account tied to none | `transfer-untied` |
 | A bank and no account | `hdfc-branch-letter`, `hdfc-letter-hindi`, `deutsche-bank-brief` |
 | An account and no bank | `rent-receipt` |
@@ -151,7 +149,7 @@ A link lists every reason that holds. An extractor that gives any one of them is
 | Card number that fails Luhn | `invoice-lookalike-numbers` |
 | Numbers shaped like accounts that are not | `rent-receipt`, `rechnung-falsche-iban`, `invoice-lookalike-numbers`, `neft-receipt-tied`, `transfer-untied`, `email-fee-payment`, `hdfc-life-receipt`, `icici-lombard-notice`, `utility-bill` |
 | A statement that names a later period in a note | `hdfc-statement-sep` |
-| PAN, malformed PAN, and a TAN shaped like one | `pan-form-hindi` |
+| PAN, malformed PAN, and a value in the TAN field shaped like a PAN | `pan-form-hindi` |
 | Passports of two people in one family | `passport-asha-current`, `passport-rohan` |
 | Expired passport and its renewal | `passport-asha-expired` (scan), `passport-asha-current` |
 | Visa page with dates and a passport number | `visa-asha` |
