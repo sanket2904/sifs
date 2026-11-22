@@ -3274,6 +3274,7 @@ dependencies = [
  "objc2-foundation",
  "objc2-pdf-kit",
  "quick-xml 0.42.0",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

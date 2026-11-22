@@ -274,12 +274,12 @@ fn the_sink_stops_a_reader_past_its_time_limit() {
 // --- the migration ---
 
 #[test]
-fn a_new_index_reaches_version_1_with_every_table() {
+fn a_new_index_reaches_version_3_with_every_table() {
     let home = Home::new();
     let index = home.open();
-    assert_eq!(count(&index, "PRAGMA user_version"), 1);
-    assert_eq!(crate::index::migrate::VERSION, 1);
-    for table in ["extracts", "contents", "contents_fts", "facts", "extract_queue", "extract_kinds"] {
+    assert_eq!(count(&index, "PRAGMA user_version"), 3);
+    assert_eq!(crate::index::migrate::VERSION, 3);
+    for table in ["extracts", "contents", "contents_fts", "facts", "extract_queue", "extract_kinds", "contents_owner"] {
         let n = count(&index, &format!("SELECT COUNT(*) FROM sqlite_master WHERE name = '{table}'"));
         assert_eq!(n, 1, "{table}");
     }
@@ -292,7 +292,7 @@ fn a_new_index_reaches_version_1_with_every_table() {
     }
     drop(index);
     // Opening again changes nothing.
-    assert_eq!(count(&home.open(), "PRAGMA user_version"), 1);
+    assert_eq!(count(&home.open(), "PRAGMA user_version"), 3);
 }
 
 #[test]
@@ -316,7 +316,7 @@ fn a_phase_1_index_is_migrated_and_its_files_are_queued() {
         assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
     }
     let mut index = home.open();
-    assert_eq!(count(&index, "PRAGMA user_version"), 1);
+    assert_eq!(count(&index, "PRAGMA user_version"), 3);
     assert_eq!(index.count().unwrap(), 5, "the files are kept");
     assert_eq!(queued(&index), 0, "nothing is queued by the migration itself");
     let registry = Registry::platform();
@@ -1072,8 +1072,14 @@ fn the_migration_keeps_every_phase_1_row() {
     }
     let dump = |conn: &rusqlite::Connection| -> Vec<String> {
         let mut out = Vec::new();
-        for table in ["files", "folders", "ignore_patterns", "meta"] {
-            let mut stmt = conn.prepare(&format!("SELECT * FROM {table} ORDER BY 1")).unwrap();
+        // The columns phase 1 wrote; migration 3 adds modified_ns.
+        for (table, columns) in [
+            ("files", "id, path, root, name, ext, is_dir, size, modified, inode, seen"),
+            ("folders", "*"),
+            ("ignore_patterns", "*"),
+            ("meta", "*"),
+        ] {
+            let mut stmt = conn.prepare(&format!("SELECT {columns} FROM {table} ORDER BY 1")).unwrap();
             let n = stmt.column_count();
             let rows = stmt
                 .query_map([], |r| {
@@ -1107,7 +1113,8 @@ fn the_migration_keeps_every_phase_1_row() {
     assert_eq!(dump(&home.open().conn), before);
     let index = home.open();
     assert_eq!(dump(&index.conn), before, "a second open changes nothing");
-    assert_eq!(count(&index, "PRAGMA user_version"), 1);
+    assert_eq!(count(&index, "PRAGMA user_version"), 3);
+    assert_eq!(count(&index, "SELECT COUNT(*) FROM files WHERE modified_ns IS NOT NULL"), 0, "not known to the nanosecond");
 }
 
 #[test]
@@ -2282,4 +2289,244 @@ fn rows_given_to_a_folder_during_its_scan_are_not_removed_as_unseen() {
     go.send(()).unwrap();
     eventually("the scan to end", || folders.idle());
     assert_eq!(index.get(&late).unwrap().map(|r| r.root), Some(docs.clone()));
+}
+
+// --- search over contents (phase 3 step 3) ---
+
+/// A home of these files, scanned and read.
+fn read_home(files: &[(&str, &[u8])]) -> (Home, Index) {
+    let home = Home::new();
+    for (rel, body) in files {
+        home.write(rel, body);
+    }
+    let registry = Registry::platform();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    (home, index)
+}
+
+fn all(index: &Index, query: &str) -> super::find::Results {
+    super::find::search_all(index, query, 60, now(), &crate::index::stop::Until::after(Duration::from_secs(30))).unwrap()
+}
+
+fn names_of(results: &super::find::Results) -> Vec<String> {
+    results.hits.iter().map(|h| h.file.name.clone()).collect()
+}
+
+#[test]
+fn a_documents_contents_rank_above_a_code_files_name_and_its_name_above_its_contents() {
+    let (_home, index) = read_home(&[
+        ("code/tapir.py", b"print(1)"),
+        ("Documents/notes.txt", b"we saw a tapir at the zoo"),
+        ("Documents/tapir.txt", b"nothing here"),
+    ]);
+    let results = all(&index, "tapir");
+    assert_eq!(names_of(&results), ["tapir.txt", "notes.txt", "tapir.py"]);
+    assert!(results.hits[0].found.is_none() && results.hits[2].found.is_none());
+    let found = results.hits[1].found.as_ref().unwrap();
+    assert!(found.snippet.iter().any(|s| s.hit && s.text.eq_ignore_ascii_case("tapir")), "{:?}", found.snippet);
+    assert!(!results.contents_timed_out);
+}
+
+#[test]
+fn a_file_matching_by_name_and_contents_is_shown_once_first_with_its_snippet() {
+    let (_home, index) = read_home(&[("Documents/okapi.txt", b"an okapi is not a zebra"), ("Documents/zoo.txt", b"okapi")]);
+    let results = all(&index, "okapi");
+    assert_eq!(names_of(&results), ["okapi.txt", "zoo.txt"]);
+    assert!(results.hits[0].found.is_some(), "the name match carries its snippet");
+}
+
+#[test]
+fn every_word_must_be_in_one_part_and_the_last_matches_as_a_prefix_from_three_letters() {
+    let (_home, index) = read_home(&[
+        ("Documents/a.txt", b"monthly invoice for rent"),
+        ("Documents/b.txt", b"invoice"),
+        ("Documents/c.txt", b"in voice"),
+    ]);
+    assert_eq!(names_of(&all(&index, "rent invoice")), ["a.txt"]);
+    let mut prefix = names_of(&all(&index, "invo"));
+    prefix.sort();
+    assert_eq!(prefix, ["a.txt", "b.txt"]);
+    // One or two letters match whole words only.
+    assert_eq!(names_of(&all(&index, "in")), ["c.txt"]);
+}
+
+#[test]
+fn query_syntax_is_never_interpreted() {
+    let (_home, index) = read_home(&[("Documents/a.txt", b"tapir and okapi near the river: yes")]);
+    for query in ["\"tapir", "tapir*", "tapir AND", "NEAR(tapir okapi)", "river:", "-tapir", "(okapi", "\"", "*", "a\"b", "^tapir", "tapir OR zebra"] {
+        let results = super::find::search_all(&index, query, 60, now(), &crate::index::stop::Until::after(Duration::from_secs(30)));
+        assert!(results.is_ok(), "{query}: {results:?}");
+    }
+    assert_eq!(names_of(&all(&index, "tapir AND")), ["a.txt"], "AND is a word here, and in the text");
+    assert!(all(&index, "tapir OR zebra").hits.is_empty(), "OR is a word, and isn't in the text");
+}
+
+#[test]
+fn accents_and_scripts_are_matched_as_words() {
+    let (_home, index) = read_home(&[
+        ("Documents/cv.txt", "my résumé and re\u{301}sume\u{301}".as_bytes()),
+        ("Documents/rent.txt", "मासिक किराया देय है".as_bytes()),
+        ("Documents/jp.txt", "東京 本社".as_bytes()),
+    ]);
+    assert_eq!(names_of(&all(&index, "resume")), ["cv.txt"]);
+    assert_eq!(names_of(&all(&index, "résumé")), ["cv.txt"]);
+    assert_eq!(names_of(&all(&index, "किराया")), ["rent.txt"]);
+    assert_eq!(names_of(&all(&index, "東京")), ["jp.txt"]);
+}
+
+#[test]
+fn a_content_result_says_where_its_words_are() {
+    let docx = crate::extract::readers::office::sample::docx(&format!(
+        "{}<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>{}",
+        crate::extract::readers::office::sample::paras(&["first page"]),
+        crate::extract::readers::office::sample::paras(&["the capybara is here"])
+    ));
+    let (_home, index) = read_home(&[("Documents/report.docx", &docx)]);
+    let results = all(&index, "capybara");
+    let found = results.hits[0].found.as_ref().unwrap();
+    assert_eq!(found.label, "page 2");
+    let text: String = found.snippet.iter().map(|s| s.text.as_str()).collect();
+    assert!(text.contains("the capybara is here"), "{text}");
+    assert_eq!(found.snippet.iter().filter(|s| s.hit).map(|s| s.text.as_str()).collect::<Vec<_>>(), ["capybara"]);
+}
+
+#[test]
+fn a_removed_folder_and_old_words_are_never_found() {
+    let (home, mut index) = read_home(&[("Docs/a.txt", b"the old tenant okafor")]);
+    assert_eq!(names_of(&all(&index, "okafor")), ["a.txt"]);
+    home.write("Docs/a.txt", b"the new tenant sato");
+    home.refresh(&mut index, "Docs/a.txt");
+    run(&mut index, &Registry::platform());
+    assert!(all(&index, "okafor").hits.is_empty());
+    assert_eq!(names_of(&all(&index, "sato")), ["a.txt"]);
+    // A folder being removed is left out at once.
+    index.conn.execute("INSERT INTO meta (key, value) VALUES (?1, '')", [format!("removing:{}", home.root)]).unwrap();
+    index.conn.execute("UPDATE files SET root = ?1", [home.root.clone()]).unwrap();
+    assert!(all(&index, "sato").hits.is_empty());
+}
+
+#[test]
+fn a_search_past_its_time_says_so_for_names_and_contents() {
+    // Enough matches that the query runs past SQLite's first check.
+    let many: Vec<(String, &[u8])> = (0..300).map(|i| (format!("Documents/n{i}.txt"), b"a tapir" as &[u8])).collect();
+    let mut files: Vec<(&str, &[u8])> = many.iter().map(|(p, b)| (p.as_str(), *b)).collect();
+    files.push(("Documents/tapir.txt", b"x"));
+    let (_home, index) = read_home(&files);
+    let results = super::find::search_all(&index, "tapir", 60, now(), &crate::index::stop::Until::after(Duration::ZERO)).unwrap();
+    assert!(results.names_timed_out && results.contents_timed_out && !results.contents_capped);
+    assert!(results.hits.is_empty(), "the time limit covers names too");
+    // And the connection is fine afterwards.
+    assert!(!all(&index, "tapir").contents_timed_out);
+}
+
+#[test]
+fn snippets_become_segments() {
+    let (_home, index) = read_home(&[("Documents/a.txt", b"line one\nhas the word wombat\tin it")]);
+    let found = all(&index, "wombat").hits[0].found.clone().unwrap();
+    let text: String = found.snippet.iter().map(|s| s.text.as_str()).collect();
+    assert!(!text.contains('\n') && !text.contains('\t') && !text.contains('\u{2}'), "{text:?}");
+    assert_eq!(found.snippet.iter().filter(|s| s.hit).count(), 1);
+}
+
+// --- a files row the watcher left stale (step 3 review, round 3) ---
+
+/// The record of path as the watcher saw it part-way through a write: an
+/// older time and a smaller size.
+fn partial(home: &Home, path: &str) -> crate::index::db::FileRecord {
+    let mut record = record_of(Path::new(path), &home.root).unwrap();
+    record.size = 3;
+    record.modified -= 1;
+    record.modified_ns = Some(123);
+    record
+}
+
+fn size_by_name(index: &Index, query: &str) -> i64 {
+    crate::index::search::search(index, query, 10, now()).unwrap()[0].file.size
+}
+
+#[test]
+fn a_stale_files_row_takes_the_time_and_size_read_and_the_words_are_found() {
+    let home = Home::new();
+    let fake = Fake::new("fake", &["txt"]);
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    let path = home.write("burst/filler-08.txt", "page 2999 · filler text of document 8, a wombat".as_bytes());
+    index.upsert(&[partial(&home, &path)], 2).unwrap();
+    run(&mut index, &registry);
+    let disk = record_of(Path::new(&path), &home.root).unwrap();
+    assert_eq!(names_of(&all(&index, "wombat")), ["filler-08.txt"], "its words are found");
+    assert_eq!(size_by_name(&index, "filler-08"), disk.size, "the name result shows the real size");
+    assert_eq!(index.get(&path).unwrap().unwrap(), disk);
+    assert_eq!(queued(&index), 0);
+    run(&mut index, &registry);
+    assert_eq!(fake.of(&path), 1, "read once");
+}
+
+#[test]
+fn current_contents_under_a_stale_files_row_are_read_again() {
+    let home = Home::new();
+    let path = home.write("notes.txt", b"a wombat at dusk");
+    let fake = Fake::new("fake", &["txt"]);
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    run(&mut index, &registry);
+    assert_eq!(names_of(&all(&index, "wombat")), ["notes.txt"]);
+    // A late write from the watcher, of what it saw part-way through.
+    index.upsert(&[partial(&home, &path)], 2).unwrap();
+    assert!(all(&index, "wombat").hits.is_empty());
+    run(&mut index, &registry);
+    assert_eq!(fake.of(&path), 2);
+    assert_eq!(names_of(&all(&index, "wombat")), ["notes.txt"]);
+    assert_eq!(index.get(&path).unwrap().unwrap(), record_of(Path::new(&path), &home.root).unwrap());
+    assert_eq!(queued(&index), 0);
+}
+
+#[test]
+fn a_change_the_watcher_saw_after_a_read_is_not_undone_by_its_write() {
+    let home = Home::new();
+    let first = home.write("a.txt", b"old tapir");
+    let other = home.write("b.txt", b"other");
+    set_age(&other, 1);
+    let (db, root, edited) = (home.db.clone(), home.root.clone(), first.clone());
+    // a.txt is read first; while b.txt is read, a.txt is saved again and
+    // its new time and size are written, before the batch is.
+    let fake = Fake::new("fake", &["txt"]).body(move |path, sink, n| {
+        if path.ends_with("b.txt") && n == 1 {
+            fs::write(&edited, b"new zebra, longer").unwrap();
+            let now = record_of(Path::new(&edited), &root).unwrap();
+            let index = Index::open(&db).unwrap();
+            let _write = crate::index::db::writer();
+            index
+                .conn
+                .execute(
+                    "UPDATE files SET modified = ?2, size = ?3, modified_ns = ?4 WHERE path = ?1",
+                    params![now.path, now.modified, now.size, now.modified_ns],
+                )
+                .unwrap();
+        }
+        sink.text(&fs::read_to_string(path)?)?;
+        Ok(())
+    });
+    let registry = fake.registry();
+    let mut index = home.scanned(&registry);
+    run_until_empty(&mut index, &registry, &WorkerOptions { concurrency: 1, ..options() }).unwrap();
+    assert_eq!(fake.of(&first), 2, "read again after the change");
+    assert!(all(&index, "tapir").hits.is_empty(), "no old words");
+    assert_eq!(names_of(&all(&index, "zebra")), ["a.txt"]);
+    assert_eq!(index.get(&first).unwrap().unwrap(), record_of(Path::new(&first), &home.root).unwrap());
+}
+
+#[test]
+fn a_file_saved_again_before_it_is_read_is_updated_by_the_watcher() {
+    let home = Home::new();
+    let path = home.write("burst/lorem-1.txt", b"part");
+    let registry = Fake::new("fake", &["txt"]).registry();
+    let mut index = home.scanned(&registry);
+    assert_eq!(queued(&index), 1);
+    fs::write(&path, b"part, then the whole of it").unwrap();
+    home.refresh(&mut index, "burst/lorem-1.txt");
+    let disk = record_of(Path::new(&path), &home.root).unwrap();
+    assert_eq!(index.get(&path).unwrap().unwrap(), disk);
+    assert_eq!(count(&index, "SELECT size FROM extract_queue"), disk.size, "queued as it is now");
 }

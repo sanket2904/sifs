@@ -19,7 +19,7 @@ tauri-plugin-dialog = { version = "2", optional = true }
 tauri-plugin-opener = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled", "hooks"] }
 walkdir = "2"
 notify = "6"
 globset = "0.4"
@@ -36,6 +36,9 @@ zip = { version = "=9.3.0", default-features = false, features = ["deflate-flate
 # zip's deflate needs flate2 to have a backend: the pure-Rust miniz_oxide.
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 quick-xml = "=0.42.0"
+# Words split as the contents index splits them, by Unicode category
+# (already built for Tauri).
+regex = "1.10"
 
 # PDFs through PDFKit. Pinned to the objc2 and objc2-foundation versions
 # Tauri already brings in; no RustSec advisories against the family (2026-11-07).
