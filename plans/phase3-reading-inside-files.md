@@ -509,7 +509,7 @@ Two reviews of PR #19 found three ways a helper escaped supervision: a request w
 
 The helper still exits by itself when its stdin closes (SIFS gone), a second past an image's deadline, and after its idle time plus a second, should SIFS's watcher not have ended it first.
 
-**Facts, from the same reviews.** A latitude's reference must be N or S and a longitude's E or W; any other reference gives no position. A position whose `GPSMapDatum` names a datum other than WGS 84 gives no position (no conversion yet); one with no datum is taken as WGS 84. Text counts as received only once the sink takes it. The longest frame the helper may send allows a fact at its own cap (1,000 characters) whatever the text cap.
+**Facts, from the same reviews.** A latitude's reference must be N or S and a longitude's E or W; any other reference gives no position. ImageIO itself reads an unknown reference (`X`) as N or E, so only a wrong-axis one (a latitude's `W`) reaches the reader to be refused; the raw value is in the image's XMP metadata (issue #21). A position whose `GPSMapDatum` names a datum other than WGS 84 gives no position (no conversion yet); one with no datum is taken as WGS 84. Text counts as received only once the sink takes it. The longest frame the helper may send allows a fact at its own cap (1,000 characters) whatever the text cap.
 
 ### Dependencies
 
