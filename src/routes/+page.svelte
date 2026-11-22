@@ -3,12 +3,12 @@
 	import { listen } from '@tauri-apps/api/event';
 	import { open as pickFolder } from '@tauri-apps/plugin-dialog';
 	import { onMount, tick } from 'svelte';
+	import { BLANK, createSearch } from '../lib/search.js';
 
 	let query = $state('');
-	let results = $state([]);
+	/** @type {import('../lib/search.js').View} */
+	let view = $state.raw(BLANK);
 	let selected = $state(0);
-	/** @type {number | null} */
-	let searchMs = $state(null);
 	let settings = $state(null);
 	let showSettings = $state(false);
 	let progress = $state({});
@@ -18,43 +18,7 @@
 	/** @type {{ path: string, status: string, error: string }[] | null} */
 	let failures = $state(null);
 	let error = $state('');
-	/** The current search's error, apart from other operations' errors. */
-	let searchError = $state('');
-	let namesSlow = $state(false);
-	let namesCapped = $state(false);
-	let contentsSlow = $state(false);
-	let contentsCapped = $state(false);
-	let wordsLeftOut = $state(false);
-	/** Names are shown and contents not yet: an empty list is not "nothing found" yet. */
-	let contentsPending = $state(false);
 	let input;
-	let timer;
-	/** @type {ReturnType<typeof setTimeout> | undefined} */
-	let contentTimer;
-	/** @type {ReturnType<typeof setTimeout> | undefined} */
-	let refreshTimer;
-	let latest = 0;
-	/** The search a refresh runs for, -1 for none, and whether the index changed again since it asked. */
-	let refreshing = -1;
-	let changedAgain = false;
-	/** Five times search_all's own bound (extract::find::CONTENT_TIME, its wait for the connection included). */
-	const REFRESH_WAIT = 2000;
-	/** index::query::MAX_BYTES + 1: the query sent is bounded, and the backend still sees that it was cut. */
-	const SENT_CHARS = 4097;
-
-	/**
-	 * At most SENT_CHARS UTF-16 units of text, or one more rather than half
-	 * of a character: a lone surrogate can't cross IPC.
-	 * @param {string} text
-	 */
-	function bounded(text) {
-		let end = Math.min(text.length, SENT_CHARS);
-		const last = text.charCodeAt(end - 1);
-		if (end < text.length && last >= 0xd800 && last <= 0xdbff) end++;
-		return text.slice(0, end);
-	}
-	/** What the last search was for. */
-	let searched = '';
 	/**
 	 * The file the user moved the selection to, followed while the query
 	 * stays the same; until then the first row is selected.
@@ -62,131 +26,25 @@
 	 */
 	let chosen = null;
 
-	/** Drops every pending search: its timers, and its replies still to come. */
-	function cancel() {
-		latest++;
-		clearTimeout(timer);
-		clearTimeout(contentTimer);
-	}
-
-	async function search() {
-		cancel();
-		const id = latest;
-		const q = bounded(query.trim());
-		searched = query.trim();
-		if (!q) {
-			clear();
-			return;
+	const search = createSearch({
+		invoke,
+		now: () => performance.now(),
+		setTimer: (run, ms) => setTimeout(run, ms),
+		clearTimer: (id) => clearTimeout(/** @type {number} */ (id)),
+		show(next) {
+			const moved = next.rows !== view.rows;
+			view = next;
+			if (!moved) return;
+			const at = chosen === null ? -1 : next.rows.findIndex((hit) => hit.path === chosen);
+			selected = Math.max(at, 0);
+			reveal();
 		}
-		const started = performance.now();
-		contentsPending = true;
-		try {
-			const hits = await invoke('search_files', { query: q, limit: 60 });
-			if (id !== latest) return;
-			show(hits);
-			setFlags({});
-			searchError = '';
-			searchMs = Math.round(performance.now() - started);
-		} catch (e) {
-			if (id !== latest) return;
-			searchError = String(e);
-		}
-		// Names show at once; names and contents together replace them once
-		// typing pauses.
-		contentTimer = setTimeout(() => searchAll(id, q, started), 120);
-	}
-
-	/**
-	 * @param {number} id
-	 * @param {string} q
-	 * @param {number} started
-	 */
-	async function searchAll(id, q, started) {
-		if (id !== latest) return;
-		try {
-			const found = await invoke('search_all', { query: bounded(q), limit: 60 });
-			if (id !== latest) return;
-			show(found.hits);
-			setFlags(found);
-			searchError = '';
-			searchMs = Math.round(performance.now() - started);
-		} catch (e) {
-			if (id !== latest) return;
-			searchError = String(e);
-		}
-		contentsPending = false;
-	}
-
-	/**
-	 * What a search_all reply says it left out; {} for none.
-	 * @param {{ names_timed_out?: boolean, names_capped?: boolean, contents_timed_out?: boolean, contents_capped?: boolean, words_left_out?: boolean }} found
-	 */
-	function setFlags(found) {
-		namesSlow = !!found.names_timed_out;
-		namesCapped = !!found.names_capped;
-		contentsSlow = !!found.contents_timed_out;
-		contentsCapped = !!found.contents_capped;
-		wordsLeftOut = !!found.words_left_out;
-	}
-
-	/** Searches names and contents again, for files read inside since: at most every 2 s. */
-	function refreshSoon() {
-		if (refreshTimer !== undefined) return;
-		refreshTimer = setTimeout(() => {
-			refreshTimer = undefined;
-			refresh();
-		}, 2000);
-	}
-
-	/**
-	 * Searches names and contents again for the query shown, whose rows stay
-	 * until the answer replaces them. Not while the user is typing: that
-	 * search will see the change. Changes while one runs wait for its answer,
-	 * then search once more: cancelling it for each would show nothing new
-	 * while the index keeps changing. They wait at most REFRESH_WAIT: a reply
-	 * can be lost on its way to the page, and then the next search is a fresh one.
-	 */
-	async function refresh() {
-		if (!searched || searched !== query.trim()) return;
-		if (refreshing === latest) {
-			changedAgain = true;
-			return;
-		}
-		let id;
-		do {
-			cancel();
-			id = refreshing = latest;
-			changedAgain = false;
-			let waited;
-			await Promise.race([
-				searchAll(id, searched, performance.now()),
-				new Promise((done) => (waited = setTimeout(done, REFRESH_WAIT)))
-			]);
-			clearTimeout(waited);
-		} while (changedAgain && id === latest);
-		if (refreshing === id) refreshing = -1;
-	}
-
-	function clear() {
-		results = [];
-		searchMs = null;
-		searchError = '';
-		contentsPending = false;
-		setFlags({});
-	}
-
-	/** @param {any[]} hits */
-	function show(hits) {
-		results = hits;
-		const at = chosen === null ? -1 : hits.findIndex((hit) => hit.path === chosen);
-		selected = Math.max(at, 0);
-		reveal();
-	}
+	});
 
 	/** @param {number} to */
 	function move(to) {
-		selected = Math.max(0, Math.min(to, results.length - 1));
-		chosen = results[selected]?.path ?? null;
+		selected = Math.max(0, Math.min(to, view.rows.length - 1));
+		chosen = view.rows[selected]?.path ?? null;
 	}
 
 	async function reveal() {
@@ -195,11 +53,8 @@
 	}
 
 	function onInput() {
-		cancel();
 		chosen = null;
-		// The rows shown are another query's: no verdict on this one until it is searched.
-		contentsPending = !!query.trim();
-		timer = setTimeout(search, 60);
+		search.type(query);
 	}
 
 	async function openHit(hit, reveal = false) {
@@ -217,13 +72,12 @@
 		} else if (e.key === 'ArrowUp') {
 			move(selected - 1);
 			e.preventDefault();
-		} else if (e.key === 'Enter' && results[selected]) {
-			openHit(results[selected], e.metaKey);
+		} else if (e.key === 'Enter' && view.rows[selected]) {
+			openHit(view.rows[selected], e.metaKey);
 		} else if (e.key === 'Escape') {
-			cancel();
 			chosen = null;
 			query = '';
-			clear();
+			search.type('');
 		}
 		await reveal();
 	}
@@ -255,7 +109,7 @@
 	async function removeFolder(path) {
 		await invoke('remove_folder', { path });
 		await loadSettings();
-		search();
+		search.changed();
 	}
 
 	async function saveIgnore() {
@@ -309,18 +163,17 @@
 				const { [e.payload.root]: _, ...rest } = progress;
 				progress = rest;
 				loadSettings();
-				search();
+				search.changed();
 			}),
 			listen('scan-error', (e) => (error = e.payload)),
 			listen('extract-progress', (e) => {
 				contents = e.payload;
-				refreshSoon();
+				search.read();
 			}),
-			listen('index-changed', refresh)
+			listen('index-changed', () => search.changed())
 		];
 		return () => {
-			cancel();
-			clearTimeout(refreshTimer);
+			search.stop();
 			unlisten.forEach((p) => p.then((f) => f()));
 		};
 	});
@@ -348,7 +201,7 @@
 		</div>
 	{/if}
 	{#if error}<div class="error">{error}</div>{/if}
-	{#if searchError}<div class="error">{searchError}</div>{/if}
+	{#if view.error}<div class="error">{view.error}</div>{/if}
 
 	{#if showSettings && settings}
 		<section class="settings">
@@ -397,7 +250,7 @@
 	{/if}
 
 	<ul class="results">
-		{#each results as hit, i}
+		{#each view.rows as hit, i}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<li
 				id="hit-{i}"
@@ -421,11 +274,11 @@
 			</li>
 		{/each}
 	</ul>
-	{#if query && results.length === 0 && searchMs !== null && !contentsPending}
+	{#if query && view.rows.length === 0 && view.ms !== null && !view.pending}
 		<p class="muted center">Nothing found for “{query}”.</p>
 	{/if}
 	<footer class="muted">
-		{#if searchMs !== null}{#if contentsPending && results.length === 0}searching inside files{:else}{results.length} results in {searchMs} ms{/if}{' · '}{/if}{#if namesSlow}names took too long{' · '}{/if}{#if namesCapped}many names match: the best 5,000 compared{' · '}{/if}{#if contentsSlow}contents took too long{' · '}{/if}{#if contentsCapped}very common words: only some files' contents searched{' · '}{/if}{#if searchMs !== null && contents?.waiting}still reading {contents.waiting.toLocaleString()} files{' · '}{/if}{#if wordsLeftOut}too many words, some not searched{' · '}{/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
+		{#if view.searching}still searching{' · '}{:else if view.ms !== null}{#if view.pending && view.rows.length === 0}searching inside files{:else}{view.rows.length} results in {view.ms} ms{/if}{' · '}{/if}{#if view.flags.namesSlow}names took too long{' · '}{/if}{#if view.flags.namesCapped}many names match: the best 5,000 compared{' · '}{/if}{#if view.flags.contentsSlow}contents took too long{' · '}{/if}{#if view.flags.contentsCapped}very common words: only some files' contents searched{' · '}{/if}{#if view.ms !== null && contents?.waiting}still reading {contents.waiting.toLocaleString()} files{' · '}{/if}{#if view.flags.wordsLeftOut}too many words, some not searched{' · '}{/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
 	</footer>
 </main>
 
