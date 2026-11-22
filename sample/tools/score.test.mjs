@@ -272,6 +272,86 @@ test('a name inside a longer name reported as a mention is wrong', () => {
 	assert.match(wrongs(result, 'mentions')[0].what, /inside-other-name/);
 });
 
+for (const directory of ['on', 'off'])
+	for (const set of ['text', 'text-ocr'])
+		test(`a keyed mention on a name the labels exclude for its organisation is a wrong attachment, directory ${directory}, ${set}`, () => {
+			const output = perfect(directory, set);
+			doc(output, 'hdfc-life-receipt').orgs.push({
+				...spanOf(output, 'hdfc-life-receipt', 'HDFC'),
+				org: 'ref:hdfc-bank',
+				settled_by: 'name'
+			});
+			const result = run(output);
+			assert.deepEqual(result.wrong_attachments, [
+				{
+					document: 'hdfc-life-receipt',
+					key: 'ref:hdfc-bank',
+					organisation: 'hdfc-bank',
+					mention: 'HDFC at 1:58',
+					why: 'inside-other-name'
+				}
+			]);
+			assert.equal(totals(result, 'mentions').wrong, 1);
+			assert.equal(result.failed, true);
+		});
+
+test('a keyed mention the labels exclude only for other organisations, or cannot tell, fails nothing', () => {
+	for (const key of ['ref:hdfc-life', 'ref:sample-traders']) {
+		const output = perfect();
+		doc(output, 'hdfc-life-receipt').orgs.push({
+			...spanOf(output, 'hdfc-life-receipt', 'HDFC'),
+			org: key,
+			settled_by: 'name'
+		});
+		const result = run(output);
+		assert.deepEqual(result.wrong_attachments, [], key);
+		assert.equal(totals(result, 'mentions').wrong, 1, key);
+		assert.equal(result.failed, false, key);
+	}
+	const output = perfect();
+	doc(output, 'household-notes').orgs.find((m) => m.text === 'BOI').org = 'ref:bank-of-india';
+	const result = run(output);
+	assert.deepEqual(result.wrong_attachments, []);
+	assert.equal(totals(result, 'mentions').wrong, 1);
+	assert.equal(result.failed, false);
+});
+
+test('on the OCR text set, a page the OCR did not change matches by span, so swapped citations are wrong', () => {
+	const wrongLinks = ['text', 'text-ocr'].map((set) => {
+		const output = perfect('on', set);
+		const d = doc(output, 'neft-receipt-tied');
+		const hdfc = d.identifiers.find((i) => i.value === 'HDFC0SAMPL1');
+		const icici = d.identifiers.find((i) => i.value === 'ICIC0SAMPL2');
+		const spanOfHdfc = { page: hdfc.page, start: hdfc.start, end: hdfc.end, text: hdfc.text };
+		Object.assign(hdfc, { page: icici.page, start: icici.start, end: icici.end, text: icici.text });
+		Object.assign(icici, spanOfHdfc);
+		const result = run(output);
+		assert.equal(result.failed, true, set);
+		return wrongs(result, 'links').map((w) => w.what);
+	});
+	assert.equal(wrongLinks[0].length, 4);
+	assert.deepEqual(wrongLinks[1], wrongLinks[0]);
+});
+
+for (const directory of ['on', 'off'])
+	test(`a card name ignores case and all whitespace and nothing else, directory ${directory}`, () => {
+		const spaced = perfect(directory);
+		card(spaced, 'mufg-bank').name = '三菱 UFJ 銀行';
+		card(spaced, 'kotak').name = 'kotakmahindra BANK';
+		const result = run(spaced);
+		assert.deepEqual(result.wrong_cards, []);
+		assert.equal(result.failed, false);
+		for (const name of ['HDFC Ltd', 'HDFC-Bank']) {
+			const output = perfect(directory);
+			card(output, 'hdfc-bank').name = name;
+			assert.deepEqual(
+				run(output).wrong_cards.map((c) => c.claims),
+				[[`name "${name}"`]],
+				name
+			);
+		}
+	});
+
 test('with the directory off, a directory id or a mention settled by the directory is wrong', () => {
 	const output = perfect('off');
 	output.organisations['ref:kotak'].directory = 'Q2040404';
@@ -653,6 +733,28 @@ test('the tools run when started through a symlinked path', () => {
 		const checked = node(join(sample, 'tools', 'text.mjs'), '--check');
 		assert.equal(checked.status, 0, checked.stderr);
 		assert.match(checked.stdout, /match what text.mjs writes/);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test('a root that is not an object, and paired-code with no via, break the format', () => {
+	const dir = mkdtempSync(join(tmpdir(), 'score-test-'));
+	try {
+		const noVia = perfect();
+		delete doc(noVia, 'transfer-rows').links.find((l) => l.reasons.includes('paired-code')).via;
+		const cases = [
+			['null', /output: must be an object/],
+			['[]', /output: must be an object/],
+			[JSON.stringify(noVia), /links\[\d+\]: paired-code needs a via/]
+		];
+		for (const [text, error] of cases) {
+			const file = join(dir, 'output.json');
+			writeFileSync(file, text);
+			const scored = node(fileURLToPath(new URL('tools/score.mjs', SAMPLE)), file);
+			assert.equal(scored.status, 2, text.slice(0, 20));
+			assert.match(scored.stderr, error);
+		}
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
