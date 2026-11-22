@@ -209,6 +209,16 @@ fn misbehave(how: &str, first: bool, request: &Request, send: &mut Send) -> std:
             send(text())?;
             send(Frame::End { id, outcome: Outcome::Read })
         }
+        // Each helper uses 250 ms of processor time; the first then ends
+        // idle, and is reaped before its usage is read.
+        "busy, then idle in the first helper" => {
+            busy(Duration::from_millis(250));
+            if first {
+                helper::exit(helper::Exit::Idle)
+            }
+            send(text())?;
+            send(Frame::End { id, outcome: Outcome::Read })
+        }
         "idle" => helper::exit(helper::Exit::Idle),
         "idle in the first helper" if first => helper::exit(helper::Exit::Idle),
         "another id" => {
@@ -934,6 +944,18 @@ fn a_helper_replaced_after_a_leftover_has_only_the_images_remaining_processor_ti
     let pids = started(&log);
     assert_eq!(pids.len(), 2, "replaced once");
     assert!(pids.iter().all(|&pid| gone(pid)));
+}
+
+#[test]
+fn a_helper_that_ends_idle_after_using_processor_time_leaves_the_retry_only_what_is_left() {
+    let dir = Dir::new();
+    let log = dir.0.path().join("pids");
+    let caps = Caps { cpu: Duration::from_millis(400), ..Caps::default() };
+    let mut image = reader(caps, Some("busy, then idle in the first helper"));
+    image.helper.env.push((LOG.into(), log.clone().into()));
+    let got = read_path(&image, Path::new("/nonexistent/any.png"), Duration::from_secs(60));
+    assert_eq!(failed(got), "used more than 400 ms of processor time", "250 ms each, 500 ms in all");
+    assert!(started(&log).iter().all(|&pid| gone(pid)));
 }
 
 #[test]
