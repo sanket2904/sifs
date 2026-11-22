@@ -4,7 +4,7 @@
 //! the end. Every frame names the request's id. Both ways are frames as in
 //! supervise.rs.
 
-use crate::extract::fact;
+use crate::extract::{fact, MAX_FACT_CHARS};
 use crate::extract::readers::macos::supervise::{self, encode};
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
@@ -16,10 +16,11 @@ pub(super) const MARKER: &[u8] = b"\0SIFS-IMAGE-1\0";
 /// keeps under 1,024 bytes.
 const MAX_REQUEST: usize = 64 * 1024;
 
-/// The longest frame the helper may send: text at the character cap, at
-/// four bytes a character, and 64 bytes for the rest.
+/// The longest frame the helper may send: text at the character cap or a
+/// fact at its own, whichever is longer, at four bytes a character, and 64
+/// bytes for the rest.
 pub(super) fn max_frame(chars: usize) -> usize {
-    chars.saturating_mul(4).saturating_add(64)
+    chars.max(MAX_FACT_CHARS).saturating_mul(4).saturating_add(64)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

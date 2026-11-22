@@ -183,7 +183,8 @@ impl Worker {
     }
 
     /// Stops after the reads in flight finish and are written; files claimed
-    /// and not yet read go back to the queue as they were.
+    /// and not yet read go back to the queue as they were. Then the readers
+    /// end what they keep running, whoever else holds them.
     pub fn stop(mut self) -> RunStats {
         self.stop_and_join()
     }
@@ -277,6 +278,7 @@ fn run(index: &mut Index, registry: &Registry, options: &WorkerOptions, shared: 
             }
         }
     }
+    registry.stop();
     runner.stats
 }
 

@@ -77,6 +77,11 @@ impl Meta {
         self
     }
 
+    pub(super) fn datum(mut self, datum: &str) -> Meta {
+        self.gps.push((unsafe { kCGImagePropertyGPSMapDatum }, Value::Text(datum.into())));
+        self
+    }
+
     pub(super) fn orientation(mut self, orientation: u8) -> Meta {
         self.orientation = Some(orientation as f64);
         self

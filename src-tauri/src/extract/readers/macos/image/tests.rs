@@ -5,7 +5,7 @@ use crate::extract::readers::macos::supervise::{Taken, HELPER_SLACK};
 use super::*;
 use crate::extract::store::{self, ContentMatch};
 use crate::extract::worker::run_until_empty;
-use crate::extract::{Part, Registry, WorkerOptions};
+use crate::extract::{Part, Registry, Worker, WorkerOptions};
 use crate::index::crawl::scan;
 use crate::index::db::Index;
 use crate::index::ignore::Rules;
@@ -21,6 +21,8 @@ const HELPER_TEST: &str = "extract::readers::macos::image::tests::helper";
 const MISBEHAVE: &str = "SIFS_IMAGE_TEST";
 /// A file each test helper adds its process id to as it starts.
 const LOG: &str = "SIFS_IMAGE_TEST_LOG";
+/// A folder a test and its helper leave each other files in.
+const SIGNALS: &str = "SIFS_IMAGE_TEST_SIGNALS";
 
 pub(super) fn helper_args() -> Vec<OsString> {
     ["--exact", HELPER_TEST, "--nocapture"].map(OsString::from).to_vec()
@@ -40,7 +42,42 @@ fn helper() {
         writeln!(file, "{}", std::process::id()).unwrap();
     }
     let how = std::env::var(MISBEHAVE).unwrap_or_default();
+    if how == "answer without reading" {
+        answer_without_reading();
+    }
     serve_and_exit(idle, |request, send| misbehave(&how, first, request, send));
+}
+
+/// The folder in SIGNALS.
+fn signals() -> PathBuf {
+    std::env::var_os(SIGNALS).unwrap().into()
+}
+
+/// Waits for the test to leave the file name in signals().
+fn wait_for(name: &str) {
+    while !signals().join(name).exists() {
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+/// Answers requests 1, 2, ... in turn without reading its stdin, each once
+/// the test has written the last one's id to "ack", until the pipe holding
+/// the requests is full. It ends itself after 10 s.
+fn answer_without_reading() -> ! {
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_secs(10));
+        helper::exit(helper::Exit::Late)
+    });
+    let mut out = std::io::stdout().lock();
+    out.write_all(MARKER).and_then(|_| out.flush()).unwrap();
+    let mut id = 0;
+    loop {
+        id += 1;
+        out.write_all(&Frame::End { id, outcome: Outcome::Read }.encode()).and_then(|_| out.flush()).unwrap();
+        while fs::read_to_string(signals().join("ack")).unwrap_or_default() != id.to_string() {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
 }
 
 fn misbehave(how: &str, first: bool, request: &Request, send: &mut Send) -> std::io::Result<()> {
@@ -82,6 +119,39 @@ fn misbehave(how: &str, first: bool, request: &Request, send: &mut Send) -> std:
         "busy" => {
             busy(Duration::from_millis(400));
             send(Frame::End { id, outcome: Outcome::Read })
+        }
+        "end, then spin" | "end, then allocate" | "end, then sleep" | "end, then exit" => {
+            send(Frame::End { id, outcome: Outcome::Read })?;
+            wait_for("go");
+            match how {
+                "end, then spin" => spin(),
+                "end, then allocate" => allocate(),
+                "end, then sleep" => park(),
+                _ => helper::exit(helper::Exit::Output),
+            }
+        }
+        // The next request comes while this one ends: its deadline must
+        // hold all the same.
+        "end as the next request comes" if id == 1 => {
+            send(Frame::End { id, outcome: Outcome::Read })?;
+            fs::write(signals().join("ended"), "")?;
+            wait_for("sent");
+            loop {
+                let mut unread: libc::c_int = 0;
+                unsafe { libc::ioctl(0, libc::FIONREAD, &mut unread) };
+                if unread == 0 {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            // Room for the next request to be taken off stdin before this
+            // one ends.
+            std::thread::sleep(Duration::from_millis(50));
+            Ok(())
+        }
+        "end as the next request comes" => {
+            fs::write(signals().join("second"), "")?;
+            park()
         }
         "crash" => std::process::abort(),
         "crash after a fact" => {
@@ -224,7 +294,7 @@ fn gone(pid: u32) -> bool {
 }
 
 fn helper_pid(image: &Image) -> Option<u32> {
-    image.running.lock().unwrap().as_ref().map(|running| running.process.id())
+    image.running.lock().as_ref().map(|running| running.process.id())
 }
 
 struct Dir(tempfile::TempDir);
@@ -342,6 +412,12 @@ fn where_a_photo_was_taken_is_a_fact() {
     assert_eq!(place(Meta::default().gps(64.1466, "N", 21.9426, "W")), pair("64.146600", "-21.942600"));
     assert_eq!(place(Meta::default().gps(0.0, "N", 0.0, "E")), None, "a camera without a fix");
     assert_eq!(place(Meta::default().gps(95.0, "N", 10.0, "E")), None, "off the globe");
+    // ImageIO itself reads an unknown reference ("X") as N or E.
+    for (latitude, longitude) in [("W", "E"), ("N", "S"), ("W", "S")] {
+        assert_eq!(place(Meta::default().gps(33.0, latitude, 151.0, longitude)), None, "{latitude} {longitude}");
+    }
+    assert_eq!(place(Meta::default().gps(35.0, "N", 139.0, "E").datum("WGS-84")), pair("35.000000", "139.000000"));
+    assert_eq!(place(Meta::default().gps(35.0, "N", 139.0, "E").datum("TOKYO")), None, "another datum");
 }
 
 #[test]
@@ -634,6 +710,26 @@ fn whole_frames_are_taken_before_a_bad_frame_or_the_output_cap() {
 }
 
 #[test]
+fn text_the_sink_refuses_is_not_received() {
+    let mut order = Order { id: 1, step: Step::Facts { seen: 0 } };
+    let mut sink = Sink::new(100, Instant::now() - Duration::from_millis(1));
+    let refused = order.frame(Frame::Text { id: 1, text: "past the deadline".into(), cut: false }, &mut sink);
+    assert_eq!(refused, Some(Stop::Time));
+    assert!(sink.finish().0.is_empty());
+    assert!(!order.received(), "so the image fails, not an empty success");
+}
+
+#[test]
+fn a_fact_at_its_cap_fits_in_a_frame_whatever_the_text_cap() {
+    let longest = Frame::Fact { id: 1, key: FactKey::CameraModel, value: "😀".repeat(crate::extract::MAX_FACT_CHARS) };
+    for chars in [0, 5, 100_000] {
+        let mut decoder = frame::decoder(chars);
+        decoder.push(&wire(std::slice::from_ref(&longest)));
+        assert_eq!(decoder.next_frame(), Ok(Some(longest.clone())), "text cap {chars}");
+    }
+}
+
+#[test]
 fn a_helper_that_ends_idle_is_replaced_once_and_only_once() {
     let dir = Dir::new();
     let path = dir.text("i.png", Format::Png, &["Second helper"], &Meta::default());
@@ -652,20 +748,114 @@ fn a_helper_that_ends_idle_is_replaced_once_and_only_once() {
 }
 
 #[test]
-fn the_helper_ends_after_its_idle_time_and_the_next_image_starts_another() {
+fn the_helper_is_ended_at_its_idle_time_and_the_next_image_starts_another() {
     let dir = Dir::new();
     let path = dir.text("i.png", Format::Png, &["Idle"], &Meta::default());
     let image = reader(Caps { idle: Duration::from_millis(300), ..Caps::default() }, None);
     assert_eq!(text(&read_path(&image, &path, Duration::from_secs(60)).unwrap().0), "Idle");
     let first = helper_pid(&image).unwrap();
-    let mut status = None;
-    eventually("the idle helper to end", || {
-        status = image.running.lock().unwrap().as_mut().unwrap().process.try_wait().unwrap();
-        status.is_some()
-    });
-    assert_eq!(status.unwrap().code(), Some(Exit::Idle as i32));
+    eventually("the idle helper to be ended and reaped", || helper_pid(&image).is_none() && gone(first));
     assert_eq!(text(&read_path(&image, &path, Duration::from_secs(60)).unwrap().0), "Idle");
     assert_ne!(helper_pid(&image), Some(first));
+}
+
+/// A helper that sends its end and then, told to go on, misbehaves.
+fn kept_then(how: &str, caps: Caps) -> (Image, u32, PathBuf, Dir) {
+    let dir = Dir::new();
+    let mut image = reader(caps, Some(how));
+    image.helper.env.push((SIGNALS.into(), dir.0.path().into()));
+    read_path(&image, Path::new("/nonexistent/any.png"), Duration::from_secs(300)).unwrap();
+    let pid = helper_pid(&image).unwrap_or_else(|| panic!("{how}: kept after its end"));
+    let go = dir.0.path().join("go");
+    (image, pid, go, dir)
+}
+
+#[test]
+fn a_helper_kept_between_images_is_watched_there() {
+    // Its idle time is far off, so only what it does can end it in time.
+    let far = Duration::from_secs(600);
+    for (how, caps) in [
+        ("end, then spin", Caps { cpu: Duration::from_millis(300), idle: far, ..Caps::default() }),
+        ("end, then allocate", Caps { keep: 200 * MB, idle: far, ..Caps::default() }),
+        ("end, then exit", Caps { idle: far, ..Caps::default() }),
+    ] {
+        let (image, pid, go, _dir) = kept_then(how, caps);
+        fs::write(go, "").unwrap();
+        eventually(how, || helper_pid(&image).is_none() && gone(pid));
+    }
+}
+
+#[test]
+fn sifs_ends_a_kept_helper_at_its_idle_time_whatever_the_helper_does() {
+    // Its serving thread never returns, so its own idle time never comes.
+    let (image, pid, go, _dir) = kept_then("end, then sleep", Caps { idle: Duration::from_millis(300), ..Caps::default() });
+    fs::write(go, "").unwrap();
+    eventually("the idle helper to be ended and reaped", || helper_pid(&image).is_none() && gone(pid));
+}
+
+#[test]
+fn a_helper_that_doesnt_read_its_requests_is_killed_at_the_deadline() {
+    let dir = Dir::new();
+    let mut image = reader(Caps::default(), Some("answer without reading"));
+    image.helper.env.push((SIGNALS.into(), dir.0.path().into()));
+    // Requests of 1 KB fill the pipe after a few dozen.
+    let path = PathBuf::from(format!("/{}", "a".repeat(1000)));
+    let deadline = Duration::from_millis(500);
+    for id in 1..=1000 {
+        let started = Instant::now();
+        let got = read_path(&image, &path, deadline);
+        if let Err(ReadError::Other(why)) = &got {
+            assert_eq!(why, "took longer than 60 s", "request {id}");
+            assert!(started.elapsed() < deadline + HELPER_SLACK * 3 / 4, "killed at the deadline: {:?}", started.elapsed());
+            assert_eq!(helper_pid(&image), None);
+            return;
+        }
+        assert!(got.is_ok(), "request {id}: {got:?}");
+        fs::write(dir.0.path().join("ack"), id.to_string()).unwrap();
+    }
+    panic!("the pipe never filled");
+}
+
+#[test]
+fn the_end_of_one_request_doesnt_clear_the_next_ones_deadline() {
+    let dir = Dir::new();
+    let mut helper = Image::default().helper;
+    helper.env.push((MISBEHAVE.into(), "end as the next request comes".into()));
+    helper.env.push((SIGNALS.into(), dir.0.path().into()));
+    let mut running = Running::start(&helper, Caps::default()).unwrap();
+    let request = |id, deadline_ms| Request { id, path: "/nonexistent/any.png".into(), deadline_ms, max_chars: 10, max_pixels: 10 };
+    let mut stdin = running.process.stdin.take().unwrap();
+    stdin.write_all(&request(1, 60_000).encode()).unwrap();
+    eventually("the first request to end", || dir.0.path().join("ended").exists());
+    stdin.write_all(&request(2, 0).encode()).unwrap();
+    fs::write(dir.0.path().join("sent"), "").unwrap();
+    eventually("the second request to start", || dir.0.path().join("second").exists());
+    assert_eq!(exit_code(&mut running), Some(Exit::Late as i32), "ended a second past the second request's deadline");
+}
+
+#[test]
+fn stopping_the_worker_ends_the_helper_whoever_holds_the_reader() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap().join("home");
+    fs::create_dir_all(&root).unwrap();
+    draw::text(&root.join("tiny.png"), Format::Png, (2, 16), &[], &Meta::default());
+    let image = Arc::new(Image::default());
+    let registry = Arc::new(Registry::with(vec![image.clone()]));
+    let db = dir.path().join("sifs.db");
+    let mut index = Index::open(&db).unwrap();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let root_str = root.to_str().unwrap();
+    index.add_folder(root_str, 0).unwrap();
+    scan(&mut index, root_str, &Rules::new(&[], root_str).unwrap(), |_| {}).unwrap();
+    let options = WorkerOptions { idle_poll: Duration::from_millis(10), ..WorkerOptions::default() };
+    let worker = Worker::start(db, registry.clone(), options).unwrap();
+    let read = || index.conn.query_row("SELECT count(*) FROM extracts WHERE status = 'empty'", [], |r| r.get::<_, i64>(0));
+    eventually("the image to be read", || read().unwrap() == 1);
+    let pid = helper_pid(&image).unwrap();
+    assert_eq!(worker.stop().reads, 1);
+    assert!(gone(pid), "killed and reaped as the worker stopped, with the reader still held");
+    read_path(&image, &root.join("tiny.png"), Duration::from_secs(60)).unwrap();
+    assert!(helper_pid(&image).is_some_and(|again| again != pid), "a later read starts another");
 }
 
 #[test]
@@ -686,16 +876,20 @@ fn one_helper_serves_many_images_and_is_replaced_after_a_stop() {
 }
 
 #[test]
-fn a_helper_that_died_between_images_is_replaced() {
+fn a_helper_that_died_just_before_an_image_is_replaced() {
     let dir = Dir::new();
     let a = dir.text("a.png", Format::Png, &["Again"], &Meta::default());
     let image = Image::default();
     read_path(&image, &a, Duration::from_secs(60)).unwrap();
-    let pid = helper_pid(&image).unwrap();
+    // Held, so its watcher can't see it die first.
+    let mut slot = image.running.lock();
+    let pid = slot.as_ref().unwrap().process.id();
     unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
-    eventually("the helper to die", || image.running.lock().unwrap().as_mut().unwrap().process.try_wait().unwrap().is_some());
-    assert_eq!(text(&read_path(&image, &a, Duration::from_secs(60)).unwrap().0), "Again");
-    assert_ne!(helper_pid(&image), Some(pid));
+    eventually("the helper to die", || slot.as_mut().unwrap().process.try_wait().unwrap().is_some());
+    let mut sink = Sink::new(image.caps.chars, Instant::now() + Duration::from_secs(60));
+    assert_eq!(image.request(&mut slot, &a, &mut sink).unwrap().stop, Stop::End(Outcome::Read));
+    assert_eq!(text(&sink.finish().0), "Again");
+    assert_ne!(slot.as_ref().map(|running| running.process.id()), Some(pid));
 }
 
 #[test]
@@ -703,8 +897,12 @@ fn a_helper_keeping_too_much_memory_is_replaced_after_its_image() {
     let dir = Dir::new();
     let a = dir.text("a.png", Format::Png, &["Kept"], &Meta::default());
     let image = reader(Caps { keep: MB, ..Caps::default() }, None);
-    assert_eq!(text(&read_path(&image, &a, Duration::from_secs(60)).unwrap().0), "Kept");
-    assert_eq!(helper_pid(&image), None, "Vision alone takes more than 1 MB");
+    // Held, so its watcher can't replace it first.
+    let mut slot = image.running.lock();
+    let mut sink = Sink::new(image.caps.chars, Instant::now() + Duration::from_secs(60));
+    assert_eq!(image.request(&mut slot, &a, &mut sink).unwrap().stop, Stop::End(Outcome::Read));
+    assert_eq!(text(&sink.finish().0), "Kept");
+    assert!(slot.is_none(), "Vision alone takes more than 1 MB");
 }
 
 #[test]

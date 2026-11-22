@@ -1,6 +1,7 @@
 //! An image's facts from its properties, as ImageIO gives them: checked and
 //! written the way SIFS stores them. A value that isn't what it claims (a
-//! date of zeros, a position off the globe) gives no fact.
+//! date of zeros, a position off the globe or in another datum) gives no
+//! fact.
 
 use super::frame::FactKey;
 use crate::extract::MAX_FACT_CHARS;
@@ -18,6 +19,7 @@ pub(super) struct Properties {
     pub latitude_ref: Option<String>,
     pub longitude: Option<f64>,
     pub longitude_ref: Option<String>,
+    pub datum: Option<String>,
     pub orientation: Option<f64>,
     pub width: Option<f64>,
     pub height: Option<f64>,
@@ -33,7 +35,8 @@ pub(super) fn facts(p: &Properties) -> Vec<(FactKey, String)> {
     let position = position(
         (p.latitude, p.latitude_ref.as_deref()),
         (p.longitude, p.longitude_ref.as_deref()),
-    );
+    )
+    .filter(|_| wgs84(p.datum.as_deref()));
     let mut facts = Vec::new();
     facts.extend(taken.map(|t| (FactKey::Taken, t)));
     facts.extend(label(p.make.as_deref()).map(|m| (FactKey::CameraMake, m)));
@@ -97,15 +100,53 @@ fn days_in(year: u32, month: u32) -> u32 {
     }
 }
 
-/// A latitude or longitude in degrees and its reference ("N", "S", "E",
-/// "W"), signed: south and west negative. Nothing past max (90 or 180) or
-/// not a number.
-pub(super) fn coordinate(degrees: f64, reference: Option<&str>, max: f64) -> Option<f64> {
-    if !degrees.is_finite() || degrees.abs() > max {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Axis {
+    Latitude,
+    Longitude,
+}
+
+impl Axis {
+    fn max(self) -> f64 {
+        match self {
+            Axis::Latitude => 90.0,
+            Axis::Longitude => 180.0,
+        }
+    }
+
+    /// Its references: the positive one, then the negative one.
+    fn references(self) -> [&'static str; 2] {
+        match self {
+            Axis::Latitude => ["N", "S"],
+            Axis::Longitude => ["E", "W"],
+        }
+    }
+}
+
+/// A latitude or longitude in degrees and its reference, signed: south and
+/// west negative. A reference that isn't the axis's own (a latitude's "W",
+/// an "X") gives nothing; with none, the degrees are taken as signed.
+/// Nothing past the axis's maximum (90 or 180) or not a number.
+pub(super) fn coordinate(degrees: f64, reference: Option<&str>, axis: Axis) -> Option<f64> {
+    if !degrees.is_finite() || degrees.abs() > axis.max() {
         return None;
     }
-    let negative = matches!(reference.map(str::trim), Some("S" | "s" | "W" | "w"));
-    Some(if negative { -degrees.abs() } else { degrees })
+    let [positive, negative] = axis.references();
+    match reference.map(str::trim) {
+        None => Some(degrees),
+        Some(r) if r.eq_ignore_ascii_case(positive) => Some(degrees),
+        Some(r) if r.eq_ignore_ascii_case(negative) => Some(-degrees.abs()),
+        Some(_) => None,
+    }
+}
+
+/// Whether a GPS datum is WGS 84, however it is written ("WGS-84",
+/// "WGS84", "wgs 84"). None, or a blank one, is taken as WGS 84, which is
+/// what GPS gives.
+fn wgs84(datum: Option<&str>) -> bool {
+    let datum = datum.unwrap_or_default().trim_matches(|c: char| c.is_whitespace() || c == '\0');
+    let named: String = datum.chars().filter(|c| !matches!(c, '-' | ' ')).collect();
+    datum.is_empty() || named.eq_ignore_ascii_case("WGS84")
 }
 
 /// Latitude and longitude, six decimals each. Exactly 0, 0 is taken as no
@@ -114,8 +155,8 @@ pub(super) fn position(
     latitude: (Option<f64>, Option<&str>),
     longitude: (Option<f64>, Option<&str>),
 ) -> Option<(String, String)> {
-    let latitude = coordinate(latitude.0?, latitude.1, 90.0)?;
-    let longitude = coordinate(longitude.0?, longitude.1, 180.0)?;
+    let latitude = coordinate(latitude.0?, latitude.1, Axis::Latitude)?;
+    let longitude = coordinate(longitude.0?, longitude.1, Axis::Longitude)?;
     if latitude == 0.0 && longitude == 0.0 {
         return None;
     }
@@ -206,18 +247,51 @@ mod tests {
 
     #[test]
     fn south_and_west_are_negative() {
-        assert_eq!(coordinate(64.1466, Some("N"), 90.0), Some(64.1466));
-        assert_eq!(coordinate(22.9068, Some("S"), 90.0), Some(-22.9068));
-        assert_eq!(coordinate(43.1729, Some("W"), 180.0), Some(-43.1729));
-        assert_eq!(coordinate(139.7671, Some("E"), 180.0), Some(139.7671));
-        assert_eq!(coordinate(-43.1729, Some("W"), 180.0), Some(-43.1729), "already signed");
-        assert_eq!(coordinate(139.7671, None, 180.0), Some(139.7671));
+        assert_eq!(coordinate(64.1466, Some("N"), Axis::Latitude), Some(64.1466));
+        assert_eq!(coordinate(22.9068, Some("S"), Axis::Latitude), Some(-22.9068));
+        assert_eq!(coordinate(22.9068, Some(" s "), Axis::Latitude), Some(-22.9068));
+        assert_eq!(coordinate(43.1729, Some("W"), Axis::Longitude), Some(-43.1729));
+        assert_eq!(coordinate(139.7671, Some("E"), Axis::Longitude), Some(139.7671));
+        assert_eq!(coordinate(-43.1729, Some("W"), Axis::Longitude), Some(-43.1729), "already signed");
+        assert_eq!(coordinate(139.7671, None, Axis::Longitude), Some(139.7671));
+        assert_eq!(coordinate(-22.9068, None, Axis::Latitude), Some(-22.9068), "signed, with no reference");
         let rio = position((Some(22.9068), Some("S")), (Some(43.1729), Some("W")));
         assert_eq!(rio, Some(("-22.906800".to_string(), "-43.172900".to_string())));
         let sydney = position((Some(33.8568), Some("S")), (Some(151.2153), Some("E")));
         assert_eq!(sydney, Some(("-33.856800".to_string(), "151.215300".to_string())));
         let reykjavik = position((Some(64.1466), Some("N")), (Some(21.9426), Some("W")));
         assert_eq!(reykjavik, Some(("64.146600".to_string(), "-21.942600".to_string())));
+    }
+
+    #[test]
+    fn a_reference_that_isnt_the_axis_own_gives_no_position() {
+        for (latitude, longitude) in [("W", "E"), ("E", "E"), ("X", "E"), ("", "E"), ("N", "S"), ("N", "N"), ("N", "Q")] {
+            let got = position((Some(33.0), Some(latitude)), (Some(151.0), Some(longitude)));
+            assert_eq!(got, None, "{latitude:?} {longitude:?}");
+        }
+        assert_eq!(coordinate(33.0, Some("W"), Axis::Latitude), None);
+        assert_eq!(coordinate(151.0, Some("S"), Axis::Longitude), None);
+    }
+
+    #[test]
+    fn a_position_in_another_datum_than_wgs_84_gives_nothing() {
+        let at = |datum: Option<&str>| {
+            let p = Properties {
+                latitude: Some(35.0),
+                latitude_ref: Some("N".into()),
+                longitude: Some(139.0),
+                longitude_ref: Some("E".into()),
+                datum: datum.map(String::from),
+                ..Properties::default()
+            };
+            facts(&p).iter().any(|(key, _)| *key == FactKey::Latitude)
+        };
+        for wgs84 in [None, Some("WGS-84"), Some("WGS84"), Some("wgs 84"), Some(" WGS-84\0"), Some(""), Some(" ")] {
+            assert!(at(wgs84), "{wgs84:?}");
+        }
+        for other in ["TOKYO", "NAD27", "WGS-72", "東京", "OSGB 1936"] {
+            assert!(!at(Some(other)), "{other}");
+        }
     }
 
     #[test]

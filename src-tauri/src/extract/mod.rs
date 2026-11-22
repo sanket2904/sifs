@@ -18,7 +18,7 @@ mod tests;
 pub use store::{Failure, Progress};
 pub use worker::{RunStats, Waker, Worker, WorkerOptions};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -142,6 +142,9 @@ pub trait Reader: Send + Sync + 'static {
         false
     }
     fn read(&self, path: &Path, sink: &mut Sink) -> Result<(), ReadError>;
+    /// Ends what it keeps running between files, such as a helper process.
+    /// The worker calls it as it stops; a later read starts it again.
+    fn stop(&self) {}
 }
 
 #[derive(Debug)]
@@ -353,6 +356,16 @@ impl Registry {
     pub fn register(&mut self, reader: Arc<dyn Reader>) {
         for ext in reader.exts() {
             self.by_ext.insert(ext, reader.clone());
+        }
+    }
+
+    /// Stops each reader once.
+    pub fn stop(&self) {
+        let mut stopped = HashSet::new();
+        for reader in self.by_ext.values() {
+            if stopped.insert(Arc::as_ptr(reader).cast::<()>()) {
+                reader.stop();
+            }
         }
     }
 

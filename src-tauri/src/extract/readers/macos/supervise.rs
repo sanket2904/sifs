@@ -5,7 +5,7 @@
 
 use crate::extract::ReadError;
 use std::ffi::OsString;
-use std::io::{ErrorKind, Read};
+use std::io::{ErrorKind, Read, Write};
 use std::ops::{Deref, DerefMut};
 use std::os::fd::AsRawFd;
 use std::path::PathBuf;
@@ -109,12 +109,50 @@ impl Process {
             .map_err(|e| ReadError::Other(format!("couldn't start {name}: {e}")))?;
         let process = Process(child);
         set_nonblocking(process.0.stdout.as_ref().unwrap())?;
+        set_nonblocking(process.0.stdin.as_ref().unwrap())?;
         Ok(process)
     }
 
     /// Its memory and processor time so far.
     pub(super) fn usage(&self) -> Usage {
         usage(self.0.id())
+    }
+
+    /// Writes bytes to the helper's stdin as the pipe takes them, checking
+    /// the clock, processor time and memory between writes as watch does: a
+    /// helper that doesn't read its stdin can't hold SIFS past the deadline.
+    /// A stdin that can't be written kills and reaps it at once.
+    pub(super) fn send<S>(&mut self, watch: &Watch, mut bytes: &[u8]) -> Result<(), Watched<S>> {
+        loop {
+            if let Some(over) = self.over(watch) {
+                return Err(over);
+            }
+            if bytes.is_empty() {
+                return Ok(());
+            }
+            let stdin = self.0.stdin.as_ref().unwrap();
+            match (&*stdin).write(bytes) {
+                Ok(n) => bytes = &bytes[n..],
+                Err(e) if e.kind() == ErrorKind::WouldBlock => wait(stdin, libc::POLLOUT, watch.deadline),
+                Err(e) if e.kind() == ErrorKind::Interrupted => {}
+                Err(_) => return Err(Watched::Ended(self.ended_early())),
+            }
+        }
+    }
+
+    /// The limit it is past, if any.
+    fn over<S>(&self, watch: &Watch) -> Option<Watched<S>> {
+        if Instant::now() >= watch.deadline {
+            return Some(Watched::Time);
+        }
+        let usage = self.usage();
+        if usage.footprint > watch.memory {
+            return Some(Watched::Memory);
+        }
+        if usage.cpu.saturating_sub(watch.cpu_before) > watch.cpu {
+            return Some(Watched::Cpu);
+        }
+        None
     }
 
     /// Hands what the helper sends to take until take says stop. The clock,
@@ -136,15 +174,8 @@ impl Process {
     ) -> Watched<S> {
         let mut buf = vec![0u8; 64 * 1024];
         loop {
-            if Instant::now() >= watch.deadline {
-                return Watched::Time;
-            }
-            let usage = self.usage();
-            if usage.footprint > watch.memory {
-                return Watched::Memory;
-            }
-            if usage.cpu.saturating_sub(watch.cpu_before) > watch.cpu {
-                return Watched::Cpu;
+            if let Some(over) = self.over(watch) {
+                return over;
             }
             loop {
                 match stdout.read(&mut buf) {
@@ -159,9 +190,7 @@ impl Process {
                     Err(e) => return Watched::Unreadable(e),
                 }
             }
-            let left = watch.deadline.saturating_duration_since(Instant::now()).min(POLL);
-            let mut fd = libc::pollfd { fd: stdout.as_raw_fd(), events: libc::POLLIN, revents: 0 };
-            unsafe { libc::poll(&mut fd, 1, left.as_millis() as libc::c_int) };
+            wait(stdout, libc::POLLIN, watch.deadline);
         }
     }
 
@@ -303,6 +332,13 @@ impl<F> Intake<F> {
         }
         (bytes.len() > room).then_some(Taken::Output)
     }
+}
+
+/// Waits until the pipe is ready for events, POLL at most, or the deadline.
+fn wait(pipe: &impl AsRawFd, events: libc::c_short, deadline: Instant) {
+    let left = deadline.saturating_duration_since(Instant::now()).min(POLL);
+    let mut fd = libc::pollfd { fd: pipe.as_raw_fd(), events, revents: 0 };
+    unsafe { libc::poll(&mut fd, 1, left.as_millis() as libc::c_int) };
 }
 
 pub(super) fn set_nonblocking(fd: &impl AsRawFd) -> Result<(), ReadError> {

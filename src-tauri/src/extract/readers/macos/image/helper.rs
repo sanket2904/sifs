@@ -1,7 +1,7 @@
 //! The helper's side: it reads requests from its stdin, one image at a
 //! time, and sends each image's facts, text and end on its stdout. It ends
-//! when its stdin closes, after a while with no request, or a second past a
-//! request's deadline should SIFS not have killed it.
+//! when its stdin closes, or should SIFS not have killed it, a second past
+//! a request's deadline or its idle time.
 
 use super::facts::{self, Properties};
 use super::frame::{requests, Frame, Outcome, Request, MARKER};
@@ -15,13 +15,12 @@ use objc2_foundation::{NSArray, NSDictionary};
 use objc2_image_io::*;
 use objc2_vision::{VNImageRequestHandler, VNRecognizeTextRequest, VNRequest, VNRequestTextRecognitionLevel};
 use std::io::Write;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 /// Set to the idle time in milliseconds, it makes SIFS's program the image
-/// helper.
+/// helper. SIFS ends it at its idle time; this one is a second later.
 pub(super) const HELPER: &str = "SIFS_IMAGE_HELPER";
 
 /// A side under this many pixels holds no letter: no OCR.
@@ -69,8 +68,8 @@ pub(super) type Send<'a> = dyn FnMut(Frame) -> std::io::Result<()> + 'a;
 /// Serves requests with read, at the caller's priority: the tests' helper
 /// keeps theirs, so it isn't starved while every core is busy.
 pub(super) fn serve_and_exit(idle: Duration, mut read: impl FnMut(&Request, &mut Send) -> std::io::Result<()>) -> ! {
-    let deadline = Arc::new(Deadline::new());
-    let requests = requests_from_stdin(deadline.clone());
+    let deadline = Deadline::watched();
+    let requests = requests_from_stdin();
     let mut out = std::io::stdout().lock();
     if out.write_all(MARKER).and_then(|_| out.flush()).is_err() {
         exit(Exit::Output);
@@ -81,6 +80,7 @@ pub(super) fn serve_and_exit(idle: Duration, mut read: impl FnMut(&Request, &mut
             Err(RecvTimeoutError::Timeout) => exit(Exit::Idle),
             Err(RecvTimeoutError::Disconnected) => exit(Exit::StdinClosed),
         };
+        deadline.set(Duration::from_millis(request.deadline_ms));
         let mut send = |frame: Frame| -> std::io::Result<()> {
             out.write_all(&frame.encode())?;
             out.flush()
@@ -93,51 +93,55 @@ pub(super) fn serve_and_exit(idle: Duration, mut read: impl FnMut(&Request, &mut
 }
 
 /// When the request being read must be done by, a second past SIFS's own
-/// deadline. Shared with the thread that watches stdin.
+/// deadline. Only the thread serving requests sets and clears it, so one
+/// request's end can't clear the next one's; a thread of its own ends the
+/// helper when it passes.
 struct Deadline {
-    start: Instant,
-    /// Milliseconds from start; u64::MAX when no request is being read.
-    at: AtomicU64,
+    at: Mutex<Option<Instant>>,
+    changed: Condvar,
 }
 
 impl Deadline {
-    fn new() -> Deadline {
-        Deadline { start: Instant::now(), at: AtomicU64::new(u64::MAX) }
+    fn watched() -> Arc<Deadline> {
+        let deadline = Arc::new(Deadline { at: Mutex::new(None), changed: Condvar::new() });
+        let watched = deadline.clone();
+        std::thread::spawn(move || watched.exit_when_passed());
+        deadline
     }
 
     fn set(&self, left: Duration) {
-        let at = (self.start.elapsed() + left + HELPER_SLACK).as_millis();
-        self.at.store(at.min(u64::MAX as u128 - 1) as u64, Ordering::SeqCst);
+        let at = Instant::now().checked_add(left.saturating_add(HELPER_SLACK));
+        *self.at.lock().unwrap_or_else(PoisonError::into_inner) = at;
+        self.changed.notify_one();
     }
 
     fn clear(&self) {
-        self.at.store(u64::MAX, Ordering::SeqCst);
+        *self.at.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        self.changed.notify_one();
     }
 
-    /// The time left; None with no request.
-    fn left(&self) -> Option<Duration> {
-        let at = self.at.load(Ordering::SeqCst);
-        (at != u64::MAX).then(|| Duration::from_millis(at).saturating_sub(self.start.elapsed()))
+    fn exit_when_passed(&self) -> ! {
+        let mut at = self.at.lock().unwrap_or_else(PoisonError::into_inner);
+        loop {
+            at = match *at {
+                None => self.changed.wait(at).unwrap_or_else(PoisonError::into_inner),
+                Some(when) => match when.checked_duration_since(Instant::now()) {
+                    None => exit(Exit::Late),
+                    Some(left) => self.changed.wait_timeout(at, left).unwrap_or_else(PoisonError::into_inner).0,
+                },
+            };
+        }
     }
 }
 
 /// Requests as they come on stdin. The thread reading them ends the helper
-/// when stdin closes, or when a request runs past its deadline.
-fn requests_from_stdin(deadline: Arc<Deadline>) -> Receiver<Request> {
+/// when stdin closes.
+fn requests_from_stdin() -> Receiver<Request> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let mut decoder = requests();
         let mut buf = [0u8; 4096];
         loop {
-            let left = deadline.left();
-            if left == Some(Duration::ZERO) {
-                exit(Exit::Late);
-            }
-            let ms = left.unwrap_or(Duration::from_secs(1)).as_millis().clamp(1, 1000) as libc::c_int;
-            let mut fd = libc::pollfd { fd: 0, events: libc::POLLIN, revents: 0 };
-            if unsafe { libc::poll(&mut fd, 1, ms) } <= 0 {
-                continue;
-            }
             let n = unsafe { libc::read(0, buf.as_mut_ptr().cast(), buf.len()) };
             if n < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
                 continue;
@@ -148,10 +152,7 @@ fn requests_from_stdin(deadline: Arc<Deadline>) -> Receiver<Request> {
             decoder.push(&buf[..n as usize]);
             loop {
                 match decoder.next_frame() {
-                    Ok(Some(request)) => {
-                        deadline.set(Duration::from_millis(request.deadline_ms));
-                        let _ = tx.send(request);
-                    }
+                    Ok(Some(request)) => drop(tx.send(request)),
                     Ok(None) => break,
                     Err(_) => exit(Exit::BadRequest),
                 }
@@ -282,6 +283,7 @@ fn properties(all: &Dictionary) -> Properties {
         p.latitude_ref = string(&gps, unsafe { kCGImagePropertyGPSLatitudeRef });
         p.longitude = number(&gps, unsafe { kCGImagePropertyGPSLongitude });
         p.longitude_ref = string(&gps, unsafe { kCGImagePropertyGPSLongitudeRef });
+        p.datum = string(&gps, unsafe { kCGImagePropertyGPSMapDatum });
     }
     p
 }
