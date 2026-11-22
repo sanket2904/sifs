@@ -119,7 +119,7 @@
       ],
       "not_orgs": [],
       "identifiers": [
-        {"id":"i1","page":1,"start":142,"end":152,"text":"4512369874","kind":"account","value":"4512369874","valid":null}
+        {"id":"i1","page":1,"start":142,"end":152,"text":"1234567890","kind":"account","value":"1234567890","valid":null}
       ],
       "not_identifiers": [],
       "links": [
@@ -451,7 +451,7 @@
         {"page":1,"start":60,"end":64,"text":"HDFC","entry":"Q1446319","why":"inside-other-name"}
       ],
       "identifiers": [
-        {"id":"i1","page":1,"start":130,"end":149,"text":"4111 1111 1111 1111","kind":"card","value":"4111111111111111","valid":true}
+        {"id":"i1","page":1,"start":130,"end":149,"text":"4242 4242 4242 4242","kind":"card","value":"4242424242424242","valid":true}
       ],
       "not_identifiers": [],
       "links": [
@@ -572,13 +572,13 @@
       ],
       "not_orgs": [],
       "identifiers": [
-        {"id":"i1","page":1,"start":253,"end":263,"text":"ABCPK1234F","kind":"in_pan","value":"ABCPK1234F","valid":true},
+        {"id":"i1","page":1,"start":253,"end":263,"text":"ABCPK0000F","kind":"in_pan","value":"ABCPK0000F","valid":null},
         {"id":"i2","page":1,"start":275,"end":289,"text":"50100417263958","kind":"account","value":"50100417263958","valid":null},
         {"id":"i3","page":1,"start":297,"end":308,"text":"HDFC0SAMPL1","kind":"ifsc","value":"HDFC0SAMPL1","valid":true},
-        {"id":"i4","page":1,"start":371,"end":381,"text":"ABCDK1234F","kind":"in_pan","value":"ABCDK1234F","valid":false}
+        {"id":"i4","page":1,"start":371,"end":381,"text":"ABCDK0000F","kind":"in_pan","value":"ABCDK0000F","valid":false}
       ],
       "not_identifiers": [
-        {"page":1,"start":210,"end":220,"text":"PNES12345A","looks_like":"in_pan","why":"tax-account-number"}
+        {"page":1,"start":210,"end":220,"text":"PNESX2345A","looks_like":"in_pan","why":"tax-account-number"}
       ],
       "links": [
         {"identifier":"i2","org":"hdfc-bank","mention":null,"reasons":["paired-code"],"via":"i3"},
@@ -597,14 +597,14 @@
       ],
       "not_orgs": [],
       "identifiers": [
-        {"id":"i1","page":1,"start":107,"end":114,"text":"4417352","kind":"account","value":"4417352","valid":null}
+        {"id":"i1","page":1,"start":107,"end":115,"text":"12345678","kind":"account","value":"12345678","valid":null}
       ],
       "not_identifiers": [],
       "links": [
         {"identifier":"i1","org":"mizuho-bank","mention":"o1","reasons":["statement-header"]}
       ],
       "not_links": [],
-      "statement": {"page":1,"start":119,"end":139,"text":"2026年8月1日～2026年8月31日","accounts":["i1"],"from":"2026-08-01","to":"2026-08-31","issuer":"o1"}
+      "statement": {"page":1,"start":120,"end":140,"text":"2026年8月1日～2026年8月31日","accounts":["i1"],"from":"2026-08-01","to":"2026-08-31","issuer":"o1"}
     },
     {
       "id": "mufg-remittance-ja",
@@ -870,15 +870,15 @@
   "answers": {
     "latest_statement": [
       {"account":"50100417263958","spellings":["50100417263958"],"document":"hdfc-statement-sep"},
-      {"account":"4512369874","spellings":["4512369874"],"document":"kotak-statement"},
+      {"account":"1234567890","spellings":["1234567890"],"document":"kotak-statement"},
       {"account":"004512000789","spellings":["004512000789"],"document":"sahakari-statement"},
       {"account":"88120457","spellings":["88120457"],"document":"credit-union-statement"},
       {"account":"GB29NWBK60161331926819","spellings":["31926819","GB29NWBK60161331926819"],"document":"natwest-statement"},
       {"account":"NL91ABNA0417164300","spellings":["NL91ABNA0417164300"],"document":"abn-amro-statement"},
       {"account":"DE89370400440532013000","spellings":["DE89370400440532013000"],"document":"commerzbank-kontoauszug"},
-      {"account":"4111111111111111","spellings":["4111111111111111"],"document":"hdfc-card-statement"},
+      {"account":"4242424242424242","spellings":["4242424242424242"],"document":"hdfc-card-statement"},
       {"account":"30123456789","spellings":["30123456789"],"document":"sbi-passbook-hindi"},
-      {"account":"4417352","spellings":["4417352"],"document":"mizuho-statement-ja"},
+      {"account":"12345678","spellings":["12345678"],"document":"mizuho-statement-ja"},
       {"account":"917010012345678","spellings":["917010012345678"],"document":"axis-statement-scanned-annex"},
       {"account":"612345678","spellings":["612345678"],"document":"hdfc-ltd-loan-2019"}
     ],

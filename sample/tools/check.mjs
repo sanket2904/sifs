@@ -65,6 +65,8 @@ const IBAN_PARTS = {
 	FR: { fr_bank_code: [4, 9], fr_branch_code: [9, 14], account: [14, 25], fr_rib_key: [25, 27] }
 };
 const PERIOD_FIELD = /^(Statement period|Period|Zeitraum|अवधि|期間): $/u;
+const ISSUE_FIELD = /^Date of issue: /iu;
+const EXPIRY_FIELD = /^Date of expiry: $/iu;
 const FIELDS = {
 	doc: ['id', 'note', 'nothing_to_find', ...LISTS, 'statement', 'passport'],
 	org: ['id', 'page', 'start', 'end', 'text', 'resolved_by_document', 'directory'],
@@ -433,12 +435,62 @@ for (const doc of labels.documents) {
 	const codeOrg = (identifier) => doc.links.find((l) => l.identifier === identifier.id)?.org;
 	const prefix = (v) => v.value.slice(0, 4).toLowerCase();
 
+	// Why evidence e does not settle mention o as org, or null when it does.
+	const evidenceProblem = (o, org, e) => {
+		if (e.by === 'name')
+			return nameOwner.get(matchKey(o.text)) === org
+				? null
+				: `${JSON.stringify(o.text)} is not a name of ${org}`;
+		if (e.by === 'mention') {
+			const other = orgs.get(e.mention);
+			if (!other || other === o || resolvedOrg(other) !== org)
+				return `evidence mention ${e.mention} is not another mention of ${org}`;
+			if (other.resolved_by_document.evidence?.some((x) => x.by === 'mention'))
+				return `evidence mention ${e.mention} is itself settled by another mention`;
+			if (!shortFormOf(o.text, other.text))
+				return `${JSON.stringify(o.text)} is not a short form of ${JSON.stringify(other.text)}`;
+			const rivals = doc.orgs.filter(
+				(x) => resolvedOrg(x) && resolvedOrg(x) !== org && shortFormOf(o.text, x.text)
+			);
+			return rivals.length
+				? `${JSON.stringify(o.text)} is also a short form of ${JSON.stringify(rivals[0].text)}`
+				: null;
+		}
+		if (e.by === 'code') {
+			const code = ids.get(e.identifier);
+			if (!code || !['ifsc', 'bic'].includes(code.kind))
+				return `evidence identifier ${e.identifier} is not an IFSC or BIC here`;
+			if (prefix(code) !== matchKey(o.text) || codeOrg(code) !== org)
+				return `${code.value} does not spell ${JSON.stringify(o.text)} and tie it to ${org}`;
+			return doc.identifiers.some(
+				(v) =>
+					['ifsc', 'bic'].includes(v.kind) && prefix(v) === prefix(code) && codeOrg(v) !== org
+			)
+				? `another code spelling ${JSON.stringify(o.text)} is tied elsewhere`
+				: null;
+		}
+		return `evidence by ${e.by} is not name, mention or code`;
+	};
+	// Every organisation and evidence the document gives for mention o.
+	const settles = (o) =>
+		[
+			[nameOwner.get(matchKey(o.text)), { by: 'name' }],
+			...doc.orgs.map((x) => [resolvedOrg(x), { by: 'mention', mention: x.id }]),
+			...doc.identifiers.map((v) => [codeOrg(v), { by: 'code', identifier: v.id }])
+		].filter(([org, e]) => org && !evidenceProblem(o, org, e));
+
 	for (const o of doc.orgs) {
 		const at = `${where} org ${o.id}`;
 		const r = o.resolved_by_document;
 		if (r === null) {
 			if (o.directory?.lookup === 'exact' && !byEntry.has(o.directory.id))
 				fail(at, `the directory settles it as ${o.directory.id}, which no organisation carries`);
+			const settled = settles(o);
+			if (settled.length)
+				fail(
+					at,
+					`the document settles it as ${[...new Set(settled.map(([org, e]) => `${org} by ${e.by}`))].join(', ')}, so resolved_by_document is not null`
+				);
 			continue;
 		}
 		if (!r || !organisations.has(r.org)) {
@@ -450,42 +502,8 @@ for (const doc of labels.documents) {
 			fail(at, `the document settles it as ${r.org}, the directory as ${o.directory.id}`);
 		if (!Array.isArray(r.evidence) || !r.evidence.length) fail(at, 'evidence must be a list');
 		for (const e of r.evidence ?? []) {
-			if (e.by === 'name') {
-				if (nameOwner.get(matchKey(o.text)) !== r.org)
-					fail(at, `${JSON.stringify(o.text)} is not a name of ${r.org}`);
-			} else if (e.by === 'mention') {
-				const other = orgs.get(e.mention);
-				if (!other || other === o || resolvedOrg(other) !== r.org)
-					fail(at, `evidence mention ${e.mention} is not another mention of ${r.org}`);
-				else if (other.resolved_by_document.evidence.some((x) => x.by === 'mention'))
-					fail(at, `evidence mention ${e.mention} is itself settled by another mention`);
-				else if (!shortFormOf(o.text, other.text))
-					fail(
-						at,
-						`${JSON.stringify(o.text)} is not a short form of ${JSON.stringify(other.text)}`
-					);
-				const rivals = doc.orgs.filter(
-					(x) => resolvedOrg(x) && resolvedOrg(x) !== r.org && shortFormOf(o.text, x.text)
-				);
-				if (rivals.length)
-					fail(
-						at,
-						`${JSON.stringify(o.text)} is also a short form of ${JSON.stringify(rivals[0].text)}`
-					);
-			} else if (e.by === 'code') {
-				const code = ids.get(e.identifier);
-				if (!code || !['ifsc', 'bic'].includes(code.kind))
-					fail(at, `evidence identifier ${e.identifier} is not an IFSC or BIC here`);
-				else if (prefix(code) !== matchKey(o.text) || codeOrg(code) !== r.org)
-					fail(at, `${code.value} does not spell ${JSON.stringify(o.text)} and tie it to ${r.org}`);
-				else if (
-					doc.identifiers.some(
-						(v) =>
-							['ifsc', 'bic'].includes(v.kind) && prefix(v) === prefix(code) && codeOrg(v) !== r.org
-					)
-				)
-					fail(at, `another code spelling ${JSON.stringify(o.text)} is tied elsewhere`);
-			} else fail(at, `evidence by ${e.by} is not name, mention or code`);
+			const problem = evidenceProblem(o, r.org, e);
+			if (problem) fail(at, problem);
 		}
 	}
 
@@ -493,6 +511,16 @@ for (const doc of labels.documents) {
 		const at = `${where} not_org ${JSON.stringify(n.text)}`;
 		fields(at, n, FIELDS.not_org);
 		if (!entries.has(n.entry)) fail(at, `entry ${n.entry} is not in the directory`);
+		const positive = doc.orgs.find(
+			(o) =>
+				o.page === n.page &&
+				o.start < n.end &&
+				n.start < o.end &&
+				(entryOf(o) === n.entry ||
+					o.directory?.id === n.entry ||
+					(o.directory?.candidates ?? []).includes(n.entry))
+		);
+		if (positive) fail(at, `overlaps mention ${positive.id}, which is a mention of ${n.entry}`);
 		const inside = doc.orgs.some(
 			(o) =>
 				o.page === n.page &&
@@ -774,6 +802,16 @@ for (const doc of labels.documents) {
 			fail(at, 'number must name a passport_number identifier');
 		if (mrzId?.kind !== 'mrz') fail(at, 'mrz must name an mrz identifier');
 		if (!isDate(p.issued)) fail(at, 'issued is not a date');
+		const issueFields = pages
+			.flatMap((page) => page.join('').split('\n'))
+			.filter((line) => ISSUE_FIELD.test(line))
+			.map((line) => datesIn(line.replace(ISSUE_FIELD, ''))[0]);
+		if (issueFields.length !== 1 || issueFields[0] !== p.issued)
+			fail(at, `the date of issue field reads ${issueFields.join(' and ') || 'nothing'}, not ${p.issued}`);
+		const expiryPage = pages[p.expiry_at.page - 1] ?? [];
+		const expiryLine = expiryPage.lastIndexOf('\n', p.expiry_at.start - 1) + 1;
+		if (!EXPIRY_FIELD.test(expiryPage.slice(expiryLine, p.expiry_at.start).join('')))
+			fail(at, `expiry_at ${JSON.stringify(p.expiry_at.text)} is not the date of expiry field`);
 		const printed = datesIn(p.expiry_at.text);
 		const mrz = mrzId && parseMrz(mrzId.value);
 		const mrzExpiry =

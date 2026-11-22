@@ -110,7 +110,13 @@ export const KINDS = {
 		valid: (v) => /^\d{12,19}$/.test(v) && luhnOk(v)
 	},
 	ifsc: { normalize: (t) => t, valid: (v) => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v) },
-	in_pan: { normalize: (t) => t, valid: (v) => /^[A-Z]{3}[ABCFGHJLPT][A-Z]\d{4}[A-Z]$/.test(v) },
+	// The Income Tax Department issues serials 0001 to 9999, so serial 0000 has
+	// the shape and is never issued: a shape check and a strict check disagree.
+	in_pan: {
+		normalize: (t) => t,
+		valid: (v) =>
+			!/^[A-Z]{3}[ABCFGHJLPT][A-Z]\d{4}[A-Z]$/.test(v) ? false : v.slice(5, 9) === '0000' ? null : true
+	},
 	mrz: { normalize: (t) => t, valid: (v) => parseMrz(v)?.failed.length === 0 },
 	gb_sort_code: { normalize: (t) => t.replaceAll('-', ''), valid: (v) => /^\d{6}$/.test(v) },
 	fr_bank_code: { normalize: (t) => t, valid: (v) => /^\d{5}$/.test(v) },

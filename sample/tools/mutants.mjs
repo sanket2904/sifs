@@ -255,6 +255,59 @@ const MUTANTS = [
 			}),
 		'fails its check'
 	],
+	[
+		'mention the document settles by its full name left unsettled',
+		(l) => (doc(l, 'hdfc-branch-letter').orgs[1].resolved_by_document = null),
+		'settles it as hdfc-bank by name, so resolved_by_document is not null'
+	],
+	[
+		'short form of a full mention left unsettled',
+		(l) => (doc(l, 'hdfc-ltd-loan-2019').orgs[0].resolved_by_document = null),
+		'settles it as hdfc-ltd by mention, so resolved_by_document is not null'
+	],
+	[
+		'short form spelled by a code left unsettled',
+		(l) => (doc(l, 'neft-receipt-tied').orgs[0].resolved_by_document = null),
+		'settles it as hdfc-bank by mention, hdfc-bank by code, so'
+	],
+	[
+		'exclusion over a mention of the same entry',
+		(l) => {
+			const d = doc(l, 'hdfc-branch-letter');
+			const { page, start, end, text } = d.orgs[1];
+			d.not_orgs.push({ page, start, end, text, entry: 'Q631047', why: 'word-not-name' });
+		},
+		'overlaps mention o2, which is a mention of Q631047'
+	],
+	[
+		'account labelled as a passport number',
+		(l) => (doc(l, 'rent-receipt').identifiers[0].kind = 'passport_number'),
+		'is planted as identifier account, its label is identifier passport_number'
+	],
+	[
+		'decoy said to look like another kind',
+		(l) => (doc(l, 'rent-receipt').not_identifiers[0].looks_like = 'card'),
+		'is planted as not_identifier account phone-number'
+	],
+	[
+		'decoy given another reason',
+		(l) => (doc(l, 'hdfc-life-receipt').not_identifiers[0].why = 'invoice-number'),
+		'is planted as not_identifier account policy-number'
+	],
+	[
+		'passport issue date changed',
+		(l) => (doc(l, 'passport-asha-current').passport.issued = '2024-03-19'),
+		'the date of issue field reads 2024-03-18, not 2024-03-19'
+	],
+	[
+		'passport expiry read from the date of issue',
+		(l) =>
+			Object.assign(doc(l, 'passport-bad-mrz').passport, {
+				expiry_at: { page: 1, start: 288, end: 299, text: '16 APR 2021' },
+				expiry_candidates: ['2021-04-16', '2031-05-14']
+			}),
+		'is not the date of expiry field'
+	],
 	['generated file changed', null, 'differs from what the generator writes']
 ];
 
