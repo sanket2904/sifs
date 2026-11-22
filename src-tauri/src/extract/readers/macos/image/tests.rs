@@ -1415,3 +1415,23 @@ fn images_are_read_by_the_worker_and_found_by_their_words() {
         assert!(facts.contains(&(key.to_string(), value.to_string())), "{key} in {facts:?}");
     }
 }
+
+#[test]
+fn a_word_in_an_image_is_found_by_the_search_over_names_and_contents() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap().join("home");
+    fs::create_dir_all(&root).unwrap();
+    let receipt = root.join("receipt.png");
+    draw::text(&receipt, Format::Png, (1200, 300), &["Harbour Cafe", "Total 18.40"], &Meta::default());
+    let registry = Registry::with(vec![Arc::new(Image::default())]);
+    let mut index = Index::open(&dir.path().join("sifs.db")).unwrap();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let root_str = root.to_str().unwrap();
+    index.add_folder(root_str, 0).unwrap();
+    scan(&mut index, root_str, &Rules::new(&Rules::default_patterns(), root_str).unwrap(), |_| {}).unwrap();
+    run_until_empty(&mut index, &registry, &WorkerOptions::default()).unwrap();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    let got = crate::extract::find::search_all(&index, "harbour", 10, now, &crate::index::stop::Until::after(Duration::from_secs(10))).unwrap();
+    let hits: Vec<(&str, bool)> = got.hits.iter().map(|hit| (hit.file.path.as_str(), hit.found.is_some())).collect();
+    assert_eq!(hits, [(receipt.to_str().unwrap(), true)], "found by its contents");
+}
