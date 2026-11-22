@@ -154,6 +154,7 @@ impl Worker {
         let inner = shared.clone();
         let thread = std::thread::Builder::new().name("sifs-extract".into()).spawn(move || {
             platform::lower_thread_priority();
+            let _stops = StopsReaders(&registry);
             let mut index = match Index::open(&db_path) {
                 Ok(index) => index,
                 Err(e) => {
@@ -199,6 +200,15 @@ impl Worker {
 impl Drop for Worker {
     fn drop(&mut self) {
         self.stop_and_join();
+    }
+}
+
+/// Stops the readers as the worker's thread ends, however it ends.
+struct StopsReaders<'a>(&'a Registry);
+
+impl Drop for StopsReaders<'_> {
+    fn drop(&mut self) {
+        self.0.stop();
     }
 }
 
@@ -278,7 +288,6 @@ fn run(index: &mut Index, registry: &Registry, options: &WorkerOptions, shared: 
             }
         }
     }
-    registry.stop();
     runner.stats
 }
 

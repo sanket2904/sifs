@@ -62,7 +62,8 @@ fn wait_for(name: &str) {
 
 /// Answers requests 1, 2, ... in turn without reading its stdin, each once
 /// the test has written the last one's id to "ack", until the pipe holding
-/// the requests is full. It ends itself after 10 s.
+/// the requests is full; it leaves "full" in signals() when it sees that.
+/// It ends itself after 10 s.
 fn answer_without_reading() -> ! {
     std::thread::spawn(|| {
         std::thread::sleep(Duration::from_secs(10));
@@ -75,6 +76,11 @@ fn answer_without_reading() -> ! {
         id += 1;
         out.write_all(&Frame::End { id, outcome: Outcome::Read }.encode()).and_then(|_| out.flush()).unwrap();
         while fs::read_to_string(signals().join("ack")).unwrap_or_default() != id.to_string() {
+            let mut stdin: libc::stat = unsafe { std::mem::zeroed() };
+            unsafe { libc::fstat(0, &mut stdin) };
+            if stdin.st_size > 0 && stdin.st_size >= stdin.st_blksize as libc::off_t {
+                fs::write(signals().join("full"), "").unwrap();
+            }
             std::thread::sleep(Duration::from_millis(1));
         }
     }
@@ -634,9 +640,9 @@ fn receive(bytes: &[u8], caps: Caps) -> (Option<Taken<Stop>>, String, Vec<(Strin
         .into_iter()
         .map(|size| {
             let mut intake = Intake::new(frame::decoder(caps.chars));
-            let mut order = Order { id: 1, step: Step::Facts { seen: 0 } };
+            let mut order = Order::new(1);
             let mut sink = Sink::new(caps.chars, Instant::now() + Duration::from_secs(60));
-            let stop = bytes.chunks(size).find_map(|chunk| intake.take(chunk, caps.output, |f| order.frame(f, &mut sink)));
+            let stop = bytes.chunks(size).find_map(|chunk| order.take(&mut intake, chunk, caps.output, &mut sink));
             let (got, facts) = sink.finish();
             (stop, got.iter().map(|p| p.text.clone()).collect::<String>(), facts)
         })
@@ -711,12 +717,39 @@ fn whole_frames_are_taken_before_a_bad_frame_or_the_output_cap() {
 
 #[test]
 fn text_the_sink_refuses_is_not_received() {
-    let mut order = Order { id: 1, step: Step::Facts { seen: 0 } };
+    let mut order = Order::new(1);
     let mut sink = Sink::new(100, Instant::now() - Duration::from_millis(1));
     let refused = order.frame(Frame::Text { id: 1, text: "past the deadline".into(), cut: false }, &mut sink);
     assert_eq!(refused, Some(Stop::Time));
     assert!(sink.finish().0.is_empty());
     assert!(!order.received(), "so the image fails, not an empty success");
+}
+
+#[test]
+fn text_the_sink_keeps_none_of_is_not_received() {
+    let words = || Frame::Text { id: 1, text: "words".into(), cut: false };
+    for (chars, received) in [(0, false), (1, true)] {
+        let mut order = Order::new(1);
+        let mut sink = Sink::new(chars, Instant::now() + Duration::from_secs(60));
+        assert_eq!(order.frame(words(), &mut sink), None);
+        assert_eq!(order.received(), received, "a text cap of {chars}");
+    }
+}
+
+#[test]
+fn an_end_with_bytes_past_the_output_cap_is_the_cap() {
+    let end = wire(&[Frame::End { id: 1, outcome: Outcome::Read }]);
+    let over = [&end[..], &[0; 128]].concat();
+    let take = |bytes: &[u8], output| {
+        let mut intake = Intake::new(frame::decoder(100));
+        let mut sink = Sink::new(100, Instant::now() + Duration::from_secs(60));
+        Order::new(1).take(&mut intake, bytes, output, &mut sink)
+    };
+    let ended = Some(Taken::Stop(Stop::End(Outcome::Read)));
+    assert_eq!(take(&end, end.len()), ended, "an end at the cap, nothing past it");
+    assert_eq!(take(&over, end.len()), Some(Taken::Output), "the cap at the end's last byte");
+    assert_eq!(take(&over, end.len() - 1), Some(Taken::Output), "the cap a byte before it");
+    assert_eq!(take(&over, over.len()), ended, "everything within the cap");
 }
 
 #[test]
@@ -806,6 +839,8 @@ fn a_helper_that_doesnt_read_its_requests_is_killed_at_the_deadline() {
         let got = read_path(&image, &path, deadline);
         if let Err(ReadError::Other(why)) = &got {
             assert_eq!(why, "took longer than 60 s", "request {id}");
+            assert!(id > 1, "requests were answered before one waited");
+            assert!(dir.0.path().join("full").exists(), "the helper saw its request pipe full");
             assert!(started.elapsed() < deadline + HELPER_SLACK * 3 / 4, "killed at the deadline: {:?}", started.elapsed());
             assert_eq!(helper_pid(&image), None);
             return;
@@ -856,6 +891,21 @@ fn stopping_the_worker_ends_the_helper_whoever_holds_the_reader() {
     assert!(gone(pid), "killed and reaped as the worker stopped, with the reader still held");
     read_path(&image, &root.join("tiny.png"), Duration::from_secs(60)).unwrap();
     assert!(helper_pid(&image).is_some_and(|again| again != pid), "a later read starts another");
+}
+
+#[test]
+fn a_worker_that_cant_open_the_index_still_ends_the_helper() {
+    let dir = Dir::new();
+    let tiny = dir.sized("tiny.png", (2, 16), &[]);
+    let image = Arc::new(Image::default());
+    read_path(&image, &tiny, Duration::from_secs(60)).unwrap();
+    let pid = helper_pid(&image).unwrap();
+    let file = dir.0.path().join("a file");
+    fs::write(&file, "").unwrap();
+    let registry = Arc::new(Registry::with(vec![image.clone()]));
+    let worker = Worker::start(file.join("sifs.db"), registry, WorkerOptions::default()).unwrap();
+    assert_eq!(worker.stop().errors.len(), 1, "an index beneath a file can't open");
+    assert!(gone(pid), "killed and reaped as the worker stopped, with the reader still held");
 }
 
 #[test]

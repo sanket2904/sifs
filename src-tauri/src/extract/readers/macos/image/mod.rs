@@ -236,7 +236,7 @@ enum Stop {
 
 struct Read {
     stop: Stop,
-    /// Whether the image got any of its frames.
+    /// Whether the sink kept any of the image's frames.
     received: bool,
 }
 
@@ -294,13 +294,13 @@ impl Running {
             max_chars: caps.chars,
             max_pixels: caps.pixels,
         };
-        let mut order = Order { id: request.id, step: Step::Facts { seen: 0 } };
+        let mut order = Order::new(request.id);
         let watch = Watch { deadline: sink.deadline(), cpu: caps.cpu, memory: caps.memory, cpu_before: self.process.usage().cpu };
         self.intake.restart();
         let watched = match self.process.send(&watch, &request.encode()) {
             Ok(()) => {
                 let intake = &mut self.intake;
-                self.process.watch(&watch, |bytes| intake.take(bytes, caps.output, |frame| order.frame(frame, sink)))
+                self.process.watch(&watch, |bytes| order.take(intake, bytes, caps.output, sink))
             }
             Err(watched) => watched,
         };
@@ -314,7 +314,7 @@ impl Running {
             Watched::Time => Stop::Time,
             Watched::Cpu => Stop::Cpu,
             Watched::Memory => Stop::Memory,
-            Watched::Ended(Ended::Exited(status)) if status.code() == Some(Exit::Idle as i32) && !order.received() => {
+            Watched::Ended(Ended::Exited(status)) if status.code() == Some(Exit::Idle as i32) && order.step == (Step::Facts { seen: 0 }) => {
                 Stop::Idle
             }
             Watched::Ended(_) | Watched::Unreadable(_) => Stop::Crashed,
@@ -328,6 +328,10 @@ impl Running {
 struct Order {
     id: u64,
     step: Step,
+    /// Whether the sink kept any of it: a fact, or a character of text.
+    kept: bool,
+    /// The bytes the helper sent for it.
+    sent: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -338,6 +342,20 @@ enum Step {
 }
 
 impl Order {
+    fn new(id: u64) -> Order {
+        Order { id, step: Step::Facts { seen: 0 }, kept: false, sent: 0 }
+    }
+
+    /// Takes the helper's output for the image. An end that came with bytes
+    /// past the output cap is the cap, as it would be had they come apart.
+    fn take(&mut self, intake: &mut Intake<Frame>, bytes: &[u8], cap: usize, sink: &mut Sink) -> Option<Taken<Stop>> {
+        self.sent += bytes.len();
+        match intake.take(bytes, cap, |frame| self.frame(frame, sink)) {
+            Some(Taken::Stop(Stop::End(_))) if self.sent > cap => Some(Taken::Output),
+            taken => taken,
+        }
+    }
+
     fn frame(&mut self, frame: Frame, sink: &mut Sink) -> Option<Stop> {
         let broken = |how: &str| Some(Stop::Broken(format!("the image reader sent {how}")));
         if frame.id() != self.id {
@@ -347,14 +365,17 @@ impl Order {
             (Step::Facts { seen }, Frame::Fact { key, value, .. }) if seen & key.bit() == 0 => {
                 self.step = Step::Facts { seen: seen | key.bit() };
                 sink.fact(key.name(), value);
+                self.kept = true;
                 None
             }
             (Step::Facts { .. }, Frame::Fact { .. }) => broken("a fact twice"),
             (Step::Facts { .. }, Frame::Text { text, cut, .. }) => {
+                let before = sink.chars();
                 if sink.text(&text).is_err() {
                     return Some(Stop::Time);
                 }
                 self.step = Step::Text;
+                self.kept |= sink.chars() > before;
                 if cut {
                     sink.cut();
                 }
@@ -367,6 +388,6 @@ impl Order {
     }
 
     fn received(&self) -> bool {
-        self.step != Step::Facts { seen: 0 }
+        self.kept
     }
 }
