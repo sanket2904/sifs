@@ -475,8 +475,8 @@ The text found is **one part per image**, unlabelled, in `contents` and so in `c
 | a crash | | the helper ends on a signal, or its output ends early | the same, "the image reader crashed" |
 | output | 1 MB per image from the helper | SIFS stops reading and kills it | the same, "sent more than 1 MB" |
 | characters | 100,000 per image (owner's most: 4,663) | the helper cuts; the sink keeps the cap too | `truncated` |
-| idle | 30 s without an image | the helper exits | the next image starts a new one |
-| memory kept | above 512 MB after an image | SIFS replaces the helper before the next | |
+| idle | 30 s without an image | SIFS kills it (the helper also exits by itself a second later) | the next image starts a new one |
+| memory kept | above 512 MB after an image, or at any time between images | SIFS replaces the helper | |
 
 A file ImageIO can't open, or one with no image in it, is failed ("damaged, or not an image macOS can read") and not retried until it changes. A recognition that Vision reports as failed keeps the facts, with `stopped` ("text recognition failed: …").
 
@@ -491,6 +491,25 @@ A file ImageIO can't open, or one with no image in it, is failed ("damaged, or n
 - **SIFS going away:** the helper's stdin closes, and it exits. It also exits by itself a second after an image's deadline if SIFS hasn't killed it.
 - **Priority:** "utility", as the worker. The tests' helper keeps the test's priority (step 2b found "utility" helpers too slow for the suite on a busy Mac).
 - **Always reaped:** however a read ends, a helper that is to go is killed and waited for; dropping the reader does the same.
+
+### Who watches the helper (review round 1)
+
+Two reviews of PR #19 found three ways a helper escaped supervision: a request written to a helper that doesn't read its stdin blocked SIFS with no deadline; a helper that sent its end and then spun or allocated was not watched until the next image; and stopping the worker left the helper running while anything else still held the reader. All three came from one assumption: that supervision belongs to a request, starting once the request is written and ending at the end frame. The fix makes it belong to the helper's whole life.
+
+**One owner, from start to reap.** The reader's slot (a lock around the running helper) owns the process. Whoever holds the lock watches it, and nothing touches the helper's pipes without the lock. Dropping it from the slot kills and reaps it.
+
+| State | Who watches | What stops it |
+|---|---|---|
+| sending a request | the reading thread | stdin is non-blocking: the request is written in pieces as the pipe takes them, with the image's deadline, processor time and memory checked between pieces, as when reading. A helper that won't take its request is killed at the image's deadline. |
+| receiving frames | the reading thread | as before: the deadline, processor time, memory, output cap, the protocol, and its output ending. |
+| kept between images | a watcher thread, one per helper, which takes the lock every 20 ms | its idle time (30 s), enforced by SIFS; memory over the keep threshold (512 MB); processor time past the image cap (10 s) since its last image ended; and exiting by itself, which is reaped at once. Any of these drops it from the slot. The watcher ends when its helper leaves the slot. |
+| shutting down | `Reader::stop`, which the worker calls once its reads in flight are done, and dropping the reader | the helper is killed and reaped then, whoever else holds the reader. A later read starts a new one. |
+
+**The helper's own deadline** belongs to the thread that serves requests: it sets the deadline as it takes a request and clears it when the request ends. A separate watchdog thread waits for that deadline and exits the helper a second past it. Before, the thread reading stdin set it as each request arrived, so the end of one request could clear the next one's.
+
+The helper still exits by itself when its stdin closes (SIFS gone), a second past an image's deadline, and after its idle time plus a second, should SIFS's watcher not have ended it first.
+
+**Facts, from the same reviews.** A latitude's reference must be N or S and a longitude's E or W; any other reference gives no position. A position whose `GPSMapDatum` names a datum other than WGS 84 gives no position (no conversion yet); one with no datum is taken as WGS 84. Text counts as received only once the sink takes it. The longest frame the helper may send allows a fact at its own cap (1,000 characters) whatever the text cap.
 
 ### Dependencies
 
