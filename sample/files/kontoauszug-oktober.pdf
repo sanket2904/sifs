@@ -1,0 +1,70 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [10 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Title <FEFF004B006F006E0074006F006100750073007A00750067> /Producer (sample/tools/generate.mjs) /CreationDate (D:20261101060000Z) /ModDate (D:20261101060000Z) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 209 >>
+stream
+/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /T def /CMapType 2 def 1 begincodespacerange <0000> <FFFF> endcodespacerange
+endcmap CMapName currentdict /CMap defineresource pop end end
+endstream
+endobj
+6 0 obj
+<< /Type /FontDescriptor /FontName /T /Flags 32 /FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /CIDFontType2 /BaseFont /T /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 6 0 R /DW 600 >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type0 /BaseFont /T /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 5 0 R >>
+endobj
+9 0 obj
+<< /Length 905 >>
+stream
+BT /F2 10 Tf 50 760 Td (MUSTERDOKUMENT. F\374r Tests erfunden. Kein echter Kontoauszug.) Tj ET
+BT /F2 10 Tf 50 746 Td (SAMPLE DOCUMENT. Made up for testing.) Tj ET
+BT /F2 10 Tf 50 732 Td (Commerzbank AG) Tj ET
+BT /F2 10 Tf 50 718 Td (Kontoauszug Nr. 10/2026) Tj ET
+BT /F2 10 Tf 50 704 Td (Kontoinhaberin: Erika Mustermann) Tj ET
+BT /F2 10 Tf 50 690 Td (Anschrift: Beispielweg 7, 50667 K\366ln) Tj ET
+BT /F2 10 Tf 50 676 Td (IBAN: DE89 3704 0044 0532 0130 00) Tj ET
+BT /F2 10 Tf 50 662 Td (BIC: COBADEFFXXX) Tj ET
+BT /F2 10 Tf 50 648 Td (Zeitraum: 01.10.2026 bis 31.10.2026) Tj ET
+BT /F2 10 Tf 50 634 Td (Alter Kontostand: 2.450,00 EUR) Tj ET
+BT /F2 10 Tf 50 620 Td (01.10.2026 Miete Oktober -950,00) Tj ET
+BT /F2 10 Tf 50 606 Td (14.10.2026 \334berweisung ins Ausland -1.250,00) Tj ET
+BT /F2 10 Tf 50 592 Td (15.10.2026 Gehalt +3.120,00) Tj ET
+BT /F2 10 Tf 50 578 Td (Neuer Kontostand: 3.370,00 EUR) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 8 0 R /F2 4 0 R >> >> /Contents 9 0 R >>
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000122 00000 n 
+0000000302 00000 n 
+0000000399 00000 n 
+0000000659 00000 n 
+0000000817 00000 n 
+0000000990 00000 n 
+0000001116 00000 n 
+0000002072 00000 n 
+trailer
+<< /Size 11 /Root 1 0 R /Info 3 0 R >>
+startxref
+2209
+%%EOF

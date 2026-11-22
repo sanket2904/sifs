@@ -1,0 +1,66 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [10 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Title <FEFF00420072006900650066> /Producer (sample/tools/generate.mjs) /CreationDate (D:20260312100000Z) /ModDate (D:20260312100000Z) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 209 >>
+stream
+/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /T def /CMapType 2 def 1 begincodespacerange <0000> <FFFF> endcodespacerange
+endcmap CMapName currentdict /CMap defineresource pop end end
+endstream
+endobj
+6 0 obj
+<< /Type /FontDescriptor /FontName /T /Flags 32 /FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /CIDFontType2 /BaseFont /T /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 6 0 R /DW 600 >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type0 /BaseFont /T /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 5 0 R >>
+endobj
+9 0 obj
+<< /Length 753 >>
+stream
+BT /F2 10 Tf 50 760 Td (MUSTERDOKUMENT. F\374r Tests erfunden. Kein echter Brief.) Tj ET
+BT /F2 10 Tf 50 746 Td (SAMPLE DOCUMENT. Made up for testing.) Tj ET
+BT /F2 10 Tf 50 732 Td (Deutsche Bank) Tj ET
+BT /F2 10 Tf 50 718 Td (Berlin, 12.03.2026) Tj ET
+BT /F2 10 Tf 50 704 Td (Sehr geehrte Frau Mustermann,) Tj ET
+BT /F2 10 Tf 50 690 Td (ab dem 1. Mai 2026 gelten neue Meldegrenzen der Deutschen Bundesbank f\374r Zahlungen ins Ausland.) Tj ET
+BT /F2 10 Tf 50 676 Td (Ihr Konto: DE65 1007 0000 0123 4567 89) Tj ET
+BT /F2 10 Tf 50 662 Td (Die \304nderung betrifft Sie nur, wenn Sie mehr als 12.500 Euro ins Ausland senden.) Tj ET
+BT /F2 10 Tf 50 648 Td (Mit freundlichen Gr\374\337en) Tj ET
+BT /F2 10 Tf 50 634 Td (Deutsche Bank AG, Filiale Berlin) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 8 0 R /F2 4 0 R >> >> /Contents 9 0 R >>
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000122 00000 n 
+0000000278 00000 n 
+0000000375 00000 n 
+0000000635 00000 n 
+0000000793 00000 n 
+0000000966 00000 n 
+0000001092 00000 n 
+0000001896 00000 n 
+trailer
+<< /Size 11 /Root 1 0 R /Info 3 0 R >>
+startxref
+2033
+%%EOF

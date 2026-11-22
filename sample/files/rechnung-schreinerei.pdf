@@ -1,0 +1,67 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [10 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Title <FEFF0052006500630068006E0075006E0067> /Producer (sample/tools/generate.mjs) /CreationDate (D:20260620140000Z) /ModDate (D:20260620140000Z) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 209 >>
+stream
+/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /T def /CMapType 2 def 1 begincodespacerange <0000> <FFFF> endcodespacerange
+endcmap CMapName currentdict /CMap defineresource pop end end
+endstream
+endobj
+6 0 obj
+<< /Type /FontDescriptor /FontName /T /Flags 32 /FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /CIDFontType2 /BaseFont /T /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 6 0 R /DW 600 >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type0 /BaseFont /T /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 5 0 R >>
+endobj
+9 0 obj
+<< /Length 741 >>
+stream
+BT /F2 10 Tf 50 760 Td (MUSTERDOKUMENT. F\374r Tests erfunden. Keine echte Rechnung.) Tj ET
+BT /F2 10 Tf 50 746 Td (SAMPLE DOCUMENT. Made up for testing.) Tj ET
+BT /F2 10 Tf 50 732 Td (Musterfirma Schreinerei GmbH, Holzweg 3, 10115 Berlin) Tj ET
+BT /F2 10 Tf 50 718 Td (Telefon: +49 30 1234 5678) Tj ET
+BT /F2 10 Tf 50 704 Td (Rechnung) Tj ET
+BT /F2 10 Tf 50 690 Td (Rechnungsnummer: 2026 0815 4711) Tj ET
+BT /F2 10 Tf 50 676 Td (Datum: 20.06.2026) Tj ET
+BT /F2 10 Tf 50 662 Td (Einbau eines B\374cherregals 1.180,00 EUR) Tj ET
+BT /F2 10 Tf 50 648 Td (Bitte \374berweisen Sie den Betrag bis zum 04.07.2026 auf:) Tj ET
+BT /F2 10 Tf 50 634 Td (IBAN: DE88 3704 0044 0532 0130 00) Tj ET
+BT /F2 10 Tf 50 620 Td (Kreditinstitut: Commerzbank) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 8 0 R /F2 4 0 R >> >> /Contents 9 0 R >>
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000122 00000 n 
+0000000290 00000 n 
+0000000387 00000 n 
+0000000647 00000 n 
+0000000805 00000 n 
+0000000978 00000 n 
+0000001104 00000 n 
+0000001896 00000 n 
+trailer
+<< /Size 11 /Root 1 0 R /Info 3 0 R >>
+startxref
+2033
+%%EOF

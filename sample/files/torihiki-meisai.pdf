@@ -1,0 +1,151 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [10 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Title <FEFF53D65F15660E7D30> /Producer (sample/tools/generate.mjs) /CreationDate (D:20260903010000Z) /ModDate (D:20260903010000Z) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 1382 >>
+stream
+/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /T def /CMapType 2 def 1 begincodespacerange <0000> <FFFF> endcodespacerange
+82 beginbfchar
+<0001> <898B>
+<0002> <672C>
+<0003> <003A>
+<0004> <0020>
+<0005> <30C6>
+<0006> <30B9>
+<0007> <30C8>
+<0008> <7528>
+<0009> <306B>
+<000A> <4F5C>
+<000B> <3063>
+<000C> <305F>
+<000D> <67B6>
+<000E> <7A7A>
+<000F> <306E>
+<0010> <66F8>
+<0011> <985E>
+<0012> <3067>
+<0013> <3059>
+<0014> <3002>
+<0015> <5B9F>
+<0016> <5728>
+<0017> <660E>
+<0018> <7D30>
+<0019> <306F>
+<001A> <3042>
+<001B> <308A>
+<001C> <307E>
+<001D> <305B>
+<001E> <3093>
+<001F> <307F>
+<0020> <305A>
+<0021> <307B>
+<0022> <9280>
+<0023> <884C>
+<0024> <666E>
+<0025> <901A>
+<0026> <9810>
+<0027> <91D1>
+<0028> <53D6>
+<0029> <5F15>
+<002A> <304A>
+<002B> <540D>
+<002C> <524D>
+<002D> <5C71>
+<002E> <7530>
+<002F> <592A>
+<0030> <90CE>
+<0031> <69D8>
+<0032> <53E3>
+<0033> <5EA7>
+<0034> <756A>
+<0035> <53F7>
+<0036> <0034>
+<0037> <0031>
+<0038> <0037>
+<0039> <0033>
+<003A> <0035>
+<003B> <0032>
+<003C> <671F>
+<003D> <9593>
+<003E> <0030>
+<003F> <0036>
+<0040> <5E74>
+<0041> <0038>
+<0042> <6708>
+<0043> <65E5>
+<0044> <FF5E>
+<0045> <7E70>
+<0046> <8D8A>
+<0047> <002C>
+<0048> <5186>
+<0049> <7D66>
+<004A> <4E0E>
+<004B> <632F>
+<004C> <8FBC>
+<004D> <5BB6>
+<004E> <8CC3>
+<004F> <002D>
+<0050> <0039>
+<0051> <6B8B>
+<0052> <9AD8>
+endbfchar
+endcmap CMapName currentdict /CMap defineresource pop end end
+endstream
+endobj
+6 0 obj
+<< /Type /FontDescriptor /FontName /T /Flags 32 /FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /CIDFontType2 /BaseFont /T /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 6 0 R /DW 600 >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type0 /BaseFont /T /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 5 0 R >>
+endobj
+9 0 obj
+<< /Length 1020 >>
+stream
+BT /F1 10 Tf 50 760 Td <000100020003000400050006000700080009000A000B000C000D000E000F0010001100120013001400150016000F0017001800120019001A001B001C001D001E0014> Tj ET
+BT /F2 10 Tf 50 746 Td (SAMPLE DOCUMENT. Made up for testing.) Tj ET
+BT /F1 10 Tf 50 732 Td <001F0020002100220023> Tj ET
+BT /F1 10 Tf 50 718 Td <002400250026002700040028002900170018> Tj ET
+BT /F1 10 Tf 50 704 Td <002A002B002C00030004002D002E0004002F003000040031> Tj ET
+BT /F1 10 Tf 50 690 Td <00320033003400350003000400360036003700380039003A003B> Tj ET
+BT /F1 10 Tf 50 676 Td <003C003D00030004003B003E003B003F004000410042003700430044003B003E003B003F004000410042003900370043> Tj ET
+BT /F1 10 Tf 50 662 Td <002C004200450046000300040037003B003A0047003E003E003E0048> Tj ET
+BT /F1 10 Tf 50 648 Td <004100420037003E004300040049004A004B004C0004003B0041003E0047003E003E003E0048> Tj ET
+BT /F1 10 Tf 50 634 Td <00410042003B003800430004004D004E0004004F0050003A0047003E003E003E0048> Tj ET
+BT /F1 10 Tf 50 620 Td <005100520003000400390037003E0047003E003E003E0048> Tj ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 8 0 R /F2 4 0 R >> >> /Contents 9 0 R >>
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000122 00000 n 
+0000000274 00000 n 
+0000000371 00000 n 
+0000001805 00000 n 
+0000001963 00000 n 
+0000002136 00000 n 
+0000002262 00000 n 
+0000003334 00000 n 
+trailer
+<< /Size 11 /Root 1 0 R /Info 3 0 R >>
+startxref
+3471
+%%EOF
