@@ -39,12 +39,7 @@ pub fn record_of(path: &Path, root: &str) -> Option<FileRecord> {
     } else {
         path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).unwrap_or_default()
     };
-    let modified = meta
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+    let (modified, modified_ns) = mtime(&meta);
     Some(FileRecord {
         path: path_str,
         root: root.to_string(),
@@ -54,7 +49,15 @@ pub fn record_of(path: &Path, root: &str) -> Option<FileRecord> {
         size: if is_dir { 0 } else { meta.len() as i64 },
         modified,
         inode: meta.ino() as i64,
+        modified_ns: Some(modified_ns),
     })
+}
+
+/// When a file was last changed: Unix seconds, and nanoseconds within the
+/// second (0 and 0 if the system can't say).
+pub(crate) fn mtime(meta: &std::fs::Metadata) -> (i64, i64) {
+    let since = meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok());
+    since.map_or((0, 0), |d| (d.as_secs() as i64, i64::from(d.subsec_nanos())))
 }
 
 /// Indexes everything under root that the rules allow, then removes rows of

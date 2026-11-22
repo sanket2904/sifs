@@ -3,11 +3,12 @@
 	import { listen } from '@tauri-apps/api/event';
 	import { open as pickFolder } from '@tauri-apps/plugin-dialog';
 	import { onMount, tick } from 'svelte';
+	import { BLANK, createSearch } from '../lib/search.js';
 
 	let query = $state('');
-	let results = $state([]);
+	/** @type {import('../lib/search.js').View} */
+	let view = $state.raw(BLANK);
 	let selected = $state(0);
-	let searchMs = $state(null);
 	let settings = $state(null);
 	let showSettings = $state(false);
 	let progress = $state({});
@@ -18,32 +19,42 @@
 	let failures = $state(null);
 	let error = $state('');
 	let input;
-	let timer;
-	let latest = 0;
+	/**
+	 * The file the user moved the selection to, followed while the query
+	 * stays the same; until then the first row is selected.
+	 * @type {string | null}
+	 */
+	let chosen = null;
 
-	async function search() {
-		const id = ++latest;
-		const q = query.trim();
-		if (!q) {
-			results = [];
-			searchMs = null;
-			return;
+	const search = createSearch({
+		invoke,
+		now: () => performance.now(),
+		setTimer: (run, ms) => setTimeout(run, ms),
+		clearTimer: (id) => clearTimeout(/** @type {number} */ (id)),
+		show(next) {
+			const moved = next.rows !== view.rows;
+			view = next;
+			if (!moved) return;
+			const at = chosen === null ? -1 : next.rows.findIndex((hit) => hit.path === chosen);
+			selected = Math.max(at, 0);
+			reveal();
 		}
-		const started = performance.now();
-		try {
-			const hits = await invoke('search_files', { query: q, limit: 60 });
-			if (id !== latest) return; // a newer search has started
-			results = hits;
-			selected = 0;
-			searchMs = Math.round(performance.now() - started);
-		} catch (e) {
-			error = String(e);
-		}
+	});
+
+	/** @param {number} to */
+	function move(to) {
+		selected = Math.max(0, Math.min(to, view.rows.length - 1));
+		chosen = view.rows[selected]?.path ?? null;
+	}
+
+	async function reveal() {
+		await tick();
+		document.getElementById(`hit-${selected}`)?.scrollIntoView({ block: 'nearest' });
 	}
 
 	function onInput() {
-		clearTimeout(timer);
-		timer = setTimeout(search, 60);
+		chosen = null;
+		search.type(query);
 	}
 
 	async function openHit(hit, reveal = false) {
@@ -56,19 +67,19 @@
 
 	async function onKey(e) {
 		if (e.key === 'ArrowDown') {
-			selected = Math.min(selected + 1, results.length - 1);
+			move(selected + 1);
 			e.preventDefault();
 		} else if (e.key === 'ArrowUp') {
-			selected = Math.max(selected - 1, 0);
+			move(selected - 1);
 			e.preventDefault();
-		} else if (e.key === 'Enter' && results[selected]) {
-			openHit(results[selected], e.metaKey);
+		} else if (e.key === 'Enter' && view.rows[selected]) {
+			openHit(view.rows[selected], e.metaKey);
 		} else if (e.key === 'Escape') {
+			chosen = null;
 			query = '';
-			results = [];
+			search.type('');
 		}
-		await tick();
-		document.getElementById(`hit-${selected}`)?.scrollIntoView({ block: 'nearest' });
+		await reveal();
 	}
 
 	async function loadSettings() {
@@ -98,7 +109,7 @@
 	async function removeFolder(path) {
 		await invoke('remove_folder', { path });
 		await loadSettings();
-		search();
+		search.changed();
 	}
 
 	async function saveIgnore() {
@@ -152,13 +163,19 @@
 				const { [e.payload.root]: _, ...rest } = progress;
 				progress = rest;
 				loadSettings();
-				search();
+				search.changed();
 			}),
 			listen('scan-error', (e) => (error = e.payload)),
-			listen('extract-progress', (e) => (contents = e.payload)),
-			listen('index-changed', () => query && search())
+			listen('extract-progress', (e) => {
+				contents = e.payload;
+				search.read();
+			}),
+			listen('index-changed', () => search.changed())
 		];
-		return () => unlisten.forEach((p) => p.then((f) => f()));
+		return () => {
+			search.stop();
+			unlisten.forEach((p) => p.then((f) => f()));
+		};
 	});
 </script>
 
@@ -184,6 +201,7 @@
 		</div>
 	{/if}
 	{#if error}<div class="error">{error}</div>{/if}
+	{#if view.error}<div class="error">{view.error}</div>{/if}
 
 	{#if showSettings && settings}
 		<section class="settings">
@@ -232,12 +250,12 @@
 	{/if}
 
 	<ul class="results">
-		{#each results as hit, i}
+		{#each view.rows as hit, i}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<li
 				id="hit-{i}"
 				class:selected={i === selected}
-				onclick={() => (selected = i)}
+				onclick={() => move(i)}
 				ondblclick={() => openHit(hit)}
 				role="option"
 				aria-selected={i === selected}
@@ -246,14 +264,21 @@
 				<span class="name">{hit.name}{#if hit.fuzzy}<span class="muted"> · close match</span>{/if}</span>
 				<span class="where">{folderOf(hit)}</span>
 				<span class="meta">{hit.is_dir ? '' : size(hit.size)} · {when(hit.modified)}</span>
+				{#if hit.found}
+					<span class="found"
+						>{#if hit.found.label}<span class="label">{hit.found.label}</span>{' · '}{/if}{#each hit.found.snippet as piece}{#if piece.hit}<b
+								>{piece.text}</b
+							>{:else}{piece.text}{/if}{/each}</span
+					>
+				{/if}
 			</li>
 		{/each}
 	</ul>
-	{#if query && results.length === 0 && searchMs !== null}
+	{#if query && view.rows.length === 0 && view.ms !== null && !view.pending}
 		<p class="muted center">Nothing found for “{query}”.</p>
 	{/if}
 	<footer class="muted">
-		{#if searchMs !== null}{results.length} results in {searchMs} ms · {/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
+		{#if view.searching}still searching{' · '}{:else if view.ms !== null}{#if view.pending && view.rows.length === 0}searching inside files{:else}{view.rows.length} results in {view.ms} ms{/if}{' · '}{/if}{#if view.flags.namesSlow}names took too long{' · '}{/if}{#if view.flags.namesCapped}many names match: the best 5,000 compared{' · '}{/if}{#if view.flags.contentsSlow}contents took too long{' · '}{/if}{#if view.flags.contentsCapped}very common words: only some files' contents searched{' · '}{/if}{#if view.ms !== null && contents?.waiting}still reading {contents.waiting.toLocaleString()} files{' · '}{/if}{#if view.flags.wordsLeftOut}too many words, some not searched{' · '}{/if}↑↓ to move · Enter to open · ⌘Enter to show in Finder
 	</footer>
 </main>
 
@@ -399,6 +424,20 @@
 		background: var(--bg);
 		border: 1px solid var(--border);
 		border-radius: 6px;
+	}
+	.found {
+		grid-column: 2 / -1;
+		font-size: 0.85em;
+		opacity: 0.75;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.found b {
+		font-weight: 600;
+	}
+	.found .label {
+		font-style: italic;
 	}
 	.results {
 		list-style: none;
