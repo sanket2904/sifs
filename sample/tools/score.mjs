@@ -1,8 +1,8 @@
 // Scores one extractor output against labels.json, as sample/FORMAT.md says:
 //   node sample/tools/score.mjs <output.json> [--json <path>]
 // Prints a table and writes the score as JSON (default: <output>.score.json).
-// Exits 1 when any link, merge, card or answer is wrong, 2 when the output
-// breaks the format. Leaving something out never fails.
+// Exits 1 when any link, merge, card, attachment or answer is wrong, 2 when
+// the output breaks the format. Leaving something out never fails.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SAMPLE } from './generate.mjs';
@@ -162,6 +162,8 @@ function parseOutput(output, textSet) {
 			if (!Array.isArray(link.reasons) || !link.reasons.length) fail(w, 'needs a reason');
 			for (const r of link.reasons)
 				if (!REASONS.has(r)) fail(w, `reason ${JSON.stringify(r)} is not known`);
+			if (link.reasons.includes('paired-code') && (link.via === undefined || link.via === null))
+				fail(w, 'paired-code needs a via');
 			return { identifier, org, reasons: link.reasons, via: optionalIdent(link.via, w) };
 		});
 		let statement = null;
@@ -266,6 +268,8 @@ function pair(labelled, output, keyOf) {
 }
 
 const squash = (v) => v.replace(/\s/gu, '');
+// A card name ignores case and all whitespace: 三菱 UFJ 銀行 is 三菱UFJ銀行.
+const cardName = (v) => v.normalize('NFKC').toUpperCase().replace(/\s/gu, '');
 const normName = (v) =>
 	v
 		.normalize('NFKC')
@@ -281,7 +285,6 @@ const CODE_KINDS = new Set(['ifsc', 'bic', 'iban']);
 export function score(labels, textSet, rawOutput, directory) {
 	const out = parseOutput(rawOutput, textSet);
 	const mode = out.directory;
-	const byValue = out.textSet !== 'text';
 	const { rows, items, add } = tallies();
 	const langOf = (id) => textSet.docs.get(id)?.lang;
 	const labelDocs = new Map(labels.documents.map((d) => [d.id, d]));
@@ -308,7 +311,7 @@ export function score(labels, textSet, rawOutput, directory) {
 	const names = new Map();
 	const addName = (t, name) => {
 		if (!names.has(t)) names.set(t, new Set());
-		names.get(t).add(normName(name));
+		names.get(t).add(cardName(name));
 	};
 	for (const [id, o] of Object.entries(labels.organisations))
 		for (const name of [o.name, ...o.names]) addName(id, name);
@@ -320,14 +323,15 @@ export function score(labels, textSet, rawOutput, directory) {
 			: []
 	);
 	const nameFits = (t, name) =>
-		names.get(t)?.has(normName(name)) ||
-		(entryNames.get(directoryIdOf(t)) ?? []).some((n) => normName(n) === normName(name));
+		names.get(t)?.has(cardName(name)) ||
+		(entryNames.get(directoryIdOf(t)) ?? []).some((n) => cardName(n) === cardName(name));
 
 	const pagesOf = (id) => textSet.docs.get(id).pages;
 	const possible = (docId, s, value) =>
 		locate(pagesOf(docId)[s.page - 1].text, s.text, value) !== null;
-	const mentionKey = byValue ? (m) => `${m.page}:${m.text}` : spanKey;
-	const identKey = byValue ? (i) => `${i.page}:${squash(i.value)}` : spanKey;
+	// Only a page the OCR read can move a span. Every other page holds the
+	// same text in both text sets and matches by span.
+	const ocrRead = (docId, page) => out.textSet !== 'text' && pagesOf(docId)[page - 1].scanned;
 
 	const labelled = (id) => {
 		const d = labelDocs.get(id);
@@ -353,6 +357,9 @@ export function score(labels, textSet, rawOutput, directory) {
 			label.identifiers.filter((i) => !possible(id, i, i.value)).map((i) => i.id)
 		);
 		const impossibleMention = new Set(label.orgs.filter((m) => !possible(id, m)).map((m) => m.id));
+		const mentionKey = (m) => (ocrRead(id, m.page) ? `${m.page}:${m.text}` : spanKey(m));
+		const identKey = (i) => (ocrRead(id, i.page) ? `${i.page}:${squash(i.value)}` : spanKey(i));
+		const decoyKey = (n) => (ocrRead(id, n.page) ? `${n.page}:${squash(n.text)}` : spanKey(n));
 		const idents = pair(label.identifiers, output.identifiers, identKey);
 		// The labelled identifier an output identifier is: the one it pairs
 		// with, when the kind and value agree.
@@ -366,6 +373,9 @@ export function score(labels, textSet, rawOutput, directory) {
 			identById,
 			impossibleIdent,
 			impossibleMention,
+			mentionKey,
+			identKey,
+			decoyKey,
 			mentions: pair(label.orgs, output.orgs, mentionKey),
 			idents,
 			labelOf
@@ -454,6 +464,7 @@ export function score(labels, textSet, rawOutput, directory) {
 			);
 	}
 
+	const wrongAttachments = [];
 	for (const w of work) {
 		const { id, lang, label, output } = w;
 		const doc = (m, o) => `${m.text} at ${m.page}:${m.start}${o ? ` (${o.org})` : ''}`;
@@ -492,7 +503,21 @@ export function score(labels, textSet, rawOutput, directory) {
 		}
 		for (const o of w.mentions.unmatched) {
 			if (!o.org) continue;
-			const notOrg = label.not_orgs.find((n) => mentionKey(n) === mentionKey(o));
+			const notOrgs = label.not_orgs.filter((n) => w.mentionKey(n) === w.mentionKey(o));
+			const notOrg = notOrgs[0];
+			// A not_orgs entry names the directory entry the text is not. The
+			// labels' organisation with that directory id is the one it excludes.
+			for (const t of targetsOf(o.org)) {
+				const excluded = notOrgs.find((n) => n.entry === directoryIdOf(t));
+				if (excluded)
+					wrongAttachments.push({
+						document: id,
+						key: o.org,
+						organisation: t,
+						mention: `${o.text} at ${o.page}:${o.start}`,
+						why: excluded.why
+					});
+			}
 			add(
 				'mentions',
 				lang,
@@ -522,9 +547,7 @@ export function score(labels, textSet, rawOutput, directory) {
 			}
 		}
 		for (const o of w.idents.unmatched) {
-			const decoy = label.not_identifiers.find(
-				(n) => (byValue ? `${n.page}:${squash(n.text)}` : spanKey(n)) === identKey(o)
-			);
+			const decoy = label.not_identifiers.find((n) => w.decoyKey(n) === w.identKey(o));
 			add(
 				`identifier:${o.kind}`,
 				lang,
@@ -803,6 +826,7 @@ export function score(labels, textSet, rawOutput, directory) {
 	const failed =
 		merges.length > 0 ||
 		wrongCards.length > 0 ||
+		wrongAttachments.length > 0 ||
 		[...rows].some(([m, r]) => FAILING.has(m) && r.total.wrong > 0);
 	return {
 		extractor: out.extractor,
@@ -812,6 +836,7 @@ export function score(labels, textSet, rawOutput, directory) {
 		measures,
 		merges,
 		wrong_cards: wrongCards,
+		wrong_attachments: wrongAttachments,
 		splits,
 		...items
 	};
@@ -839,6 +864,14 @@ export function table(result) {
 	]);
 	body.push(['wrong merges', '', String(result.merges.length), '', '', ...langs.map(() => '')]);
 	body.push(['wrong cards', '', String(result.wrong_cards.length), '', '', ...langs.map(() => '')]);
+	body.push([
+		'wrong attachments',
+		'',
+		String(result.wrong_attachments.length),
+		'',
+		'',
+		...langs.map(() => '')
+	]);
 	body.push(['splits', String(result.splits.length), '', '', '', ...langs.map(() => '')]);
 	const widths = head.map((h, i) => Math.max(h.length, ...body.map((row) => row[i].length)));
 	const line = (row) =>
@@ -852,6 +885,10 @@ export function table(result) {
 		out.push(`WRONG MERGE: key ${m.key} covers ${m.organisations.join(', ')}`);
 	for (const c of result.wrong_cards)
 		out.push(`WRONG CARD: key ${c.key} is ${c.organisation} but claims ${c.claims.join(' and ')}`);
+	for (const a of result.wrong_attachments)
+		out.push(
+			`WRONG ATTACHMENT: ${a.document} on key ${a.key} (${a.organisation}) by ${a.mention}, a name the labels exclude for it (${a.why})`
+		);
 	for (const s of result.splits)
 		out.push(`split: ${s.organisation} over keys ${s.keys.join(', ')}`);
 	for (const kind of ['wrong', 'impossible', 'left_out'])
@@ -859,8 +896,8 @@ export function table(result) {
 			out.push(`${kind.replace('_', ' ')}: ${i.measure} ${i.document ?? ''} ${i.what}`);
 	out.push(
 		result.failed
-			? 'FAIL: a link, a merge, a card or an answer is wrong'
-			: 'pass: no wrong link, merge, card or answer'
+			? 'FAIL: a link, a merge, a card, an attachment or an answer is wrong'
+			: 'pass: no wrong link, merge, card, attachment or answer'
 	);
 	return out.join('\n');
 }
@@ -876,7 +913,7 @@ if (isMain(import.meta.url)) {
 	const path = resolve(args[0]);
 	try {
 		const output = JSON.parse(readFileSync(path, 'utf8'));
-		const textSet = readTextSet(TEXT_SETS.includes(output.text_set) ? output.text_set : 'text');
+		const textSet = readTextSet(TEXT_SETS.includes(output?.text_set) ? output.text_set : 'text');
 		const result = score(
 			readLabels(new URL('labels.json', SAMPLE)),
 			textSet,

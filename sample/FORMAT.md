@@ -54,7 +54,7 @@ A document entry holds:
 | `id` | The document id. |
 | `orgs` | An organisation mention: a span, `org` (a key, or `null` for a name that is no organisation the extractor can settle), and `settled_by`: `name`, `mention` or `code` when the document settles it (the README's evidence kinds), `directory` when only a directory lookup does, or `null`. |
 | `identifiers` | A span, `id` (the extractor's own, unique in the document), `kind` (a README identifier kind), `value` (as "Values" below gives it), and `valid` (`true`, `false`, or `null` for a kind with no check). |
-| `links` | Identifier held at organisation: `identifier` (an identifier `id`), `org` (a key), `reasons` (README link reasons), and `via` (an identifier `id`) with `paired-code`. |
+| `links` | Identifier held at organisation: `identifier` (an identifier `id`), `org` (a key), `reasons` (README link reasons), and `via` (an identifier `id`), which a link with `paired-code` must give. |
 | `statement` | `from`, `to` (`YYYY-MM-DD`), `accounts` (identifier ids that spell the statement's own account), and `issuer` (a key). Absent when the document is not a statement. |
 | `passport` | `holder` (`surname`, `given`), `number` and `mrz` (identifier ids of the document, or `null`), `issued` (a date, or `null`), `expiry` (a date, `cannot-tell`, or `null`), `expiry_at` (a span, or `null`) and `current`. Absent when the document is not a passport. |
 
@@ -117,9 +117,11 @@ The machine-readable zone in `passport-rohan`:
 
 ## How the scorer decides
 
-**Matching.** On `text/`, an output mention or identifier matches the label with the same span. On `text-ocr/`, spans cannot line up, so a mention matches by page and text, and an identifier by page and value. Equal texts or values pair by position on the page (page, then start), first with first, whatever order the output lists them in.
+**Matching.** An output mention or identifier matches the label with the same span. On `text-ocr/`, a scanned page holds what the OCR read, so spans there cannot line up: on a scanned page a mention matches by page and text, and an identifier by page and value. Every other page of `text-ocr/` holds the same text as in `text/` and matches by span, exactly as on `text/`. Equal texts or values pair by position on the page (page, then start), first with first, whatever order the output lists them in.
 
 **Mentions.** The right organisation for a labelled mention is the README's rule. With the directory off it is `resolved_by_document.org`, or none. With it on, the document still decides first, and a mention the document does not settle is the lookup's entry when the lookup is exact, and none otherwise. A mention with a key where the right answer is none is wrong. A mention with `settled_by: "directory"` in a run with the directory off is wrong. An output mention with a key that matches no labelled mention is wrong, whether it is a `not_orgs` name or any other text.
+
+**Attachments.** A `not_orgs` entry names, by its `entry`, the directory entry its text is not. The organisation it excludes is the one in `labels.json` whose `directory` is that id. An output mention with a key, on a `not_orgs` span, where the key maps to the organisation that entry excludes, is a WRONG ATTACHMENT: the document is on that organisation's card because of a name the labels say is not it, as with `HDFC` inside `HDFC Life Insurance Company Limited` keyed to HDFC Bank. It is listed with the document and the key, counted, and the run fails. The rule reads the labels, not the run's directory, so with the directory off the same hit by a name the extractor holds itself fails the same way. An organisation with no directory id is excluded by no entry, so its key on a `not_orgs` span is only a wrong mention. A key on a labelled mention whose right answer is none, such as `BOI` in `household-notes`, is only a wrong mention too.
 
 **Organisation keys.** Each key maps to the set of labelled organisations its matched mentions land on, across all documents. A key that no mention lands on, such as a bank known only by the IFSC beside an account, maps through its links from identifiers that carry their institution inside them: an IFSC, a BIC or an IBAN. It maps to the organisations the labels link those identifiers to. An account linked to the key never says who the key is, whatever the reason given. Then:
 
@@ -128,7 +130,7 @@ The machine-readable zone in `passport-rohan`:
 - A labelled organisation that two or more keys land on is a SPLIT. Splits are listed and counted. They are not wrong.
 - A key whose set is empty is no labelled organisation. A link to it is wrong.
 
-**Cards.** A key's entry in `organisations` states who the key is, and the scorer checks it against the organisation the key maps to. `name` may be `null`, for example for a bank known only by a code with the directory off. When given, it must be a name the labels give that organisation: its `name` or one of its `names` in `labels.json`, the text of a labelled mention of it, or, with the directory on, a name of its directory entry. Case and spacing do not count. `directory`, when given, must be that organisation's directory id. A key whose card gives another name or another organisation's directory id is a WRONG CARD: the organisation's papers are on a card that says it is someone else. As with a merge, every mention, link and issuer that uses the key is wrong, and the run fails. A missing directory id is left out, not wrong.
+**Cards.** A key's entry in `organisations` states who the key is, and the scorer checks it against the organisation the key maps to. `name` may be `null`, for example for a bank known only by a code with the directory off. When given, it must be a name the labels give that organisation: its `name` or one of its `names` in `labels.json`, the text of a labelled mention of it, or, with the directory on, a name of its directory entry. Case and whitespace do not count, so `三菱 UFJ 銀行` is `三菱UFJ銀行`. Nothing else is folded: `HDFC Ltd` is not `HDFC`, and punctuation counts. `directory`, when given, must be that organisation's directory id. A key whose card gives another name or another organisation's directory id is a WRONG CARD: the organisation's papers are on a card that says it is someone else. As with a merge, every mention, link and issuer that uses the key is wrong, and the run fails. A missing directory id is left out, not wrong.
 
 `org_directory` scores each mapped key's `directory`. With the directory on it must be the organisation's directory id, and `null` counts as left out. With it off it must be `null`.
 
@@ -142,7 +144,7 @@ The machine-readable zone in `passport-rohan`:
 
 **What OCR made impossible.** On `text-ocr/`, a labelled item whose text or value the page does not hold, with any spacing, is counted as impossible instead of left out. A link is impossible when its identifier is, or when its only reason is `paired-code` through an impossible code. An extractor that repairs the OCR text and finds the value anyway scores it as right.
 
-**Exit status.** 0 when no link, merge, card or answer is wrong. 1 when one is. 2 when the output breaks this format. A left-out item never fails a run.
+**Exit status.** 0 when no link, merge, card, attachment or answer is wrong. 1 when one is. 2 when the output breaks this format, including a root that is not an object. A left-out item never fails a run.
 
 ## How to score an extractor
 
@@ -153,8 +155,8 @@ The machine-readable zone in `passport-rohan`:
    node sample/tools/score.mjs run-on-text.json
    ```
 
-   It prints a table (right, wrong, left out and impossible for each measure, in total and per language), the merges, wrong cards and splits, and every wrong, impossible and left-out item. It writes the same as JSON to `run-on-text.score.json`, or to the path after `--json`.
-3. The bar is no wrong link, no wrong merge, no wrong card and no wrong answer on all four runs. Leaving something out is allowed.
+   It prints a table (right, wrong, left out and impossible for each measure, in total and per language), the merges, wrong cards, wrong attachments and splits, and every wrong, impossible and left-out item. It writes the same as JSON to `run-on-text.score.json`, or to the path after `--json`.
+3. The bar is no wrong link, no wrong merge, no wrong card, no wrong attachment and no wrong answer on all four runs. Leaving something out is allowed.
 
 `node sample/tools/reference.mjs <on|off> <text|text-ocr> <path>` writes the output a perfect extractor would give, made from the labels. It scores full marks on `text/`, and on `text-ocr/` it loses only what OCR made impossible. `node --test sample/tools/score.test.mjs` tests each scoring rule, and `node sample/tools/score-mutants.mjs` removes one rule at a time from `score.mjs` and shows that a test fails.
 
@@ -170,3 +172,10 @@ The machine-readable zone in `passport-rohan`:
 - Passport `number`, `mrz`, `issued`, `expiry` and `expiry_at` are checked; `issued`, `mrz` and `expiry_at` are not scored.
 - The worked example gives the Kotak account that the text holds, `1234567890`.
 - The tools run when started through a symlinked path, such as one under `/tmp` on macOS.
+
+## Changes in round 2
+
+- On `text-ocr/`, only a scanned page matches by page and text or value. Every other page matches by span, as on `text/`.
+- A keyed mention on a `not_orgs` span, where the key maps to the organisation the entry excludes, is a wrong attachment, which fails the run.
+- A card name ignores all whitespace, not only repeated spaces, and folds nothing else.
+- A root that is not an object, and a `paired-code` link with no `via`, are format errors.

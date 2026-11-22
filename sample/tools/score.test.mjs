@@ -344,11 +344,7 @@ for (const directory of ['on', 'off'])
 		for (const name of ['HDFC Ltd', 'HDFC-Bank']) {
 			const output = perfect(directory);
 			card(output, 'hdfc-bank').name = name;
-			assert.deepEqual(
-				run(output).wrong_cards.map((c) => c.claims),
-				[[`name "${name}"`]],
-				name
-			);
+			assert.deepEqual(run(output).wrong_cards.map((c) => c.claims), [[`name "${name}"`]], name);
 		}
 	});
 
@@ -571,18 +567,25 @@ test('two mentions or two identifiers on one span break the format, on both text
 	}
 });
 
-test('on the OCR text set, equal texts pair by position, so row order cannot hide a merge', () => {
+test('on a page the OCR read, equal values pair by position, so row order cannot change a score', () => {
 	const output = perfect('on', 'text-ocr');
-	const d = doc(output, 'hdfc-letter-hindi');
-	d.orgs.filter((m) => m.text === 'एचडीएफसी बैंक')[1].org = 'ref:kotak';
+	const d = doc(output, 'scan-bob-letter');
+	d.identifiers.push({
+		...spanOf(output, d.id, 'BANK OF BARODA'),
+		id: 'again',
+		kind: 'card',
+		value: '12340100005678',
+		valid: null
+	});
 	const inOrder = run(output);
-	d.orgs.reverse();
-	const reversed = run(output);
-	assert.deepEqual(reversed, inOrder);
-	assert.deepEqual(inOrder.merges, [{ key: 'ref:kotak', organisations: ['hdfc-bank', 'kotak'] }]);
+	d.identifiers.reverse();
+	assert.deepEqual(run(output), inOrder);
 	assert.deepEqual(
-		inOrder.wrong.filter((w) => w.document === d.id).map((w) => w.what),
-		['एचडीएफसी बैंक at 1:291 (ref:kotak): key ref:kotak merges kotak and hdfc-bank']
+		wrongs(inOrder, 'identifier:account').map((w) => w.what),
+		[
+			'account 12340100005678: given kind card',
+			'account 12340100005678: not a labelled identifier'
+		]
 	);
 });
 

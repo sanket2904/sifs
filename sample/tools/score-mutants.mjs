@@ -202,6 +202,37 @@ const MUTANTS = [
 		': p.expiry_at;'
 	],
 	[
+		'tools/score.mjs',
+		'on the OCR text set, a page the OCR did not read matches by span',
+		"out.textSet !== 'text' && pagesOf(docId)[page - 1].scanned",
+		"out.textSet !== 'text'"
+	],
+	[
+		'tools/score.mjs',
+		'a keyed mention the labels exclude for its organisation is a wrong attachment',
+		'const excluded = notOrgs.find((n) => n.entry === directoryIdOf(t));',
+		'const excluded = null;'
+	],
+	['tools/score.mjs', 'a wrong attachment fails the run', 'wrongAttachments.length > 0 ||', ''],
+	[
+		'tools/score.mjs',
+		'a card name ignores all whitespace',
+		".toUpperCase().replace(/\\s/gu, '');",
+		".toUpperCase().replace(/\\s+/gu, ' ').trim();"
+	],
+	[
+		'tools/score.mjs',
+		'a root that is not an object breaks the format',
+		'TEXT_SETS.includes(output?.text_set)',
+		'TEXT_SETS.includes(output.text_set)'
+	],
+	[
+		'tools/score.mjs',
+		'paired-code needs a via',
+		"if (link.reasons.includes('paired-code') && (link.via === undefined || link.via === null))",
+		'if (false)'
+	],
+	[
 		'tools/lib/main.mjs',
 		'a tool started through a symlinked path runs',
 		'realpathSync(process.argv[1]) === fileURLToPath(url)',
