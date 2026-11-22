@@ -1,0 +1,13 @@
+{
+	"id": "scan-pnb-deposit",
+	"file": "scan-deposit-slip.pdf",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-09-02T07:30:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT - MADE UP FOR TESTING\nHOTA REHL SLIP\nPUNJAB NATIONAL BANK\nCASH DEPOSIT SLIP CCOUNTERFOIL)\nDATE: 02/09/2026\nACCOUNT NO: 0123000100456789\nIFSCEPUNBOSHMPLT\nHAMESНEHА UDAHARAN\nAMOUNT: RS 15,000.00\nRUPEES FIFTEEN THOUSAND ONLY",
+			"scanned": true
+		}
+	]
+}

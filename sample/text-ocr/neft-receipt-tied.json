@@ -1,0 +1,13 @@
+{
+	"id": "neft-receipt-tied",
+	"file": "funds-transfer-receipt.pdf",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-09-22T05:12:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real receipt.\nHDFC NetBanking - Funds transfer receipt\nTransaction reference: N2026092212345678\nDate: 22 Sep 2026 10:42\nFrom: Asha Kalpit\nDebit account: 50100417263958 IFSC: HDFC0SAMPL1 Bank: HDFC Bank\nTo: Sample Traders\nCredit account: 002101234567 IFSC: ICIC0SAMPL2 Bank: ICICI Bank\nAmount: INR 25,000.00\nMode: NEFT\nStatus: Successful",
+			"scanned": false
+		}
+	]
+}

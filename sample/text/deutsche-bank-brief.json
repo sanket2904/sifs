@@ -1,0 +1,13 @@
+{
+	"id": "deutsche-bank-brief",
+	"file": "brief-meldegrenzen.pdf",
+	"format": "pdf",
+	"lang": "de",
+	"created": "2026-03-12T10:00:00Z",
+	"pages": [
+		{
+			"text": "MUSTERDOKUMENT. Für Tests erfunden. Kein echter Brief.\nSAMPLE DOCUMENT. Made up for testing.\nDeutsche Bank\nBerlin, 12.03.2026\nSehr geehrte Frau Mustermann,\nab dem 1. Mai 2026 gelten neue Meldegrenzen der Deutschen Bundesbank für Zahlungen ins Ausland.\nDie Änderung betrifft Sie nur, wenn Sie mehr als 12.500 Euro ins Ausland senden.\nMit freundlichen Grüßen\nDeutsche Bank AG, Filiale Berlin",
+			"scanned": false
+		}
+	]
+}

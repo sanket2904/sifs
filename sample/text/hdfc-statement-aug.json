@@ -1,0 +1,13 @@
+{
+	"id": "hdfc-statement-aug",
+	"file": "kalpit-statement-c.pdf",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-09-01T09:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real statement.\nHDFC Bank Ltd\nStatement of Account\nAccount holder: Asha Kalpit\nAddress: 14 Imaginary Lane, Sample Nagar, Pune 411000\nAccount number: 50100417263958\nIFSC: HDFC0SAMPL1\nAccount type: Savings\nStatement period: 01 Aug 2026 to 31 Aug 2026\nOpening balance: INR 101,889.25\nDate Description Debit Credit Balance\n03 Aug 2026 UPI rent August 18,000.00 83,889.25\n10 Aug 2026 Salary credit 85,000.00 168,889.25\n15 Aug 2026 Card bill payment 9,120.40 159,768.85\n24 Aug 2026 Electricity bill 2,500.00 157,268.85\nClosing balance: INR 157,268.85\nThis statement is computer generated and needs no signature.",
+			"scanned": false
+		}
+	]
+}

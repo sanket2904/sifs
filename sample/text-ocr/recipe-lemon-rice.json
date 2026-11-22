@@ -1,0 +1,13 @@
+{
+	"id": "recipe-lemon-rice",
+	"file": "lemon-rice.pdf",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2025-08-15T10:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing.\nLemon rice\nServes 2.\n2 cups cooked rice, cooled\n1 lemon, juiced\n1 tablespoon oil\n1 teaspoon mustard seeds\nA pinch of turmeric, a few curry leaves, salt to taste\nHeat the oil and add the mustard seeds. When they pop, add the curry leaves and turmeric.\nStir in the rice and salt, then the lemon juice. Serve warm.",
+			"scanned": false
+		}
+	]
+}

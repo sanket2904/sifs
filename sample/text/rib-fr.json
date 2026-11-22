@@ -1,0 +1,13 @@
+{
+	"id": "rib-fr",
+	"file": "releve-identite-bancaire.pdf",
+	"format": "pdf",
+	"lang": "fr",
+	"created": "2026-04-08T09:00:00Z",
+	"pages": [
+		{
+			"text": "DOCUMENT D'EXEMPLE. Inventé pour des tests. Ce n'est pas un vrai RIB.\nSAMPLE DOCUMENT. Made up for testing.\nRelevé d'identité bancaire\nTitulaire : Claire Exemple\nBanque : La Banque Postale\nIBAN : FR14 2004 1010 0505 0001 3M02 606\nBIC : PSSTFRPPXXX\nCode banque : 20041 Code guichet : 01005 Numéro de compte : 0500013M026 Clé RIB : 06",
+			"scanned": false
+		}
+	]
+}

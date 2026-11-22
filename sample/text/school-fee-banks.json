@@ -1,0 +1,13 @@
+{
+	"id": "school-fee-banks",
+	"file": "fee-payment-banks.html",
+	"format": "html",
+	"lang": "en",
+	"created": "2026-06-01T03:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real notice.\nSample Public School: fee payment\nFees can be paid at any branch of these banks:\nState Bank of India\nBank of India\nCentral Bank of India\nUnion Bank of India\nBank of Baroda\nPunjab National Bank\nPunjab & Sind Bank\nPlease bring the fee slip.",
+			"scanned": false
+		}
+	]
+}

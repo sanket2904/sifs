@@ -1,0 +1,13 @@
+{
+	"id": "hdfc-life-receipt",
+	"file": "premium-receipt.pdf",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-07-11T09:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real receipt.\nHDFC Life Insurance Company Limited\nPremium receipt\nPolicy number: 21345678\nPolicy holder: Asha Kalpit\nPremium received: INR 24,000.00 on 11 Jul 2026\nPaid by card: 5555 5555 5555 4444\nThank you for choosing HDFC Life.",
+			"scanned": false
+		}
+	]
+}

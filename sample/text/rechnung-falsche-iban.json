@@ -1,0 +1,13 @@
+{
+	"id": "rechnung-falsche-iban",
+	"file": "rechnung-schreinerei.pdf",
+	"format": "pdf",
+	"lang": "de",
+	"created": "2026-06-20T14:00:00Z",
+	"pages": [
+		{
+			"text": "MUSTERDOKUMENT. Für Tests erfunden. Keine echte Rechnung.\nSAMPLE DOCUMENT. Made up for testing.\nMusterfirma Schreinerei GmbH, Holzweg 3, 10115 Berlin\nTelefon: +49 30 23125 471\nRechnung\nRechnungsnummer: 2026 0815 4711\nDatum: 20.06.2026\nEinbau eines Bücherregals 1.180,00 EUR\nBitte überweisen Sie den Betrag bis zum 04.07.2026 auf:\nIBAN: DE88 3704 0044 0532 0130 00\nKreditinstitut: Commerzbank",
+			"scanned": false
+		}
+	]
+}

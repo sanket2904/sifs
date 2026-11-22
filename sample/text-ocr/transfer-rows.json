@@ -1,0 +1,13 @@
+{
+	"id": "transfer-rows",
+	"file": "bulk-transfer-advice.pdf",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-10-21T09:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real advice.\nBulk transfer advice\nRow IFSC Party Account\n1 HDFC0SAMPL1 Asha Kalpit, savings, Sample Nagar branch, Pune 50100417263958\n2 ICIC0SAMPL2 Sample Traders, current account, Sample Road branch 002101234567\nAmount: INR 4,500.00 from row 1 to row 2\nStatus: Successful",
+			"scanned": false
+		}
+	]
+}

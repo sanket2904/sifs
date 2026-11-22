@@ -1,0 +1,13 @@
+{
+	"id": "hdfc-ltd-loan-2019",
+	"file": "home-loan-statement-2019.pdf",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2019-04-10T06:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real statement.\nHDFC Ltd\nHousing Development Finance Corporation Limited\nHome loan account statement\nBorrower: Asha Kalpit\nLoan account number: 612345678\nPeriod: 01 Apr 2018 to 31 Mar 2019\nEMI paid during the period: INR 2,46,000.00\nPrincipal outstanding on 31 Mar 2019: INR 18,40,000.00",
+			"scanned": false
+		}
+	]
+}

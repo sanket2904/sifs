@@ -1,0 +1,13 @@
+{
+	"id": "poem",
+	"file": "poem-morning.txt",
+	"format": "txt",
+	"lang": "en",
+	"created": "2024-01-07T07:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing.\n\nMorning\n\nThe kettle hums before the birds,\nthe window holds a paler blue,\nand all the day is still unwritten,\na page that waits for me and you.",
+			"scanned": false
+		}
+	]
+}

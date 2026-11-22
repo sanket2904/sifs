@@ -1,0 +1,13 @@
+{
+	"id": "utility-bill",
+	"file": "electricity-bill-aug.pdf",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-09-05T06:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real bill.\nSample Power Distribution Ltd\nElectricity bill for August 2026\nConsumer: Asha Kalpit, 14 Imaginary Lane, Sample Nagar, Pune\nConsumer number: 170012345678\nUnits used: 412\nAmount due: INR 2,500.00 by 25 Sep 2026\nPay by bank transfer to our collection account:\nAccount: 57500000123456 IFSC: HDFC0SAMPL3",
+			"scanned": false
+		}
+	]
+}
