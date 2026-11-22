@@ -37,6 +37,8 @@
 	/** The search a refresh runs for, -1 for none, and whether the index changed again since it asked. */
 	let refreshing = -1;
 	let changedAgain = false;
+	/** Five times search_all's own bound (extract::find::CONTENT_TIME, its wait for the connection included). */
+	const REFRESH_WAIT = 2000;
 	/** index::query::MAX_BYTES + 1: the query sent is bounded, and the backend still sees that it was cut. */
 	const SENT_CHARS = 4097;
 
@@ -141,7 +143,8 @@
 	 * until the answer replaces them. Not while the user is typing: that
 	 * search will see the change. Changes while one runs wait for its answer,
 	 * then search once more: cancelling it for each would show nothing new
-	 * while the index keeps changing.
+	 * while the index keeps changing. They wait at most REFRESH_WAIT: a reply
+	 * can be lost on its way to the page, and then the next search is a fresh one.
 	 */
 	async function refresh() {
 		if (!searched || searched !== query.trim()) return;
@@ -149,11 +152,17 @@
 			changedAgain = true;
 			return;
 		}
-		cancel();
-		const id = (refreshing = latest);
+		let id;
 		do {
+			cancel();
+			id = refreshing = latest;
 			changedAgain = false;
-			await searchAll(id, searched, performance.now());
+			let waited;
+			await Promise.race([
+				searchAll(id, searched, performance.now()),
+				new Promise((done) => (waited = setTimeout(done, REFRESH_WAIT)))
+			]);
+			clearTimeout(waited);
 		} while (changedAgain && id === latest);
 		if (refreshing === id) refreshing = -1;
 	}
