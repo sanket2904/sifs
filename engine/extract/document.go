@@ -29,8 +29,8 @@ type Link struct {
 type Tie struct{ A, B string }
 
 // DocResult is everything found in one document. Organisation tokens are
-// local evidence ("name:<match key>", "ifsc:HDFC", "bic:COBADE",
-// "iban:DE:37040044"); Run joins them across documents into keys.
+// local evidence ("name:<match key>", "ifsc:ABCD", "bic:ABCDGB",
+// "iban:DE:99990000"); Run joins them across documents into keys.
 type DocResult struct {
 	ID          string
 	Mentions    []Mention
@@ -112,7 +112,7 @@ func sortSpans[T any](xs []T, span func(T) Span) {
 
 // codeTies ties tokens that the document shows are one organisation:
 //   - a bank name whose first word is the institution code of an IFSC or BIC
-//     in the document (HDFC Bank beside HDFC0…), when only one name fits;
+//     in the document (ABCD Bank beside ABCD0…), when only one name fits;
 //   - an IBAN and the BIC paired with it, of the same country.
 func codeTies(names []Mention, ids []Identifier) []Tie {
 	var ties []Tie
@@ -233,7 +233,7 @@ func codeLinks(ids []Identifier) []Link {
 }
 
 // shortForms settles the all-capitals words, and the acronym names with
-// only a legal form such as "HDFC Ltd", that the document ties to one
+// only a legal form such as "ABCD Ltd", that the document ties to one
 // organisation: by the institution code of an IFSC or BIC in it, as the
 // leading words of a full name in it, or as the initials of one.
 func shortForms(lines []Line, names []Mention, ids []Identifier, ties []Tie) []Mention {
@@ -312,8 +312,8 @@ func shortForms(lines []Line, names []Mention, ids []Identifier, ties []Tie) []M
 }
 
 // isWordPrefix: the words are the leading words of a longer name, spelt
-// as the name spells them: "SAMPLE" in a heading is no short form of
-// "Sample Nagar Sahakari Bank".
+// as the name spells them: "EXAMPLE" in a heading is no short form of
+// "Example Harbour Bank".
 func isWordPrefix(words, name []string) bool {
 	if len(words) >= len(name) {
 		return false

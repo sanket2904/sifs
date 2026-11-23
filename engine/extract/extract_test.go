@@ -97,9 +97,9 @@ func TestNamesAreWholeNames(t *testing.T) {
 		{"Payments: Musterbank AG, Filiale Nord", []string{"Musterbank AG"}},
 		{"Bank: Riverside Bank", []string{"Riverside Bank"}},
 		{"Kreditinstitut: Beispielkasse", []string{"Beispielkasse"}},
-		{"Banks involved: Alpha Paribas, Riverside Bank", []string{"Alpha Paribas", "Riverside Bank"}},
+		{"Banks involved: Alpha Group, Riverside Bank", []string{"Alpha Group", "Riverside Bank"}},
 		{"Remitting Bank: Riverside Trust", []string{"Riverside Trust"}},
-		{"Fees can be paid at any branch of these banks:", nil},
+		{"Payment is accepted at the branches of these banks:", nil},
 		{"School office <office@example.org>", nil},
 		{"Sample Town Public School: term dates", []string{"Sample Town Public School"}},
 		{"East Bank of Testland", []string{"East Bank of Testland"}},
@@ -118,7 +118,7 @@ func TestNamesInOtherScripts(t *testing.T) {
 		want []string
 	}{
 		{"受取銀行: さくら見本銀行", []string{"さくら見本銀行"}},
-		{"お問い合わせは見本UFJ信託銀行ではなく、見本UFJ銀行へ", []string{"見本UFJ信託銀行", "見本UFJ銀行"}},
+		{"ご連絡は見本ABC信託銀行ではなく、見本ABC銀行まで", []string{"見本ABC信託銀行", "見本ABC銀行"}},
 		{"शाखा प्रबंधक, नमूना बैंक", []string{"नमूना बैंक"}},
 		{"नमूना बैंक ऑफ़ भारत", []string{"नमूना बैंक ऑफ़ भारत"}},
 		{"नियोक्ता: नमूना टेक प्राइवेट लिमिटेड", []string{"नमूना टेक प्राइवेट लिमिटेड"}},
@@ -151,7 +151,7 @@ func TestBareFieldWord(t *testing.T) {
 		}
 	}
 	// a tie in the document still settles it
-	_, e := runOne(t, doc("d", "Bank: EXMB", "Account: 1234567890 IFSC: EXMB0123456"), nil)
+	_, e := runOne(t, doc("d", "Bank: EXMB", "Account: 4720195386 IFSC: EXMB0123456"), nil)
 	if len(e.Orgs) != 1 || e.Orgs[0].Org == nil || *e.Orgs[0].SettledBy != "code" {
 		t.Errorf("a bare word that is the code beside it is settled by the code: %+v", e.Orgs)
 	}
@@ -232,7 +232,7 @@ func TestNoTieNoLink(t *testing.T) {
 
 func TestPairedCodeNeedsTheRow(t *testing.T) {
 	o, e := runOne(t, doc("d",
-		"Row IFSC Party Account",
+		"Line Code Name Number",
 		"1 ALFA0BR0001 First Party, savings 111122223333",
 		"2 BETA0BR0002 Second Party, current 444455556666"), nil)
 	eq(t, "links", linksOf(o, e), []string{
@@ -250,29 +250,29 @@ func TestPairedCodeNeedsTheRow(t *testing.T) {
 func TestIdentifiers(t *testing.T) {
 	_, e := runOne(t, doc("d",
 		"IBAN: GB29 NWBK 6016 1331 9268 19",
-		"BIC: NWBKGB2L",
-		"Sort code: 60-16-13 Account number: 31926819",
-		"Pay to IBAN: DE88 3704 0044 0532 0130 00",
-		"Card on file: 4111 1111 1111 1112",
-		"Invoice number: 50100987654321",
-		"Invoice number: 5555 5555 5555 4444",
+		"BIC: EXMPGB2L",
+		"Account number: 31926819 Sort code: 60-16-13",
+		"Pay to IBAN: DE89 3704 0044 0532 0130 01",
+		"Card on file: 4111 1111 1111 1113",
+		"Invoice number: 77004720195386",
+		"Invoice number: 4000 0566 5566 5556",
 		"Order no. 3782 822463 10005",
 		"Paid by card: 4111 1111 1111 1111",
-		"Phone: +44 7700 900123",
+		"Phone: +1 555 7351 864209",
 		"PAN: ABCPK1234F",
 		"TAN: ABCDK1234F",
-		"Code banque : 20041 Code guichet : 01005 Numéro de compte : 0500013M026 Clé RIB : 06"), nil)
+		"Code banque: 20041, Code guichet: 01005, Numéro de compte: 0500013M026, Clé RIB: 06"), nil)
 	k := kinds(e)
 	for v, want := range map[string]string{
-		"GB29NWBK60161331926819": KindIBAN, "NWBKGB2L": KindBIC, "601613": KindSortCode, "31926819": KindAccount,
-		"DE88370400440532013000": KindIBAN, "4111111111111112": KindCard, "4111111111111111": KindCard, "ABCPK1234F": KindPAN,
+		"GB29NWBK60161331926819": KindIBAN, "EXMPGB2L": KindBIC, "601613": KindSortCode, "31926819": KindAccount,
+		"DE89370400440532013001": KindIBAN, "4111111111111113": KindCard, "4111111111111111": KindCard, "ABCPK1234F": KindPAN,
 		"20041": KindFRBank, "01005": KindFRBranch, "0500013M026": KindAccount, "06": KindFRKey,
 	} {
 		if k[v] != want {
 			t.Errorf("%s: kind %q, want %q", v, k[v], want)
 		}
 	}
-	for _, v := range []string{"50100987654321", "900123", "ABCDK1234F", "5555555555554444", "378282246310005"} {
+	for _, v := range []string{"77004720195386", "864209", "ABCDK1234F", "4000056655665556", "378282246310005"} {
 		if _, ok := k[v]; ok {
 			t.Errorf("%s is no identifier", v)
 		}
@@ -283,15 +283,15 @@ func TestIdentifiers(t *testing.T) {
 			valid[i.Value] = *i.Valid
 		}
 	}
-	if valid["DE88370400440532013000"] || valid["4111111111111112"] || !valid["GB29NWBK60161331926819"] || !valid["06"] {
+	if valid["DE89370400440532013001"] || valid["4111111111111113"] || !valid["GB29NWBK60161331926819"] || !valid["06"] {
 		t.Errorf("validity: %v", valid)
 	}
 }
 
 func TestInvalidIdentifiersAreNeverLinked(t *testing.T) {
-	o, e := runOne(t, doc("d", "Pay to IBAN: DE88 3704 0044 0532 0130 00", "BIC: COBADEFFXXX"), nil)
+	o, e := runOne(t, doc("d", "Pay to IBAN: DE89 3704 0044 0532 0130 01", "BIC: EXMPDEFFXXX"), nil)
 	for _, l := range linksOf(o, e) {
-		if strings.HasPrefix(l, "DE88") {
+		if strings.HasPrefix(l, "DE89370400440532013001") {
 			t.Errorf("an IBAN that fails its check is linked: %s", l)
 		}
 	}
@@ -299,12 +299,12 @@ func TestInvalidIdentifiersAreNeverLinked(t *testing.T) {
 
 func TestIBANParts(t *testing.T) {
 	o, e := runOne(t, doc("d",
-		"Relevé d'identité bancaire",
+		"RIB du compte",
 		"IBAN : FR14 2004 1010 0505 0001 3M02 606",
-		"BIC : PSSTFRPPXXX",
-		"Code banque : 20041 Code guichet : 01005 Numéro de compte : 0500013M026 Clé RIB : 06"), nil)
+		"BIC : EXMPFRPPXXX",
+		"Code banque: 20041, Code guichet: 01005, Numéro de compte: 0500013M026, Clé RIB: 06"), nil)
 	got := strings.Join(linksOf(o, e), "\n")
-	for _, want := range []string{"20041 -> org-1: inside-iban", "01005 -> org-1: inside-iban", "0500013M026 -> org-1: same-account", "FR1420041010050500013M02606 -> org-1: iban-bank-code,paired-code", "PSSTFRPPXXX -> org-1: bic-institution"} {
+	for _, want := range []string{"20041 -> org-1: inside-iban", "01005 -> org-1: inside-iban", "0500013M026 -> org-1: same-account", "FR1420041010050500013M02606 -> org-1: iban-bank-code,paired-code", "EXMPFRPPXXX -> org-1: bic-institution"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in\n%s", want, got)
 		}
@@ -326,9 +326,9 @@ func TestOCRRepairOnlyOnScans(t *testing.T) {
 func TestStatement(t *testing.T) {
 	d := doc("s1",
 		"Riverside Bank",
-		"Statement of account",
+		"Account statement",
 		"Account number: 111122223333",
-		"Statement period: 01 Aug 2026 to 31 Aug 2026",
+		"Statement period: 01 Aug 2026 - 31 Aug 2026",
 		"Your next statement will cover 01 Sep 2026 to 30 Sep 2026.")
 	o, e := runOne(t, d, nil)
 	if e.Statement == nil || e.Statement.From != "2026-08-01" || e.Statement.To != "2026-08-31" {
@@ -361,9 +361,9 @@ func TestDeniedRole(t *testing.T) {
 		{"Dies ist kein Kontoauszug", false},
 		{"Ce n'est pas un relevé de compte", false},
 		{"खाता विवरण नहीं है", false},
-		{"Statement of account. Not a real statement.", true},
-		{"Kein echter Kontoauszug", true},
-		{"実在の明細ではありません。取引明細", true},
+		{"Account statement. This is not a genuine statement.", true},
+		{"Ein echter Kontoauszug ist das nicht", true},
+		{"本物の明細ではありません。取引明細", true},
 		{"明細ではありません", false},
 		{"असली पासबुक नहीं, खाता पासबुक", true},
 		{"This statement is not a tax invoice", true},
@@ -455,7 +455,7 @@ func TestPassports(t *testing.T) {
 }
 
 func TestScannedLabelsAllowOneMisread(t *testing.T) {
-	text := "PASSPORT\nPASSPORT NO: AB1234567\nSURHAME: DOE\nGIVEN NAMESE JANE\nDATE OF ISSUE: 01 JAN 2020\nDATE 0F EXPIRY: 01 JAN 2030"
+	text := "PASSPORT\nPASSPORT NO: AB1234567\nSURNAHE: DOE\nGIVEN NAMESI JANE\nDATE OF ISSUE: 01 JAN 2020\nDATE 0F EXPIRY: 01 JAN 2030"
 	for _, scanned := range []bool{true, false} {
 		_, e := runOne(t, Document{ID: "p", Pages: []Page{{Text: text, Scanned: scanned}}}, nil)
 		got := e.Passport != nil && e.Passport.Holder == HolderOut{"DOE", "JANE"} && e.Passport.Expiry != nil && *e.Passport.Expiry == "2030-01-01"
@@ -525,7 +525,7 @@ func TestRenewalSupersedes(t *testing.T) {
 
 func TestLatestStatementByPeriodNotFile(t *testing.T) {
 	mk := func(id, period string) Document {
-		return doc(id, "Riverside Bank", "Statement of account", "Account number: 111122223333", "Period: "+period)
+		return doc(id, "Riverside Bank", "Account statement", "Account number: 111122223333", "Period: "+period)
 	}
 	o := Run([]Document{mk("sep", "01 Sep 2026 to 30 Sep 2026"), mk("oct", "01 Oct 2026 to 31 Oct 2026"), mk("aug", "01 Aug 2026 to 31 Aug 2026")}, nil, ref)
 	if len(o.Answers.LatestStatement) != 1 || o.Answers.LatestStatement[0].Document != "oct" {
@@ -535,12 +535,12 @@ func TestLatestStatementByPeriodNotFile(t *testing.T) {
 
 func TestGroupedAccount(t *testing.T) {
 	for _, c := range []struct{ line, value, text string }{
-		{"Account: 1234 5678 90", "1234567890", "1234 5678 90"},
-		{"Member number / account: 12345 67890", "1234567890", "12345 67890"},
+		{"Account: 4720 1953 86", "4720195386", "4720 1953 86"},
+		{"Member number / account: 47201 95386", "4720195386", "47201 95386"},
 		{"Account no.: 123 456 789  Branch: North", "123456789", "123 456 789"},
-		{"Account: 1234 5678 90 (savings)", "1234567890", "1234 5678 90"},
+		{"Account: 4720 1953 86 (savings)", "4720195386", "4720 1953 86"},
 		{"Account: 123456 01 Jan 2026", "123456", "123456"},
-		{"Invoice account: 1234 5678 90", "", ""},
+		{"Invoice account: 4720 1953 86", "", ""},
 	} {
 		_, e := runOne(t, doc("d", c.line), nil)
 		got := ""
@@ -556,9 +556,9 @@ func TestGroupedAccount(t *testing.T) {
 
 	// one account in two spellings is one account for the latest answer
 	mk := func(id, acct, period string) Document {
-		return doc(id, "Riverside Bank", "Statement of account", "Account: "+acct, "Period: "+period)
+		return doc(id, "Riverside Bank", "Account statement", "Account: "+acct, "Period: "+period)
 	}
-	o := Run([]Document{mk("sep", "1234567890", "01 Sep 2026 to 30 Sep 2026"), mk("oct", "1234 5678 90", "01 Oct 2026 to 31 Oct 2026")}, nil, ref)
+	o := Run([]Document{mk("sep", "4720195386", "01 Sep 2026 to 30 Sep 2026"), mk("oct", "4720 1953 86", "01 Oct 2026 to 31 Oct 2026")}, nil, ref)
 	if len(o.Answers.LatestStatement) != 1 || o.Answers.LatestStatement[0].Document != "oct" {
 		t.Errorf("latest: %+v", o.Answers.LatestStatement)
 	}
@@ -566,9 +566,9 @@ func TestGroupedAccount(t *testing.T) {
 
 func TestLatestWithheldWhenALaterStatementIsUnread(t *testing.T) {
 	mk := func(id, acct, period string) Document {
-		return doc(id, "Riverside Bank", "Statement of account", "Account: "+acct, "Period: "+period)
+		return doc(id, "Riverside Bank", "Account statement", "Account: "+acct, "Period: "+period)
 	}
-	sep := mk("sep", "1234567890", "01 Sep 2026 to 30 Sep 2026")
+	sep := mk("sep", "4720195386", "01 Sep 2026 to 30 Sep 2026")
 	oct := mk("oct", "12-34-56-78-90", "01 Oct 2026 to 31 Oct 2026")
 	if o := Run([]Document{sep, oct}, nil, ref); len(o.Answers.LatestStatement) != 0 {
 		t.Errorf("October's account was not read, yet September is the answer: %+v", o.Answers.LatestStatement)
@@ -577,7 +577,7 @@ func TestLatestWithheldWhenALaterStatementIsUnread(t *testing.T) {
 	if o := Run([]Document{sep, aug}, nil, ref); len(o.Answers.LatestStatement) != 1 {
 		t.Errorf("an unread earlier statement does not change the latest: %+v", o.Answers.LatestStatement)
 	}
-	other := doc("other", "Zeta Bank", "Statement of account", "Account: 12-34-56-78-90", "Period: 01 Oct 2026 to 31 Oct 2026")
+	other := doc("other", "Zeta Bank", "Account statement", "Account: 12-34-56-78-90", "Period: 01 Oct 2026 to 31 Oct 2026")
 	if o := Run([]Document{sep, other}, nil, ref); len(o.Answers.LatestStatement) != 1 {
 		t.Errorf("another issuer's unread statement does not change the latest: %+v", o.Answers.LatestStatement)
 	}
@@ -608,7 +608,7 @@ func TestDirectory(t *testing.T) {
 }
 
 func TestCodeAloneMakesNoCardWithTheDirectory(t *testing.T) {
-	d := doc("d", "Riverside Bank", "Account details", "Konto: 1234567890", "SWIFT: ZZZZCH2X")
+	d := doc("d", "Riverside Bank", "Account details", "Konto: 4720195386", "SWIFT: ZZZZCH2X")
 	known := entry("Q7", "Zeta Bank", "zetabank", "")
 	known.Codes.BIC = []string{"ZZZZCH2X"}
 	for _, c := range []struct {
@@ -644,7 +644,7 @@ func entry(id, name, key, ifsc string) DirEntry {
 }
 
 func TestSpansCountScalarValues(t *testing.T) {
-	d := doc("d", "नमूना दस्तावेज़। परीक्षण", "खाता संख्या: 30123456789", "見本銀行", "口座番号: 7654321")
+	d := doc("d", "नमूना दस्तावेज़। परीक्षण", "खाता संख्या: 47201953861", "見本銀行", "口座番号: 7654321")
 	_, e := runOne(t, d, nil)
 	for _, i := range e.Identifiers {
 		page := d.Pages[0].Text

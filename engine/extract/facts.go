@@ -27,9 +27,9 @@ var (
 )
 
 // denies reports whether a line says the document is not what re names: a
-// negation right before the role word ("Not a statement", "kein
-// Kontoauszug") or right after it ("विवरण नहीं"). "Not a real statement"
-// is no denial: it says the paper is a made-up statement, not that it is
+// negation right before the role word ("This is not a statement", "kein
+// Kontoauszug") or right after it ("विवरण नहीं"). "Not a genuine statement" is
+// no denial: it says the paper is a made-up statement, not that it is
 // something other than a statement.
 func denies(line string, re *regexp.Regexp) bool {
 	toks := tokenize(line)
@@ -62,7 +62,7 @@ func denies(line string, re *regexp.Regexp) bool {
 }
 
 // specimenBefore reports whether the text before a role word ends in a
-// word that says real ("a real", "echter", "実在の").
+// word that says real ("a real", "echter", "本物の").
 func specimenBefore(prefix string) bool {
 	p := strings.TrimSuffix(strings.ToLower(fold(strings.TrimSpace(prefix))), "の")
 	for w := range specimen {
@@ -193,8 +193,8 @@ var (
 
 // valueAt gives the byte offset on the line where the field's value
 // starts, or -1. On a scanned page, a label at the start of the line may
-// have one character misread, its colon counted: OCR reads "SURNAME:" as
-// "SURHAME:" and "NAMES:" as "NAMESE".
+// have one character misread, its colon counted: OCR may read "SURNAME:"
+// as "SURNAHE:", or the colon of "NAMES:" as a letter.
 func (f field) valueAt(l Line) int {
 	if m := f.re.FindStringIndex(l.Text); m != nil {
 		return m[1]

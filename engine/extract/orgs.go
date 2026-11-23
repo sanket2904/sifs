@@ -345,7 +345,7 @@ func isCJKBoundary(r rune) bool { return strings.ContainsRune(" \t:：、。「�
 
 // findCJKNames finds names that end in 銀行. Japanese has no spaces, so the
 // name runs left over kanji, katakana and Latin letters; a run of hiragana
-// joins it only when it reaches the start of the phrase, as in みずほ銀行.
+// joins it only when it reaches the start of the phrase, as in さくら銀行.
 func findCJKNames(l Line) []Mention {
 	rs := []rune(l.Text)
 	var out []Mention
@@ -369,7 +369,7 @@ func findCJKNames(l Line) []Mention {
 			continue
 		}
 		if startsField(strings.TrimLeft(string(rs[end:]), " ")) {
-			continue // a field label such as 受取銀行:
+			continue // a field label such as 支払銀行:
 		}
 		text := string(rs[s:end])
 		out = append(out, Mention{Span: Span{Page: l.Page, Start: l.Start + s, End: l.Start + end, Text: text}, words: []string{text}, bank: true})
@@ -379,7 +379,7 @@ func findCJKNames(l Line) []Mention {
 }
 
 // findFieldBanks reads the value of a field whose label says bank, such as
-// "Banks involved: Alpha Paribas, Beta Group": each listed item of two or
+// "Banks involved: Alpha Group, Beta Trust": each listed item of two or
 // more words shaped like a name is a name of an organisation. A one-word
 // item is a bare word: the label may be wrong about it.
 func findFieldBanks(l Line, have []Mention) []Mention {

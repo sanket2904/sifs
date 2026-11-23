@@ -11,9 +11,9 @@ func TestIBANValid(t *testing.T) {
 		want bool
 	}{
 		{"GB29NWBK60161331926819", true},
-		{"GB28NWBK60161331926819", false},
+		{"GB29NWBK60161331926818", false},
 		{"DE89370400440532013000", true},
-		{"DE88370400440532013000", false},
+		{"DE89370400440532013001", false},
 		{"NL91ABNA0417164300", true},
 		{"FR1420041010050500013M02606", true},
 		{"FR1420041010050500013M0260", false}, // one short
@@ -33,7 +33,7 @@ func TestLuhn(t *testing.T) {
 		{"4242424242424242", true},
 		{"5555555555554444", true},
 		{"4111111111111111", true},
-		{"4111111111111112", false},
+		{"4111111111111113", false},
 		{"378282246310005", true},
 	} {
 		if got := luhn(c.card); got != c.want {
@@ -48,7 +48,7 @@ func TestPANValid(t *testing.T) {
 		want bool
 	}{
 		{"ABCPK1234F", true},
-		{"ABCPK0000F", false}, // serial 0000 is never issued
+		{"XYZPK0000Q", false}, // serial 0000 is never issued
 		{"ABCDK1234F", false}, // D is no holder status
 		{"AAACT1234Z", true},  // company
 	} {
@@ -90,13 +90,13 @@ func TestRIBKey(t *testing.T) {
 
 func TestMatchKey(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
-		{"HDFC Bank Ltd", "hdfcbank"},
-		{"HDFC BANK", "hdfcbank"},
-		{"hdfcbank", "hdfcbank"},
+		{"Example Bank Ltd", "examplebank"},
+		{"EXAMPLE BANK", "examplebank"},
+		{"examplebank", "examplebank"},
 		{"The Bank of Example plc", "bankofexample"},
-		{"三菱 UFJ 銀行", "三菱ufj銀行"},
-		{"株式会社三菱ＵＦＪ銀行", "三菱ufj銀行"},
-		{"Punjab & Sind Bank", "punjabsindbank"},
+		{"見本 ABC 銀行", "見本abc銀行"},
+		{"株式会社見本ＡＢＣ銀行", "見本abc銀行"},
+		{"Alpha & Beta Bank", "alphabetabank"},
 	} {
 		if got := matchKey(c.in); got != c.want {
 			t.Errorf("matchKey(%q) = %q, want %q", c.in, got, c.want)
