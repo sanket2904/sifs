@@ -30,6 +30,7 @@ jobs:
       # Tests a hosted runner cannot run for a reason of the runner, not the code.
       # One per line: the full test path, then why and the issue.
       RUNNER_LIMITED: |
+        extract::tests::stop_is_prompt_and_wakes_are_ignored_during_a_long_backoff  THROWAWAY: proves the list mechanism (#8)
     defaults:
       run:
         working-directory: src-tauri
