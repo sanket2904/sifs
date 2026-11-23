@@ -1,0 +1,679 @@
+{
+	"extractor": "go-m1a",
+	"directory": "off",
+	"text_set": "text",
+	"failed": false,
+	"measures": {
+		"mentions": {
+			"total": {
+				"right": 61,
+				"wrong": 0,
+				"left_out": 5,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 45,
+					"wrong": 0,
+					"left_out": 5,
+					"impossible": 0
+				},
+				"de": {
+					"right": 6,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 5,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"org_directory": {
+			"total": {
+				"right": 46,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {}
+		},
+		"identifier:account": {
+			"total": {
+				"right": 24,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 19,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:bic": {
+			"total": {
+				"right": 4,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:card": {
+			"total": {
+				"right": 3,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 3,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:fr_bank_code": {
+			"total": {
+				"right": 1,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:fr_branch_code": {
+			"total": {
+				"right": 1,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:fr_rib_key": {
+			"total": {
+				"right": 1,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:gb_sort_code": {
+			"total": {
+				"right": 1,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:iban": {
+			"total": {
+				"right": 7,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:ifsc": {
+			"total": {
+				"right": 13,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 11,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:in_pan": {
+			"total": {
+				"right": 2,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"hi": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:mrz": {
+			"total": {
+				"right": 5,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 5,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:passport_number": {
+			"total": {
+				"right": 5,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 5,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"links": {
+			"total": {
+				"right": 47,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 33,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 3,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 5,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"statement_period": {
+			"total": {
+				"right": 14,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 11,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"statement_account": {
+			"total": {
+				"right": 14,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 11,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"statement_issuer": {
+			"total": {
+				"right": 14,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 11,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"passport_holder": {
+			"total": {
+				"right": 4,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"passport_number": {
+			"total": {
+				"right": 4,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"passport_expiry": {
+			"total": {
+				"right": 4,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"passport_current": {
+			"total": {
+				"right": 4,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"answer_latest_statement": {
+			"total": {
+				"right": 12,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 9,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"answer_current_passport": {
+			"total": {
+				"right": 3,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 3,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		}
+	},
+	"merges": [],
+	"wrong_cards": [],
+	"wrong_attachments": [],
+	"splits": [
+		{
+			"organisation": "abn-amro",
+			"keys": [
+				"org-35",
+				"org-7",
+				"org-8"
+			]
+		},
+		{
+			"organisation": "axis-bank",
+			"keys": [
+				"org-42",
+				"org-43"
+			]
+		},
+		{
+			"organisation": "bank-of-baroda",
+			"keys": [
+				"org-27",
+				"org-40"
+			]
+		},
+		{
+			"organisation": "commerzbank",
+			"keys": [
+				"org-10",
+				"org-9"
+			]
+		},
+		{
+			"organisation": "hdfc-bank",
+			"keys": [
+				"org-1",
+				"org-19"
+			]
+		},
+		{
+			"organisation": "icici-bank",
+			"keys": [
+				"org-15",
+				"org-16"
+			]
+		},
+		{
+			"organisation": "la-banque-postale",
+			"keys": [
+				"org-38",
+				"org-39"
+			]
+		},
+		{
+			"organisation": "mizuho-bank",
+			"keys": [
+				"org-18",
+				"org-33"
+			]
+		},
+		{
+			"organisation": "mufg-bank",
+			"keys": [
+				"org-34",
+				"org-37"
+			]
+		},
+		{
+			"organisation": "natwest",
+			"keys": [
+				"org-5",
+				"org-6"
+			]
+		},
+		{
+			"organisation": "pnb",
+			"keys": [
+				"org-28",
+				"org-41"
+			]
+		},
+		{
+			"organisation": "sbi",
+			"keys": [
+				"org-23",
+				"org-30",
+				"org-31"
+			]
+		}
+	],
+	"wrong": [],
+	"left_out": [
+		{
+			"measure": "mentions",
+			"document": "natwest-statement",
+			"what": "Example Cafe at 1:339 is example-cafe"
+		},
+		{
+			"measure": "mentions",
+			"document": "neft-receipt-tied",
+			"what": "Sample Traders at 1:250 is sample-traders"
+		},
+		{
+			"measure": "mentions",
+			"document": "transfer-rows",
+			"what": "Sample Traders at 1:192 is sample-traders"
+		},
+		{
+			"measure": "mentions",
+			"document": "hdfc-card-statement",
+			"what": "Sample Grocers at 1:299 is sample-grocers"
+		},
+		{
+			"measure": "mentions",
+			"document": "hdfc-card-statement",
+			"what": "Example Books at 1:341 is example-books"
+		}
+	],
+	"impossible": []
+}
