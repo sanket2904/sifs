@@ -129,10 +129,11 @@ type HolderAnswer struct {
 func Run(docs []Document, dir *Directory, reg *IBANRegistry, ref Date) Output {
 	results := make([]DocResult, len(docs))
 	for i, d := range docs {
-		results[i] = Extract(d, reg, ref)
+		results[i] = readDocument(d, reg, ref)
 		if dir != nil {
 			dir.settle(&results[i])
 		}
+		spellNames(&results[i])
 	}
 	supersede(results)
 	return render(results, dir)
@@ -172,23 +173,23 @@ func render(results []DocResult, dir *Directory) Output {
 		}
 		at := map[linkID]int{}
 		for _, l := range r.Links {
-			if !keep(l.Key) {
+			if !keep(l.key) {
 				continue
 			}
-			used[l.Key] = true
-			i, ok := at[linkID{l.Ident, l.Key}]
+			used[l.key] = true
+			i, ok := at[linkID{l.ident, l.key}]
 			if !ok {
 				i = len(d.Links)
-				at[linkID{l.Ident, l.Key}] = i
-				d.Links = append(d.Links, LinkOut{Identifier: l.Ident, Org: l.Key.String(), Tier: Likely})
+				at[linkID{l.ident, l.key}] = i
+				d.Links = append(d.Links, LinkOut{Identifier: l.ident, Org: l.key.String(), Tier: Likely})
 			}
-			if !contains(d.Links[i].Reasons, l.Reason) {
-				d.Links[i].Reasons = append(d.Links[i].Reasons, l.Reason)
+			if !contains(d.Links[i].Reasons, l.reason) {
+				d.Links[i].Reasons = append(d.Links[i].Reasons, l.reason)
 			}
-			if l.Via != "" && d.Links[i].Via == "" {
-				d.Links[i].Via = l.Via
+			if l.via != "" && d.Links[i].Via == "" {
+				d.Links[i].Via = l.via
 			}
-			if tierOf(linkClaim(l.Reason), l.proof) == Certain {
+			if tierOf(linkClaim(l.reason), l.proof) == Certain {
 				d.Links[i].Tier = Certain
 			}
 		}
@@ -242,21 +243,24 @@ func render(results []DocResult, dir *Directory) Output {
 		out.Organisations[k.String()] = card(k, names[k], dir)
 	}
 	out.Answers.LatestStatement = latestStatements(results, func(key orgkey.Key) string {
-		if c := out.Organisations[key.String()]; c.Directory != nil {
-			return *c.Directory
+		if dir == nil {
+			return ""
 		}
-		return ""
+		id, _ := dir.lookupKey(key)
+		return id
 	})
 	out.Answers.CurrentPassport = currentPassports(results)
 	return out
 }
 
-// card says who a key is: with the directory, the entry its own spelling
-// looks up to; else the printed name it is spelt from most often. A code
-// key with no entry has no name.
+// card says who a key is. A code's key, with the directory, is the entry
+// that holds the code exactly. A printed name's key is the name it is spelt
+// from most often, and never a directory entry: the directory lists banks,
+// not everyone who prints a name, so a name one entry holds is a hint. A
+// code key with no entry has no name.
 func card(key orgkey.Key, printed map[string]int, dir *Directory) Card {
-	if dir != nil {
-		if id, ok := dir.lookupKey(key); ok {
+	if dir != nil && !key.IsName() {
+		if id, ok := dir.lookupCode(key); ok {
 			return Card{Name: ptr(dir.entries[id].Name), Directory: ptr(id)}
 		}
 	}
@@ -296,8 +300,8 @@ func carded(results []DocResult, dir *Directory) func(orgkey.Key) bool {
 }
 
 // sameOrgRows writes a document's joins between keys it uses, one row per
-// two keys and reason, in a fixed order. A join of two keys whose cards
-// give two directory entries is not written: the directory says they are
+// two keys and reason, in a fixed order. A join of two keys that look up
+// to two directory entries is not written: the directory says they are
 // two.
 func sameOrgRows(joins []Join, used map[orgkey.Key]bool, dir *Directory) []SameOrgOut {
 	rows := []SameOrgOut{}
@@ -317,7 +321,7 @@ func sameOrgRows(joins []Join, used map[orgkey.Key]bool, dir *Directory) []SameO
 		if keys[1] < keys[0] {
 			keys[0], keys[1] = keys[1], keys[0]
 		}
-		row := SameOrgOut{Keys: keys, Reason: j.Reason, Tier: tierOf(joinClaim(j.Reason), j.proof)}
+		row := SameOrgOut{Keys: keys, Reason: j.Reason, Tier: tierOf(joinClaim(j.Reason), read)}
 		if !seen[row] {
 			seen[row] = true
 			rows = append(rows, row)
@@ -357,8 +361,8 @@ func mostUsed(counts map[string]int) string {
 // they share any spelling of it. A tie between two documents is no answer,
 // and so is a later statement whose account was not read and whose issuer
 // may be this one's: it may be this account's. A printed name's key is its
-// document's own, so only the directory, through entry gives a key's
-// directory entry or "", tells two issuers apart.
+// document's own, so only the directory, through entry, which gives the one
+// entry a key looks up to or "", tells two issuers apart.
 func latestStatements(results []DocResult, entry func(orgkey.Key) string) []AccountAnswer {
 	type stmt struct {
 		doc       string

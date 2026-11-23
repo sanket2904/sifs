@@ -103,10 +103,11 @@ func (d *Directory) lookupKey(key orgkey.Key) (string, bool) {
 	return d.lookupCode(key)
 }
 
-// settle adds to one document what the directory proves or settles: an
+// settle adds to one document what the directory proves or suggests: an
 // acronym name that is exactly one entry's name, the code identifiers it
 // holds, the code links whose card it gives, and the joins of a printed
-// name and a code that look up to one entry, the same one.
+// name and a code that look up to one entry, the same one. Such a join is
+// likely: the directory proves a code, never who prints a name.
 func (d *Directory) settle(r *DocResult) {
 	for i := range r.Mentions {
 		m := &r.Mentions[i]
@@ -125,8 +126,8 @@ func (d *Directory) settle(r *DocResult) {
 	}
 	for i := range r.Links {
 		l := &r.Links[i]
-		if (l.Reason == ReasonIFSCPrefix || l.Reason == ReasonBICInstitution) && !l.Key.IsZero() {
-			if _, ok := d.lookupCode(l.Key); ok {
+		if (l.reason == ReasonIFSCPrefix || l.reason == ReasonBICInstitution) && !l.key.IsZero() {
+			if _, ok := d.lookupCode(l.key); ok {
 				l.proof = directoryCode
 			}
 		}
@@ -139,8 +140,8 @@ func (d *Directory) settle(r *DocResult) {
 	}
 	codes := map[orgkey.Key]bool{} // code keys linked here by their own code
 	for _, l := range r.Links {
-		if l.Reason == ReasonIFSCPrefix || l.Reason == ReasonBICInstitution || l.Reason == ReasonIBANBankCode {
-			codes[l.Key] = true
+		if l.reason == ReasonIFSCPrefix || l.reason == ReasonBICInstitution || l.reason == ReasonIBANBankCode {
+			codes[l.key] = true
 		}
 	}
 	for n, texts := range names {
@@ -154,7 +155,7 @@ func (d *Directory) settle(r *DocResult) {
 		}
 		for c := range codes {
 			if e, found := d.lookupCode(c); found && e == id {
-				r.Joins = append(r.Joins, Join{A: n, B: c, Reason: JoinDirectory, proof: directoryJoin})
+				r.Joins = append(r.Joins, Join{A: n, B: c, Reason: JoinDirectory})
 			}
 		}
 	}

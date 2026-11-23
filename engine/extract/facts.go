@@ -387,16 +387,21 @@ func printedExpiry(text, zone string) (Date, bool) {
 }
 
 // sameZoneName reports whether a printed name is the zone's, case and
-// spacing ignored. A zone writes A to Z only, so a printed name with any
-// other letter is never the same.
+// spacing ignored, as the scorer compares them (sample/tools/lib/tiers.mjs,
+// mayBeCertainPassport): both compatibility-folded, in upper case, with
+// every run of white space read as one space.
 func sameZoneName(printed, zone string) bool {
-	up := strings.Map(func(r rune) rune {
-		if r >= 'a' && r <= 'z' {
-			return r - 'a' + 'A'
-		}
-		return r
-	}, printed)
-	return strings.Join(strings.Fields(up), " ") == strings.Join(strings.Fields(zone), " ")
+	spaced := func(s string) string {
+		return strings.Join(strings.FieldsFunc(orgkey.Upper(orgkey.Fold(s)), jsSpace), " ")
+	}
+	return spaced(printed) == spaced(zone)
+}
+
+// jsSpace is the white space of a JavaScript regular expression's \s: the
+// space separators, tab, vertical tab, form feed, the byte order mark, and
+// the line terminators.
+func jsSpace(r rune) bool {
+	return unicode.Is(unicode.Zs, r) || strings.ContainsRune("\t\v\f\ufeff\n\r\u2028\u2029", r)
 }
 
 // Holder is the answer key for a holder: SURNAME, GIVEN NAMES.

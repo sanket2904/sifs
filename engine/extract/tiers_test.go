@@ -31,7 +31,7 @@ func TestTierTable(t *testing.T) {
 	for _, r := range []string{JoinDirectory, JoinSpellsCode, JoinPrintedTogether, "statement-header"} {
 		claims = append(claims, joinClaim(r))
 	}
-	names := map[proof]string{read: "read", ibanRegistered: "ibanRegistered", zoneChecked: "zoneChecked", directoryCode: "directoryCode", zoneSays: "zoneSays", zoneAndPrintedYear: "zoneAndPrintedYear", directoryJoin: "directoryJoin"}
+	names := map[proof]string{read: "read", ibanRegistered: "ibanRegistered", zoneChecked: "zoneChecked", directoryCode: "directoryCode", zoneSays: "zoneSays", zoneAndPrintedYear: "zoneAndPrintedYear"}
 	var got []string
 	for _, c := range claims {
 		for p := range names {
@@ -52,7 +52,6 @@ func TestTierTable(t *testing.T) {
 		"passport expiry by zoneAndPrintedYear",
 		"passport holder by zoneSays",
 		"passport number by zoneSays",
-		"same_org directory by directoryJoin",
 	})
 }
 
@@ -92,6 +91,7 @@ func TestCodesAreCertainOnlyByTheirProof(t *testing.T) {
 	_, e = runOne(t, doc("d", "IBAN: DE89 3704 0044 0532 0130 00", "IBAN: DE89 3704 0044 0532 0130 01", "IBAN: IT60 X054 2811 1010 0000 0123 456"), nil)
 	eq(t, "IBANs", tiersOf(e), []string{
 		"DE89370400440532013000 -> IBAN DE 37040044 certain",
+		"IT60X0542811101000000123456 -> IBAN IT 05428 certain",
 		"iban DE89370400440532013000 certain",
 		"iban DE89370400440532013001 likely",
 		"iban IT60X0542811101000000123456 certain",
@@ -127,6 +127,7 @@ func TestPassportFactsAreCertainOnlyAsTheZoneSaysThem(t *testing.T) {
 		{"the zone says every fact", page("L898902C3", "Eriksson", zone...), map[string]Tier{"holder": Certain, "number": Certain, "expiry": Certain, "current": Likely}},
 		{"a printed number the zone does not give", page("L898902C4", "Eriksson", zone...), map[string]Tier{"holder": Certain, "number": Likely, "expiry": Certain, "current": Likely}},
 		{"a printed surname the zone does not give", page("L898902C3", "Ericsson", zone...), map[string]Tier{"holder": Likely, "number": Certain, "expiry": Certain, "current": Likely}},
+		{"a full-width surname is the zone's", page("L898902C3", "ＥＲＩＫＳＳＯＮ", zone...), map[string]Tier{"holder": Certain, "number": Certain, "expiry": Certain, "current": Likely}},
 		{"a zone that fails its check", page("L898902C3", "Eriksson", zone[0], zone[1][:43]+"1"), map[string]Tier{"holder": Likely, "number": Likely, "expiry": Likely, "current": Likely}},
 		{"no zone", page("L898902C3", "Eriksson"), map[string]Tier{"holder": Likely, "number": Likely, "expiry": Likely, "current": Likely}},
 	} {
@@ -155,6 +156,7 @@ func TestPrintedExpiry(t *testing.T) {
 		{"04/15/2012", "120415", "2012-04-15"},
 		{"2012年4月15日", "120415", "2012-04-15"},
 		{"１５ APR ２０１２", "120415", "2012-04-15"},
+		{"⑮ APR 2012", "120415", "2012-04-15"},
 		{"02 JUN 1998", "980602", "1998-06-02"},
 		{"15 APR 2013", "120415", ""},
 		{"16 APR 2012", "120415", ""},
@@ -400,5 +402,36 @@ func TestNoMergeInTheSample(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// An IBAN, a BIC or an IFSC is held only at its own code's key: the one
+// constructor that places an identifier elsewhere refuses it, so a link of
+// an IBAN to a BIC's key cannot be made.
+func TestNoLinkPlacesACodeAtAnotherKey(t *testing.T) {
+	ids := findIdentifiers(splitLines(doc("d",
+		"Beneficiary IBAN: PT13 0099 0002 3141 5926 5358 9",
+		"Correspondent BIC: TAGOPT2L",
+		"IFSC: ALFA0BR0001",
+		"Account: 111122223333")), registry)
+	byKind := map[string]Identifier{}
+	for _, id := range ids {
+		byKind[id.Kind] = id
+	}
+	bic := byKind[KindBIC]
+	for _, k := range []string{KindIBAN, KindBIC, KindIFSC} {
+		id := byKind[k]
+		if _, ok := heldAt(id, bic.Code, ReasonPairedCode, &bic); ok {
+			t.Errorf("%s %s placed at %s", k, id.Value, bic.Code)
+		}
+		if l, ok := ownLink(id); !ok || l.key != id.Code || id.Code.IsZero() {
+			t.Errorf("%s %s: own link %+v, %v", k, id.Value, l, ok)
+		}
+	}
+	if byKind[KindIBAN].Code.String() != "IBAN PT 0099" {
+		t.Errorf("the IBAN's key: %s", byKind[KindIBAN].Code)
+	}
+	if _, ok := heldAt(byKind[KindAccount], bic.Code, ReasonPairedCode, &bic); !ok {
+		t.Errorf("an account may be held at a code's key")
 	}
 }

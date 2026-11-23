@@ -54,10 +54,9 @@ func LoadIBANRegistry(path string) (*IBANRegistry, error) {
 var ibanSought = set(strings.Fields(`AD AE AL AT AZ BA BE BG BH BR CH CR CY CZ DE DK DO EE EG ES FI FO FR GB GE GI GL GR GT
 HR HU IE IL IS IT JO KW KZ LB LC LI LT LU LV MC MD ME MK MR MT MU NL NO PK PL PS PT QA RO RS SA SE SI SK SM TN TR UA VG XK`)...)
 
-// ibanParts are the countries whose IBAN bank code the extractor reads, with
-// where the branch code and the account number sit in their IBANs (offsets
-// in the IBAN, end exclusive; zero when absent). The registry table holds
-// neither place.
+// ibanParts are the countries whose IBANs the extractor reads further: where
+// the branch code and the account number sit in them (offsets in the IBAN,
+// end exclusive; zero when absent). The registry table holds neither place.
 var ibanParts = map[string]struct{ branch0, branch1, account0, account1 int }{
 	"AT": {account0: 9, account1: 20},
 	"BE": {account0: 7, account1: 14},
@@ -97,11 +96,10 @@ func (reg *IBANRegistry) proves(iban string) bool {
 }
 
 // codeKey is the key of the bank an IBAN names by its bank code ("Code
-// keys"), for a country whose bank code the extractor reads, or zero.
+// keys"): its country and the bank identifier at the place the registry
+// table gives. findIBAN reads only IBANs of the table's countries, at their
+// length.
 func (reg *IBANRegistry) codeKey(iban string) orgkey.Key {
-	if _, ok := ibanParts[iban[:2]]; !ok {
-		return orgkey.Key{}
-	}
 	c := reg.countries[iban[:2]]
 	return orgkey.IBAN(iban[:2], iban[c.bank0:c.bank1])
 }

@@ -373,11 +373,41 @@ func findCJKNames(l Line) []Mention {
 		if startsField(strings.TrimLeft(string(rs[end:]), " ")) {
 			continue // a field label such as 支払銀行:
 		}
+		end = legalTail(rs, s, end)
 		text := string(rs[s:end])
 		out = append(out, Mention{Span: Span{Page: l.Page, Start: l.Start + s, End: l.Start + end, Text: text}, words: []string{text}, bank: true})
 		i = end - 1
 	}
 	return out
+}
+
+// legalTail is where the name rs[start:end] ends with the legal forms
+// printed after it that its key drops, such as 株式会社 or Ltd: they are part
+// of the name as the page writes it, so its span keeps them, and its key
+// stays the same.
+func legalTail(rs []rune, start, end int) int {
+	key := orgkey.MatchKey(string(rs[start:end]))
+	for {
+		i := end
+		for i < len(rs) && (rs[i] == ' ' || rs[i] == '\u3000') {
+			i++
+		}
+		j := i
+		if strings.HasPrefix(string(rs[i:]), "株式会社") {
+			j += len([]rune("株式会社"))
+		} else {
+			for j < len(rs) && unicode.Is(unicode.Latin, rs[j]) {
+				j++
+			}
+			if j == i || !unicode.IsUpper(rs[i]) || !legalForms[strings.ToLower(string(rs[i:j]))] {
+				return end
+			}
+		}
+		if orgkey.MatchKey(string(rs[start:j])) != key {
+			return end
+		}
+		end = j
+	}
 }
 
 // findFieldBanks reads the value of a field whose label says bank, such as

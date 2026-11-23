@@ -26,13 +26,43 @@ const (
 )
 
 // Link says an identifier is held at the organisation behind a key, for a
-// reason the format names.
+// reason the format names. ownLink and heldAt are the only ways to make one.
+// An IBAN, a BIC or an IFSC names its institution by its own characters:
+// its one link is to its own code's key, and heldAt refuses it.
 type Link struct {
-	Ident  string
-	Key    orgkey.Key
-	Reason string
-	Via    string // the code a paired-code link goes through
+	ident  string
+	key    orgkey.Key
+	reason string
+	via    string // the code a paired-code link goes through
 	proof  proof
+}
+
+// ownLink is a code's link to its own code's key, by the code's own reason.
+// An IBAN's is proven as the IBAN is; an IFSC's or a BIC's only by the
+// directory. A code with no key, one that fails its check, has none.
+func ownLink(id Identifier) (Link, bool) {
+	if !id.namesItsInstitution() || id.Code.IsZero() {
+		return Link{}, false
+	}
+	l := Link{ident: id.ID, key: id.Code, reason: codeReasons[id.Kind]}
+	if id.Kind == KindIBAN {
+		l.proof = id.proof
+	}
+	return l, true
+}
+
+// heldAt places an identifier that names no institution itself, such as an
+// account or a domestic code, at a key, for a reason read from the page,
+// through the code via when the reason is paired-code.
+func heldAt(id Identifier, key orgkey.Key, reason string, via *Identifier) (Link, bool) {
+	if id.namesItsInstitution() || key.IsZero() {
+		return Link{}, false
+	}
+	l := Link{ident: id.ID, key: key, reason: reason}
+	if via != nil {
+		l.via = via.ID
+	}
+	return l, true
 }
 
 // Join says two keys are one organisation, as one document shows it. It is
@@ -40,7 +70,6 @@ type Link struct {
 type Join struct {
 	A, B   orgkey.Key
 	Reason string
-	proof  proof
 }
 
 // DocResult is everything found in one document. A printed name's key is
@@ -56,9 +85,11 @@ type DocResult struct {
 	Passport    *Passport
 }
 
-// Extract reads one document. The directory is not used here: everything a
-// document settles, it settles by itself.
-func Extract(doc Document, reg *IBANRegistry, ref Date) DocResult {
+// readDocument reads one document. The directory is not used here:
+// everything a document settles, it settles by itself. A printed name's key
+// is not spelt yet: it is spelt from the first mention put on it, and only
+// groups the mentions until spellNames spells it from all of them.
+func readDocument(doc Document, reg *IBANRegistry, ref Date) DocResult {
 	lines := splitLines(doc)
 	r := DocResult{ID: doc.ID, Identifiers: findIdentifiers(lines, reg)}
 	var names []Mention
@@ -99,6 +130,58 @@ func Extract(doc Document, reg *IBANRegistry, ref Date) DocResult {
 	return r
 }
 
+// spellNames gives each printed name's key its one spelling, once every
+// mention is on its key ("No merging"): the longest match key of the texts
+// of all the mentions on it. Mentions that print one name, the same match
+// key, are on one key. Every row that names the key takes the spelling.
+func spellNames(r *DocResult) {
+	group := newUnion[orgkey.Key]()
+	printed := map[string]orgkey.Key{} // match key -> a key a mention of it is on
+	for _, m := range r.Mentions {
+		if !m.Key.IsName() {
+			continue
+		}
+		group.find(m.Key)
+		mk := orgkey.MatchKey(m.Text)
+		if k, ok := printed[mk]; ok {
+			group.join(k, m.Key)
+		} else {
+			printed[mk] = m.Key
+		}
+	}
+	texts := map[orgkey.Key][]string{}
+	for _, m := range r.Mentions {
+		if m.Key.IsName() {
+			root := group.find(m.Key)
+			texts[root] = append(texts[root], m.Text)
+		}
+	}
+	spelt := map[orgkey.Key]orgkey.Key{}
+	for k := range group.parent {
+		spelt[k], _ = orgkey.Name(r.ID, texts[group.find(k)]...)
+	}
+	spell := func(k *orgkey.Key) {
+		if s, ok := spelt[*k]; ok {
+			*k = s
+		}
+	}
+	for i := range r.Mentions {
+		spell(&r.Mentions[i].Key)
+	}
+	for i := range r.Links {
+		spell(&r.Links[i].key)
+	}
+	for i := range r.Joins {
+		spell(&r.Joins[i].A)
+		spell(&r.Joins[i].B)
+	}
+	for _, st := range []*Statement{r.Statement, r.Unread} {
+		if st != nil {
+			spell(&st.Issuer.Key)
+		}
+	}
+}
+
 // joined groups the keys that a document's joins say are one organisation.
 // It is the document's own reading, used to settle what else it says; the
 // keys themselves stay apart.
@@ -118,7 +201,9 @@ func headerLinks(st Statement, ids []Identifier, joins []Join) []Link {
 	var out []Link
 	for _, a := range st.Accounts {
 		if c := pairedCode(a, ids); c == nil || same.find(c.Code) == same.find(st.Issuer.Key) {
-			out = append(out, Link{Ident: a.ID, Key: st.Issuer.Key, Reason: ReasonStatementHeader})
+			if l, ok := heldAt(a, st.Issuer.Key, ReasonStatementHeader, nil); ok {
+				out = append(out, l)
+			}
 		}
 	}
 	return out
@@ -239,29 +324,26 @@ func pairedCode(a Identifier, ids []Identifier) *Identifier {
 
 var codeReasons = map[string]string{KindIFSC: ReasonIFSCPrefix, KindBIC: ReasonBICInstitution, KindIBAN: ReasonIBANBankCode}
 
-// codeLinks gives the links whose reason is a code: an identifier that
-// carries its institution, an account paired with a code, and the parts
-// and account number of an IBAN. A link by the identifier's own code goes
-// to its code key, and an IBAN's is proven as the IBAN is. An identifier
-// with a code key of its own is linked to no other code's key: what its
-// nearness to another code suggests is a same_org row between the two.
+// codeLinks gives the links whose reason is a code: each IBAN, BIC and IFSC
+// at its own code's key, an account paired with a code, and the parts and
+// account number of an IBAN. What an IBAN's nearness to another code
+// suggests is a same_org row between the two keys, never a link.
 func codeLinks(ids []Identifier) []Link {
 	var out []Link
-	for _, id := range ids {
-		if !id.Code.IsZero() {
-			l := Link{Ident: id.ID, Key: id.Code, Reason: codeReasons[id.Kind]}
-			if id.Kind == KindIBAN {
-				l.proof = id.proof
-			}
+	add := func(l Link, ok bool) {
+		if ok {
 			out = append(out, l)
 		}
 	}
 	for _, id := range ids {
-		if !id.isAccount() || !id.Code.IsZero() || id.Valid != nil && !*id.Valid {
+		add(ownLink(id))
+	}
+	for _, id := range ids {
+		if !id.isAccount() || id.Valid != nil && !*id.Valid {
 			continue
 		}
 		if c := pairedCode(id, ids); c != nil {
-			out = append(out, Link{Ident: id.ID, Key: c.Code, Reason: ReasonPairedCode, Via: c.ID})
+			add(heldAt(id, c.Code, ReasonPairedCode, c))
 		}
 	}
 	for _, iban := range ids {
@@ -279,9 +361,9 @@ func codeLinks(ids []Identifier) []Link {
 		for _, id := range ids {
 			switch {
 			case id.Kind == KindAccount && sameAccount(id, iban):
-				out = append(out, Link{Ident: id.ID, Key: iban.Code, Reason: ReasonSameAccount})
+				add(heldAt(id, iban.Code, ReasonSameAccount, nil))
 			case parts[id.Kind] != "" && parts[id.Kind] == id.Value:
-				out = append(out, Link{Ident: id.ID, Key: iban.Code, Reason: ReasonInsideIBAN})
+				add(heldAt(id, iban.Code, ReasonInsideIBAN, nil))
 			}
 		}
 	}
@@ -294,8 +376,9 @@ func codeLinks(ids []Identifier) []Link {
 // leading words of a full name in it, or as the initials of one. A word
 // settled by a code alone keeps a key of its own, spelt from its text, and
 // a join says it spells the code: a mention never stands on a code's key.
-// A word settled by a full name stands on the name's key: it is the name's
-// leading words or initials, so its match key never outranks the name's.
+// A word settled by a full name stands on the name's key, which spellNames
+// spells from both: initials with a legal form the key keeps, such as
+// "TQ N.V." for "T Q Limited", spell the longer match key.
 func shortForms(docID string, lines []Line, names []Mention, ids []Identifier, joins []Join) ([]Mention, []Join) {
 	same := joined(joins)
 	var full []Mention

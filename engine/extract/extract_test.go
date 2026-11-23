@@ -630,13 +630,13 @@ func TestDirectory(t *testing.T) {
 	})
 	o, e := runOne(t, doc("d", "Riverside Bank", "Account: 111122223333 IFSC: RIVR0BR0001", "RH Ltd"), dir)
 	c := o.Organisations[*e.Orgs[0].Org]
-	if c.Directory == nil || *c.Directory != "Q1" {
-		t.Errorf("an exact name gets its directory id: %+v", c)
+	if c.Directory != nil || c.Name == nil || *c.Name != "Riverside Bank" {
+		t.Errorf("a printed name's card is the name as printed, with no directory id: %+v", c)
 	}
 	if e.Orgs[1].Org != nil {
 		t.Errorf("a clash in the directory settles nothing: %+v", e.Orgs[1])
 	}
-	eq(t, "same_org", joinsOf(e), []string{"IFSC RIVR = name:d:riversidebank: directory certain"})
+	eq(t, "same_org", joinsOf(e), []string{"IFSC RIVR = name:d:riversidebank: directory likely"})
 	if c := o.Organisations["IFSC RIVR"]; c.Directory == nil || *c.Directory != "Q1" {
 		t.Errorf("the code's card is its entry: %+v", c)
 	}

@@ -8,6 +8,10 @@ package orgkey
 import (
 	"strings"
 	"unicode"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+	"golang.org/x/text/unicode/norm"
 )
 
 // Key is an organisation's key. The zero Key is no key.
@@ -64,12 +68,12 @@ func spelling(a, b string) string {
 
 var stopWords = map[string]bool{"the": true, "ltd": true, "limited": true, "plc": true, "inc": true, "ag": true, "sa": true, "nv": true}
 
-// MatchKey is the match key of a name (README.md, last section):
-// compatibility-folded, lower case, 株式会社 read as a word break, split on
-// everything that is not a letter, mark or digit, the legal-form words
-// dropped, and the rest joined.
+// MatchKey is the match key of a name, as the scorer's matchKey
+// (sample/tools/lib/key.mjs) spells it: compatibility-folded, lower case,
+// 株式会社 read as a word break, split on everything that is not a letter,
+// mark or number, the legal-form words dropped, and the rest joined.
 func MatchKey(s string) string {
-	s = strings.ReplaceAll(strings.ToLower(Fold(s)), "株式会社", " ")
+	s = strings.ReplaceAll(Lower(Fold(s)), "株式会社", " ")
 	var b strings.Builder
 	for _, w := range strings.FieldsFunc(s, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsMark(r) && !unicode.IsNumber(r)
@@ -81,24 +85,16 @@ func MatchKey(s string) string {
 	return b.String()
 }
 
-// Fold is the part of Unicode compatibility folding (NFKC) the sample's
-// scripts need. Go's standard library has no normaliser: full-width ASCII
-// becomes ASCII, the ideographic space a space, and the Devanagari letters
-// that NFKC decomposes (क़ .. य़) become letter plus nukta.
-func Fold(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r >= 0xFF01 && r <= 0xFF5E:
-			b.WriteRune(r - 0xFEE0)
-		case r == 0x3000:
-			b.WriteRune(' ')
-		case r >= 0x0958 && r <= 0x095F:
-			b.WriteRune([]rune("कखगजडढफय")[r-0x0958])
-			b.WriteRune(0x093C)
-		default:
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
+// Fold is Unicode compatibility folding, NFKC, as the scorer's
+// normalize('NFKC') gives it.
+func Fold(s string) string { return norm.NFKC.String(s) }
+
+// Lower is lower case as JavaScript's toLowerCase gives it: Unicode's full
+// mapping, with no language's own rules. Go's strings.ToLower differs in
+// two places: it lowers a capital sigma that ends a word to σ, not ς, and a
+// dotted capital I to i, not i and a combining dot above.
+func Lower(s string) string { return cases.Lower(language.Und).String(s) }
+
+// Upper is upper case as JavaScript's toUpperCase gives it: Unicode's full
+// mapping, so ß is SS, where Go's strings.ToUpper leaves it.
+func Upper(s string) string { return cases.Upper(language.Und).String(s) }

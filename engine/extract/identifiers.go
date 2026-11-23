@@ -78,6 +78,10 @@ func (id Identifier) isAccount() bool {
 
 func (id Identifier) isCode() bool { return id.Kind == KindIFSC || id.Kind == KindBIC }
 
+// namesItsInstitution: an IBAN, a BIC or an IFSC, which carries its
+// institution's code in its own characters ("Code keys").
+func (id Identifier) namesItsInstitution() bool { return id.Kind == KindIBAN || id.isCode() }
+
 func ptr[T any](v T) *T { return &v }
 
 // found is a match inside one line, as byte offsets into the line's text.

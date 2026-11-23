@@ -65,6 +65,61 @@ func TestOddInputs(t *testing.T) {
 	}
 }
 
+// Pages whose printed names the scorer spells only with full Unicode
+// compatibility folding and JavaScript's lower case, and a page where the
+// longer of two names on one key is a short form. The scorer must accept
+// the key of every one.
+var keyPages = map[string][]string{
+	"decomposed-accent":   {"Payment confirmation\nBank: Vale\u0301rio Bank\nAccount: 9812345600"},
+	"greek-tonos":         {"Payment confirmation\nBank: \u039b\u03b9\u0301\u03bc\u03bd\u03b7 Bank\nAccount: 9812345601"},
+	"conjoining-jamo":     {"Payment confirmation\nBank: \u1107\u1161\u1103\u1161 Bank\nAccount: 9812345602"},
+	"arabic-presentation": {"Payment confirmation\nBank: \ufe91\ufee8\ufeda \u0646\u062c\u0645\nAccount: 9812345603"},
+	"half-width-kana":     {"Payment confirmation\n\uff84\uff9e\uff98\uff76\u9280\u884c\nAccount: 9812345604"},
+	"thai-sara-am":        {"Payment confirmation\nBank: \u0e18\u0e19\u0e32\u0e04\u0e32\u0e23 \u0e25\u0e33\u0e18\u0e32\u0e23\nAccount: 9812345605"},
+	"final-sigma":         {"Payment confirmation\nBank: \u039f\u0394\u039f\u03a3 Bank\nAccount: 9812345606"},
+	"dotted-capital-i":    {"Payment confirmation\nBank: \u0130zmir Ornek Bank\nAccount: 9812345607"},
+	"short-form-longer":   {"Account confirmation\nT Q Limited\nOur reference: TQ N.V. account desk\nAccount: 9812345608"},
+}
+
+func TestKeysTheScorerAccepts(t *testing.T) {
+	dir := t.TempDir()
+	text := filepath.Join(dir, "text")
+	if err := os.Mkdir(text, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for id, pages := range keyPages {
+		ids = append(ids, id)
+		doc := map[string]any{"id": id, "lang": "en", "pages": []map[string]any{}}
+		for _, p := range pages {
+			doc["pages"] = append(doc["pages"].([]map[string]any), map[string]any{"text": p, "scanned": false})
+		}
+		writeJSON(t, filepath.Join(text, id+".json"), doc)
+	}
+	writeJSON(t, filepath.Join(text, "index.json"), map[string]any{"format": 1, "text_set": "text", "reference_date": "2026-11-22", "documents": ids})
+	out := filepath.Join(dir, "out.json")
+	if err := run(text, "", "../../../sample/iban-registry.json", out, "go-m1a"); err != nil {
+		t.Fatal(err)
+	}
+	var o struct {
+		Organisations map[string]json.RawMessage `json:"organisations"`
+	}
+	raw, _ := os.ReadFile(out)
+	if err := json.Unmarshal(raw, &o); err != nil {
+		t.Fatal(err)
+	}
+	named := 0
+	for k := range o.Organisations {
+		if strings.HasPrefix(k, "name:") {
+			named++
+		}
+	}
+	if named != len(keyPages) {
+		t.Errorf("%d printed names have a key, want %d: %v", named, len(keyPages), o.Organisations)
+	}
+	scorerAccepts(t, dir, out)
+}
+
 func split(ids []string) [][]string {
 	var out [][]string
 	for _, id := range ids {

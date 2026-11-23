@@ -30,10 +30,6 @@ const (
 	// two digits of the year, the zone is zoneChecked, and the printed date
 	// of expiry it cites gives the four-digit year.
 	zoneAndPrintedYear
-	// directoryJoin: in a run with the directory on, every printed name on
-	// one key and the code on the other each look up to exactly one entry,
-	// the same one.
-	directoryJoin
 )
 
 // claim names what a row claims: an identifier's kind, a link's reason, a
@@ -48,7 +44,11 @@ func joinClaim(reason string) claim   { return claim("same_org " + reason) }
 
 // certainBy mirrors FORMAT.md's tables: the one proof that makes each claim
 // certain. A claim not listed here, such as any statement fact, passport
-// current, or a link read from layout, is never certain.
+// current, or a link read from layout, is never certain. Nor is a same_org
+// row, though FORMAT.md lets a directory row be: the directory lists banks,
+// not everyone who prints a name, so a printed name that one entry holds is
+// a hint, not a proof, and which printed name goes with which code on a page
+// with two parties is read from layout.
 var certainBy = map[claim]proof{
 	identClaim(KindIBAN): ibanRegistered,
 	identClaim(KindMRZ):  zoneChecked,
@@ -62,8 +62,6 @@ var certainBy = map[claim]proof{
 	passportClaim("holder"): zoneSays,
 	passportClaim("number"): zoneSays,
 	passportClaim("expiry"): zoneAndPrintedYear,
-
-	joinClaim(JoinDirectory): directoryJoin,
 }
 
 // tierOf is the only way the extractor gives a tier.
