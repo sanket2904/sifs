@@ -1,0 +1,118 @@
+{
+ "format": 2,
+ "extractor": "format-2-example",
+ "directory": "on",
+ "text_set": "text",
+ "organisations": {
+  "BIC SMBKCAT0": {
+   "name": null,
+   "directory": null
+  },
+  "BIC SMBKGB20": {
+   "name": null,
+   "directory": null
+  },
+  "name:smbk": {
+   "name": "SMBK",
+   "directory": null
+  }
+ },
+ "documents": [
+  {
+   "id": "credit-advice-smbk-ca",
+   "orgs": [
+    {
+     "page": 1,
+     "start": 194,
+     "end": 198,
+     "text": "SMBK",
+     "org": "name:smbk",
+     "settled_by": "code"
+    }
+   ],
+   "identifiers": [
+    {
+     "id": "i1",
+     "page": 1,
+     "start": 209,
+     "end": 220,
+     "text": "SMBKCAT0XXX",
+     "kind": "bic",
+     "value": "SMBKCAT0XXX",
+     "valid": true,
+     "tier": "likely"
+    }
+   ],
+   "links": [
+    {
+     "identifier": "i1",
+     "org": "BIC SMBKCAT0",
+     "reasons": [
+      "bic-institution"
+     ],
+     "tier": "likely"
+    }
+   ],
+   "same_org": [
+    {
+     "keys": [
+      "name:smbk",
+      "BIC SMBKCAT0"
+     ],
+     "reason": "spells-code",
+     "tier": "likely"
+    }
+   ]
+  },
+  {
+   "id": "payroll-release-smbk-gb",
+   "orgs": [
+    {
+     "page": 1,
+     "start": 160,
+     "end": 164,
+     "text": "SMBK",
+     "org": "name:smbk",
+     "settled_by": "code"
+    }
+   ],
+   "identifiers": [
+    {
+     "id": "i1",
+     "page": 1,
+     "start": 170,
+     "end": 181,
+     "text": "SMBKGB20XXX",
+     "kind": "bic",
+     "value": "SMBKGB20XXX",
+     "valid": true,
+     "tier": "likely"
+    }
+   ],
+   "links": [
+    {
+     "identifier": "i1",
+     "org": "BIC SMBKGB20",
+     "reasons": [
+      "bic-institution"
+     ],
+     "tier": "likely"
+    }
+   ],
+   "same_org": [
+    {
+     "keys": [
+      "name:smbk",
+      "BIC SMBKGB20"
+     ],
+     "reason": "spells-code",
+     "tier": "likely"
+    }
+   ]
+  }
+ ],
+ "answers": {
+  "latest_statement": [],
+  "current_passport": []
+ }
+}

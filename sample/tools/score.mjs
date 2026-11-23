@@ -12,11 +12,16 @@ import { readLabels } from './lib/labels.mjs';
 import { isMain } from './lib/main.mjs';
 import {
 	CODE_REASONS,
-	codeKey,
+	documentKey,
+	documentOfKey,
+	isCodeKey,
 	mayBeCertainIdentifier,
 	mayBeCertainJoin,
 	mayBeCertainLink,
 	mayBeCertainPassport,
+	nameKey,
+	nameOfKey,
+	ownCodeKey,
 	TIERS
 } from './lib/tiers.mjs';
 import { readTextSet, TEXT_SETS } from './text.mjs';
@@ -41,6 +46,7 @@ const SAME_ORG_REASONS = new Set([
 ]);
 const DATE = /^\d{4}-\d\d-\d\d$/;
 const TIERS_HELP = 'FORMAT.md, "Tiers"';
+const KEYS_HELP = 'FORMAT.md, "No merging"';
 const MEASURES = [
 	'mentions',
 	'org_directory',
@@ -84,9 +90,14 @@ function parseOutput(output, textSet, entries) {
 	if (output.format === 1)
 		fail(
 			'format',
-			`format 1 has no tiers. Write format 2: a tier on every link, tiers on every statement and passport, and same_org rows for keys that are one organisation (${TIERS_HELP})`
+			`format 1 has no tiers. Write format 3: a tier on every link, tiers on every statement and passport, and same_org rows for keys that are one organisation (${TIERS_HELP})`
 		);
-	if (output.format !== 2) fail('format', 'must be 2');
+	if (output.format === 2)
+		fail(
+			'format',
+			`format 2 shares a printed name's key across documents and takes an expiry's century from the zone; write format 3, where a name's key is name:<document id>:<name> and a certain expiry cites a printed date with a four-digit year (FORMAT.md, "Changes in round 7")`
+		);
+	if (output.format !== 3) fail('format', 'must be 3');
 	if (typeof output.extractor !== 'string' || !output.extractor)
 		fail('extractor', 'must be a name');
 	if (output.directory !== 'on' && output.directory !== 'off')
@@ -99,7 +110,11 @@ function parseOutput(output, textSet, entries) {
 	const cards = new Map();
 	for (const [key, card] of Object.entries(output.organisations)) {
 		const where = `organisations[${JSON.stringify(key)}]`;
-		if (!key) fail(where, 'a key must be a non-empty string');
+		if (!isCodeKey(key) && !textSet.docs.has(documentOfKey(key)))
+			fail(
+				where,
+				`a key is an institution code's key ("Code keys") or a document key, name:<document id>:<name> (${KEYS_HELP})`
+			);
 		if (!isObject(card)) fail(where, 'must be {name, directory}');
 		if (card.name !== null && (typeof card.name !== 'string' || !card.name))
 			fail(where, 'name must be a name or null');
@@ -147,19 +162,22 @@ function parseOutput(output, textSet, entries) {
 	const tierOf = (v, where) =>
 		TIERS.has(v) ? v : fail(where, `needs a tier, "certain" or "likely" (${TIERS_HELP})`);
 	// The tiers of the facts an entry gives: one for each fact that is not null.
-	const factTiers = (tiers, facts, where, mayBeCertain) => {
+	const factTiers = (tiers, facts, where, mayBeCertain, hint = () => '') => {
 		if (!isObject(tiers))
 			fail(`${where}.tiers`, `needs a tier for ${facts.join(', ')} (${TIERS_HELP})`);
 		const out = {};
 		for (const fact of facts) {
 			out[fact] = tierOf(tiers[fact], `${where}.tiers.${fact}`);
 			if (out[fact] === 'certain' && !mayBeCertain(fact))
-				fail(`${where}.tiers.${fact}`, `cannot be certain here (${TIERS_HELP})`);
+				fail(`${where}.tiers.${fact}`, `cannot be certain here${hint(fact)} (${TIERS_HELP})`);
 		}
 		return out;
 	};
 	const seen = new Set();
 	const docs = new Map();
+	// The document keys a mention, or an IBAN of a country the table does not
+	// have, stands behind.
+	const named = new Set();
 	list(output.documents, 'documents').forEach((doc, n) => {
 		const where = `documents[${n}]`;
 		if (!isObject(doc)) fail(where, 'must be an object');
@@ -217,9 +235,9 @@ function parseOutput(output, textSet, entries) {
 				if (!REASONS.has(r)) fail(w, `reason ${JSON.stringify(r)} is not known`);
 			if (link.reasons.includes('paired-code') && (link.via === undefined || link.via === null))
 				fail(w, 'paired-code needs a via');
-			const canonical = codeKey(identifier);
+			const canonical = ownCodeKey(identifier, doc.id);
 			const own = link.reasons.find((r) => CODE_REASONS.get(r) === identifier.kind);
-			if (own && canonical !== null && link.org !== canonical)
+			if (own && link.org !== canonical)
 				fail(
 					w,
 					`a link by ${own} goes to its code's key, ${JSON.stringify(canonical)} (FORMAT.md, "Code keys")`
@@ -279,8 +297,15 @@ function parseOutput(output, textSet, entries) {
 			if (![true, false, null].includes(current)) fail(w, 'current must be true, false or null');
 			const given = { holder, number, expiry, current };
 			const facts = Object.keys(given).filter((f) => given[f] !== null);
-			const tiers = factTiers(p.tiers, facts, w, (fact) =>
-				mayBeCertainPassport(fact, { mrz, number, holder, expiry })
+			const tiers = factTiers(
+				p.tiers,
+				facts,
+				w,
+				(fact) => mayBeCertainPassport(fact, { mrz, number, holder, expiry, expiryAt }),
+				(fact) =>
+					fact === 'expiry'
+						? `: the zone gives two digits of the year, so a certain expiry cites in expiry_at a printed date whose four-digit year ends in them and whose day is the zone's`
+						: ''
 			);
 			passport = {
 				holder,
@@ -297,6 +322,49 @@ function parseOutput(output, textSet, entries) {
 		const used = new Set(
 			[...mentions.map((m) => m.org), ...links.map((l) => l.org), statement?.issuer].filter(Boolean)
 		);
+		for (const k of used) {
+			const owner = documentOfKey(k);
+			if (owner !== null && owner !== doc.id)
+				fail(
+					where,
+					`key ${k} is a key of document ${owner}; a printed name's key is for one document (${KEYS_HELP})`
+				);
+		}
+		// A code's key stands for a code an identifier of this document gives,
+		// and only links and same_org rows use it: never a mention or an issuer.
+		const codes = new Set([...identifiers.values()].map((i) => ownCodeKey(i, doc.id)).filter(Boolean));
+		const ibanKeys = new Set([...codes].filter((k) => !isCodeKey(k)));
+		const isCode = (k) => isCodeKey(k) || ibanKeys.has(k);
+		for (const k of [...mentions.map((m) => m.org), ...ibanKeys]) if (k !== null) named.add(k);
+		const NAME_HELP = `a printed name's key is a document key, and a name joins a code's key only by a same_org row (${KEYS_HELP})`;
+		mentions.forEach((m, i) => {
+			if (m.org !== null && isCode(m.org))
+				fail(`${where}.orgs[${i}]`, `key ${m.org} is a code's key; ${NAME_HELP}`);
+		});
+		if (statement?.issuer && isCode(statement.issuer))
+			fail(`${where}.statement`, `issuer ${statement.issuer} is a code's key; ${NAME_HELP}`);
+		links.forEach((l, i) => {
+			if (isCodeKey(l.org) && !codes.has(l.org))
+				fail(
+					`${where}.links[${i}]`,
+					`key ${l.org} is the key of a code no identifier of the document gives (FORMAT.md, "Code keys")`
+				);
+		});
+		// A printed name's key is spelt from the text of a mention on it.
+		for (const k of used) {
+			if (documentOfKey(k) === null || ibanKeys.has(k)) continue;
+			if (!mentions.some((m) => m.org === k && documentKey(doc.id, m.text) === k))
+				fail(
+					where,
+					`key ${k} is not spelt from the text of a mention on it: a document key is name:<document id>:<the match key of the printed name> (${KEYS_HELP})`
+				);
+			const spellings = mentions.filter((m) => m.org === k).map((m) => m.text);
+			if (nameKey(doc.id, spellings) !== k)
+				fail(
+					where,
+					`key ${k} is spelt from a mention on it, but the key of these mentions is ${nameKey(doc.id, spellings)}: the longest match key among them, ties by code-point order (${KEYS_HELP})`
+				);
+		}
 		const sameOrg = list(doc.same_org, `${where}.same_org`).map((row, i) => {
 			const w = `${where}.same_org[${i}]`;
 			if (!isObject(row)) fail(w, 'must be an object');
@@ -341,6 +409,12 @@ function parseOutput(output, textSet, entries) {
 			used
 		});
 	});
+	for (const key of cards.keys())
+		if (documentOfKey(key) !== null && !named.has(key))
+			fail(
+				`organisations[${JSON.stringify(key)}]`,
+				`a document key is the key of a mention of its document in the output, or of an IBAN of a country the table does not have that the document gives (${KEYS_HELP})`
+			);
 	const answers = isObject(output.answers) ? output.answers : fail('answers', 'must be an object');
 	const latest = list(answers.latest_statement, 'answers.latest_statement').map((a, i) => {
 		if (typeof a?.account !== 'string' || !textSet.docs.has(a.document))
@@ -378,6 +452,10 @@ function tallies() {
 	return { rows, items, add };
 }
 const zero = () => ({ right: 0, wrong: 0, left_out: 0, impossible: 0 });
+// A labelled item the output does not give is impossible when the text set
+// does not hold it, and left out otherwise. A claim the output gives is always
+// judged against the labels, whatever the text set holds.
+const missing = (gone) => (gone ? 'impossible' : 'left_out');
 
 // Pairs labelled items with output items that have the same key. Equal keys
 // pair by position on the page (page, then start), first with first, so the
@@ -400,6 +478,8 @@ function pair(labelled, output, keyOf) {
 }
 
 const squash = (v) => v.replace(/\s/gu, '');
+// OCR text spaces words unevenly: runs of white space fold to one.
+const fold = (v) => v.replace(/\s+/gu, ' ').trim();
 // A card name ignores case and all whitespace: 三菱 UFJ 銀行 is 三菱UFJ銀行.
 const cardName = (v) => v.normalize('NFKC').toUpperCase().replace(/\s/gu, '');
 const normName = (v) =>
@@ -502,6 +582,7 @@ export function score(labels, textSet, rawOutput, directory) {
 		const mentionKey = (m) => (ocrRead(id, m.page) ? onPage(m.page, m.text) : spanKey(m));
 		const identKey = (i) => (ocrRead(id, i.page) ? onPage(i.page, squash(i.value)) : spanKey(i));
 		const decoyKey = (n) => (ocrRead(id, n.page) ? onPage(n.page, squash(n.text)) : spanKey(n));
+		const expiryKey = (s) => (ocrRead(id, s.page) ? onPage(s.page, fold(s.text)) : spanKey(s));
 		const idents = pair(label.identifiers, output.identifiers, identKey);
 		// The labelled identifier an output identifier is: the one it pairs
 		// with, when the kind and value agree.
@@ -516,6 +597,7 @@ export function score(labels, textSet, rawOutput, directory) {
 			impossibleIdent,
 			impossibleMention,
 			mentionKey,
+			expiryKey,
 			identKey,
 			decoyKey,
 			mentions: pair(label.orgs, output.orgs, mentionKey),
@@ -546,27 +628,13 @@ export function score(labels, textSet, rawOutput, directory) {
 		}
 	const targetsOf = (key) => byMention.get(key) ?? byCode.get(key) ?? new Set();
 	const keys = [...out.cards.keys()];
-	// The no-merge rule, read from the output alone. A code's key is spelt
-	// from its code, which the format checks, so one key never holds two
-	// codes. A key that holds a code is that code and no printed name.
-	const codeKeys = new Set();
-	const named = new Set();
-	for (const d of out.docs.values()) {
-		for (const m of d.orgs) if (m.org) named.add(m.org);
-		for (const l of d.links)
-			if (l.reasons.some((r) => CODE_REASONS.get(r) === l.identifier.kind) && codeKey(l.identifier))
-				codeKeys.add(l.org);
-	}
+	// A code's key is spelt from its code and holds no printed name, which the
+	// format checks, so a merge is a key whose papers land on two organisations.
 	const merges = keys.flatMap((k) => {
 		const organisations = [...targetsOf(k)].sort();
-		return [
-			...(organisations.length > 1 ? [{ key: k, why: 'organisations', organisations }] : []),
-			...(codeKeys.has(k) && named.has(k) ? [{ key: k, why: 'name-and-code' }] : [])
-		];
+		return organisations.length > 1 ? [{ key: k, why: 'organisations', organisations }] : [];
 	});
-	// Only papers of two organisations make a key's rows wrong. The other
-	// merges fail the run, and the labels still say who the key is.
-	const merged = new Set(merges.filter((m) => m.why === 'organisations').map((m) => m.key));
+	const merged = new Set(merges.map((m) => m.key));
 	const single = (key) => (targetsOf(key).size === 1 ? [...targetsOf(key)][0] : null);
 
 	// A card states who it is. A name or a directory id that belongs to
@@ -593,6 +661,24 @@ export function score(labels, textSet, rawOutput, directory) {
 		.filter(([, ks]) => ks.length > 1)
 		.map(([t, ks]) => ({ organisation: t, keys: ks.sort() }))
 		.sort((a, b) => a.organisation.localeCompare(b.organisation));
+	// Document keys of two documents whose names are spelt the same. Nothing in
+	// one document joins them; that is the engine's rule "may be the same
+	// organisation", which a person confirms or rejects. This reports what the
+	// rule will face and fails nothing (FORMAT.md, "No merging").
+	const byName = new Map();
+	for (const d of out.docs.values())
+		for (const k of d.used) {
+			const name = nameOfKey(k);
+			if (name !== null) byName.set(name, [...(byName.get(name) ?? []), k]);
+		}
+	const sameName = [...byName.values()]
+		.flatMap((ks) => ks.sort().flatMap((a, i) => ks.slice(i + 1).map((b) => [a, b])))
+		.sort((x, y) => (x.join('\n') < y.join('\n') ? -1 : 1))
+		.map((keys) => ({ keys, organisations: keys.map(single) }));
+	const labelsSay = (one) =>
+		sameName.filter(
+			({ organisations: [x, y] }) => x !== null && y !== null && (x === y) === one
+		).length;
 	const keyVerdict = (key, want) => {
 		if (merged.has(key)) return `key ${key} merges ${[...targetsOf(key)].join(' and ')}`;
 		const card = wrongCard.get(key);
@@ -877,8 +963,7 @@ export function score(labels, textSet, rawOutput, directory) {
 		if (ls) {
 			const periodGone = !possible(id, ls);
 			const want = `${ls.from}..${ls.to}`;
-			if (periodGone) add('statement_period', lang, 'impossible', id, want);
-			else if (!os) add('statement_period', lang, 'left_out', id, want);
+			if (!os) add('statement_period', lang, missing(periodGone), id, want);
 			else {
 				const got = `${os.from}..${os.to}`;
 				add(
@@ -909,8 +994,8 @@ export function score(labels, textSet, rawOutput, directory) {
 			}
 			const issuer = label.orgs.find((m) => m.id === ls.issuer);
 			const t = issuer.resolved_by_document.org;
-			if (w.impossibleMention.has(issuer.id)) add('statement_issuer', lang, 'impossible', id, t);
-			else if (!os?.issuer) add('statement_issuer', lang, 'left_out', id, t);
+			if (!os?.issuer)
+				add('statement_issuer', lang, missing(w.impossibleMention.has(issuer.id)), id, t);
 			else {
 				const why = keyVerdict(os.issuer, t);
 				add('statement_issuer', lang, why ? 'wrong' : 'right', id, why ?? t, os.tiers.issuer);
@@ -938,8 +1023,7 @@ export function score(labels, textSet, rawOutput, directory) {
 			const holderGone = !text.includes(lp.holder.surname) || !text.includes(lp.holder.given);
 			const name = `${lp.holder.surname}, ${lp.holder.given}`;
 			const got = op?.holder ? `${op.holder.surname}, ${op.holder.given}` : null;
-			if (holderGone) add('passport_holder', lang, 'impossible', id, name);
-			else if (!got) add('passport_holder', lang, 'left_out', id, name);
+			if (!got) add('passport_holder', lang, missing(holderGone), id, name);
 			else
 				add(
 					'passport_holder',
@@ -970,21 +1054,27 @@ export function score(labels, textSet, rawOutput, directory) {
 				);
 
 			const expiryGone = !possible(id, lp.expiry_at);
-			if (expiryGone) add('passport_expiry', lang, 'impossible', id, lp.expiry);
-			else if (!op?.expiry) add('passport_expiry', lang, 'left_out', id, lp.expiry);
-			else
+			if (!op?.expiry) add('passport_expiry', lang, missing(expiryGone), id, lp.expiry);
+			else {
+				// A certain expiry cites the printed date of expiry: by span, or on
+				// a page the OCR read by page and text, its spacing folded.
+				const cited =
+					op.tiers.expiry !== 'certain' ||
+					w.expiryKey(op.expiryAt) === w.expiryKey(lp.expiry_at);
 				add(
 					'passport_expiry',
 					lang,
-					op.expiry === lp.expiry ? 'right' : 'wrong',
+					op.expiry === lp.expiry && cited ? 'right' : 'wrong',
 					id,
-					`${op.expiry}, labels ${lp.expiry}`,
+					cited
+						? `${op.expiry}, labels ${lp.expiry}`
+						: `${op.expiry} cites ${JSON.stringify(op.expiryAt.text)} at ${op.expiryAt.page}:${op.expiryAt.start}, not the printed date of expiry`,
 					op.tiers.expiry
 				);
+			}
 
-			if (expiryGone) add('passport_current', lang, 'impossible', id, String(lp.current));
-			else if (op?.current === null || op?.current === undefined)
-				add('passport_current', lang, 'left_out', id, String(lp.current));
+			if (op?.current === null || op?.current === undefined)
+				add('passport_current', lang, missing(expiryGone), id, String(lp.current));
 			else
 				add(
 					'passport_current',
@@ -1027,8 +1117,7 @@ export function score(labels, textSet, rawOutput, directory) {
 			const hits = given.filter((g) => matches(want, g));
 			hits.forEach((g) => used.add(g));
 			const lang = langOf(want.document);
-			if (gone(want.document)) add(measure, lang, 'impossible', want.document, show(want));
-			else if (!hits.length) add(measure, lang, 'left_out', want.document, show(want));
+			if (!hits.length) add(measure, lang, missing(gone(want.document)), want.document, show(want));
 			else {
 				const bad = hits.filter((g) => g.document !== want.document);
 				add(
@@ -1093,6 +1182,11 @@ export function score(labels, textSet, rawOutput, directory) {
 		wrong_cards: wrongCards,
 		wrong_attachments: wrongAttachments,
 		splits,
+		same_name: {
+			one_organisation: labelsSay(true),
+			two_organisations: labelsSay(false),
+			pairs: sameName
+		},
 		likely_only_cards: keys.filter((k) => !certainKeys.has(k)).sort(),
 		...items
 	};
@@ -1144,11 +1238,8 @@ export function table(result) {
 		line(head),
 		...body.map(line)
 	];
-	const merge = {
-		organisations: (m) => `covers ${m.organisations.join(', ')}`,
-		'name-and-code': () => 'is an institution code and holds a printed name'
-	};
-	for (const m of result.merges) out.push(`MERGE: key ${m.key} ${merge[m.why](m)}`);
+	for (const m of result.merges)
+		out.push(`MERGE: key ${m.key} covers ${m.organisations.join(', ')}`);
 	for (const c of result.wrong_cards)
 		out.push(`wrong card: key ${c.key} is ${c.organisation} but claims ${c.claims.join(' and ')}`);
 	for (const a of result.wrong_attachments)
@@ -1157,6 +1248,13 @@ export function table(result) {
 		);
 	for (const s of result.splits)
 		out.push(`split: ${s.organisation} over keys ${s.keys.join(', ')}`);
+	const { one_organisation: one, two_organisations: two, pairs } = result.same_name;
+	out.push(
+		`same name in two documents: ${pairs.length} pairs of keys, the labels say ${one} are one organisation and ${two} are two`
+	);
+	for (const { keys: k, organisations: o } of pairs)
+		if (o[0] !== null && o[1] !== null && o[0] !== o[1])
+			out.push(`same name, two organisations: ${k[0]} (${o[0]}) and ${k[1]} (${o[1]})`);
 	const heading = {
 		wrong: (i) => (i.tier === 'certain' ? 'WRONG CERTAIN' : i.tier ? `wrong ${i.tier}` : 'wrong'),
 		impossible: () => 'impossible',

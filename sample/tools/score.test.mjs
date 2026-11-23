@@ -16,6 +16,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { SAMPLE } from './generate.mjs';
 import { readLabels } from './lib/labels.mjs';
+import { documentKey, documentOfKey, nameKey, printedExpiry } from './lib/tiers.mjs';
 import { reference } from './reference.mjs';
 import { FormatError, score, table } from './score.mjs';
 import { checkTextSets, readTextSet } from './text.mjs';
@@ -34,7 +35,20 @@ const sum = (result, outcome, skip = () => false) =>
 		.filter(([m]) => !skip(m))
 		.reduce((n, [, r]) => n + r.total[outcome], 0);
 const wrongs = (result, measure) => result.wrong.filter((w) => w.measure === measure);
-const card = (output, local) => output.organisations[`ref:${local}`];
+// The perfect output's key for a labelled organisation in one document: a
+// document key, name:<document id>:<name>.
+const keyIn = (output, id, local) => {
+	const d = doc(output, id);
+	const used = [...d.orgs.map((m) => m.org), ...d.links.map((l) => l.org), d.statement?.issuer];
+	const key = used.find(
+		(k) =>
+			k?.startsWith(`name:${id}:`) &&
+			output.organisations[k].name === labels.organisations[local].name
+	);
+	assert.ok(key, `${local} has no key in ${id}`);
+	return key;
+};
+const card = (output, id, local) => output.organisations[keyIn(output, id, local)];
 const byTier = (result, measure, tier) => result.measures[measure].by_tier[tier];
 const linkOf = (output, id, value) => {
 	const d = doc(output, id);
@@ -45,6 +59,15 @@ const linkOf = (output, id, value) => {
 const prune = (d) => {
 	const used = new Set([...d.orgs.map((m) => m.org), ...d.links.map((l) => l.org), d.statement?.issuer]);
 	d.same_org = d.same_org.filter((r) => r.keys.every((k) => used.has(k)));
+};
+// The output with only the cards its documents use, and the codes' cards, as
+// an output that gives fewer documents or mentions declares them.
+const cardsInUse = (output) => {
+	const used = new Set(output.documents.flatMap((d) => [...d.orgs, ...d.links].map((r) => r.org)));
+	const cards = Object.entries(output.organisations).filter(
+		([k]) => documentOfKey(k) === null || used.has(k)
+	);
+	return { ...output, organisations: Object.fromEntries(cards) };
 };
 // A span of the committed text of a document, found by its text.
 const spanOf = (output, id, text) => {
@@ -72,9 +95,9 @@ for (const directory of ['on', 'off']) {
 		assert.deepEqual(leftOut(result), joinsLeftOut(directory, 'text'));
 		assert.deepEqual(result.merges, []);
 		assert.equal(result.failed, false);
-		assert.equal(totals(result, 'links').right, 47);
+		assert.equal(totals(result, 'links').right, 49);
 		assert.deepEqual(byTier(result, 'links', 'certain'), { right: directory === 'on' ? 21 : 4, wrong: 0 });
-		assert.equal(totals(result, 'same_org').right, directory === 'on' ? 17 : 14);
+		assert.equal(totals(result, 'same_org').right, directory === 'on' ? 19 : 16);
 		assert.equal(totals(result, 'answer_latest_statement').right, 12);
 		assert.equal(totals(result, 'answer_current_passport').right, 3);
 	});
@@ -122,15 +145,66 @@ test('on the OCR text set, a value the extractor repairs from the OCR text is fo
 	assert.equal(result.failed, false);
 });
 
+// Two invented pages. `beta` settles Beta Bank by name and its IFSC. `alpha`
+// is Alpha Bank's, holds an account, and prints Beta Bank's IFSC with nothing
+// in the page that settles Beta Bank.
+const twoBanks = () => {
+	const ifsc = 'BETA0SAMPL1';
+	const pages = { beta: `Beta Bank\nIFSC: ${ifsc}`, alpha: `Alpha Bank\nAccount: 123456\nPay to ${ifsc}` };
+	const at = (id, text) => {
+		const start = pages[id].indexOf(text);
+		return { page: 1, start, end: start + text.length, text };
+	};
+	const bank = (name) => ({ name, names: [name], directory: null });
+	const mention = (id, text, org) => ({ ...at(id, text), id: 'o1', resolved_by_document: { org, evidence: [{ by: 'name' }] } });
+	const labels = {
+		organisations: { 'alpha-bank': bank('Alpha Bank'), 'beta-bank': bank('Beta Bank') },
+		documents: [
+			{
+				id: 'beta',
+				orgs: [mention('beta', 'Beta Bank', 'beta-bank')],
+				not_orgs: [],
+				identifiers: [{ id: 'i1', ...at('beta', ifsc), kind: 'ifsc', value: ifsc, valid: true }],
+				not_identifiers: [],
+				links: [{ identifier: 'i1', org: 'beta-bank', mention: 'o1', reasons: ['ifsc-prefix'] }],
+				not_links: []
+			},
+			{
+				id: 'alpha',
+				orgs: [mention('alpha', 'Alpha Bank', 'alpha-bank')],
+				not_orgs: [],
+				identifiers: [
+					{ id: 'i1', ...at('alpha', '123456'), kind: 'account', value: '123456', valid: null },
+					{ id: 'i2', ...at('alpha', ifsc), kind: 'ifsc', value: ifsc, valid: true }
+				],
+				not_identifiers: [],
+				links: [{ identifier: 'i1', org: 'alpha-bank', mention: 'o1', reasons: ['statement-header'] }],
+				not_links: []
+			}
+		],
+		answers: { latest_statement: [], current_passport: [] }
+	};
+	const textSet = {
+		index: { text_set: 'text' },
+		docs: new Map(
+			Object.entries(pages).map(([id, text]) => [id, { id, lang: 'en', pages: [{ text, scanned: false }] }])
+		)
+	};
+	const output = reference(labels, textSet, 'off', { entries: [] });
+	return { output, run: (o) => score(labels, textSet, o, { entries: [] }) };
+};
+
 test('a likely link to an organisation the document does not settle is wrong, counted, and fails nothing', () => {
-	const output = perfect();
-	linkOf(output, 'hdfc-statement-sep', '50100417263958').org = 'ref:kotak';
+	const { output, run } = twoBanks();
+	// A code's key is the same in every document; Beta Bank's is known from beta.
+	const alpha = doc(output, 'alpha');
+	alpha.links[0] = { identifier: 'i1', org: 'IFSC BETA', reasons: ['paired-code'], via: 'i2', tier: 'likely' };
 	const result = run(output);
 	assert.equal(totals(result, 'links').wrong, 1);
-	assert.deepEqual(byTier(result, 'links', 'likely'), { right: 25, wrong: 1 });
-	assert.match(wrongs(result, 'links')[0].what, /does not settle kotak/);
+	assert.deepEqual(byTier(result, 'links', 'likely'), { right: 1, wrong: 1 });
+	assert.match(wrongs(result, 'links')[0].what, /does not settle beta-bank/);
 	assert.equal(wrongs(result, 'links')[0].tier, 'likely');
-	assert.equal(totals(result, 'links').left_out, 1, 'the account is no longer linked to HDFC Bank');
+	assert.equal(totals(result, 'links').left_out, 1, 'the account is no longer linked to Alpha Bank');
 	assert.equal(result.failed, false);
 });
 
@@ -139,7 +213,7 @@ test('a wrong certain link fails the run, and one certain row makes the link cer
 		const output = perfect();
 		// The IBAN's key now claims to be ABN AMRO, so the IBAN is held at no
 		// labelled organisation.
-		output.organisations['IBAN GB NWBK'].directory = card(output, 'abn-amro').directory;
+		output.organisations['IBAN GB NWBK'].directory = card(output, 'abn-amro-statement', 'abn-amro').directory;
 		const d = doc(output, 'natwest-statement');
 		const iban = linkOf(output, 'natwest-statement', 'GB29NWBK60161331926819');
 		d.links.splice(likelyFirst ? 0 : d.links.length, 0, { ...iban, tier: 'likely' });
@@ -155,7 +229,7 @@ test('a link the labels list under not_links is wrong', () => {
 	const output = perfect();
 	doc(output, 'neft-receipt-tied').links.push({
 		identifier: 'i1',
-		org: 'ref:icici-bank',
+		org: keyIn(output, 'neft-receipt-tied', 'icici-bank'),
 		reasons: ['paired-code'],
 		via: 'i4',
 		tier: 'likely'
@@ -169,15 +243,16 @@ test('a link on an identifier the labels mark invalid is wrong', () => {
 	const output = perfect();
 	const d = doc(output, 'invoice-lookalike-numbers');
 	const row = { identifier: 'i2', reasons: ['statement-header'], tier: 'likely' };
-	d.links.push({ ...row, org: 'ref:sample-supplies' }, { ...row, org: 'ref:natwest' });
+	const supplies = keyIn(output, 'invoice-lookalike-numbers', 'sample-supplies');
+	d.links.push({ ...row, org: supplies }, { ...row, org: 'IBAN GB NWBK' });
 	const result = run(output);
 	assert.deepEqual(
 		wrongs(result, 'links')
 			.map((w) => w.what)
 			.sort(),
 		[
-			'card 4111111111111112 at ref:natwest (natwest): the identifier is invalid',
-			'card 4111111111111112 at ref:sample-supplies (sample-supplies): a not_link (invalid-identifier)'
+			'card 4111111111111112 at IBAN GB NWBK (natwest): the identifier is invalid',
+			`card 4111111111111112 at ${supplies} (sample-supplies): a not_link (invalid-identifier)`
 		]
 	);
 });
@@ -200,11 +275,18 @@ test('paired-code through the wrong code does not hold', () => {
 
 test('one key over two labelled organisations is a merge and fails the run', () => {
 	const output = perfect();
-	for (const m of doc(output, 'hdfc-ltd-loan-2019').orgs) m.org = 'ref:hdfc-bank';
-	doc(output, 'hdfc-ltd-loan-2019').statement.issuer = 'ref:hdfc-bank';
+	const d = doc(output, 'neft-receipt-tied');
+	const hdfc = keyIn(output, d.id, 'hdfc-bank');
+	const icici = keyIn(output, d.id, 'icici-bank');
+	// ICICI Bank is the longest name on the merged key, so it spells the key,
+	// and a key that holds HDFC's names has no certain directory join.
+	for (const row of [...d.orgs, ...d.links]) if (row.org === hdfc) row.org = icici;
+	prune(d);
+	for (const row of d.same_org) if (row.keys.includes(icici)) row.tier = 'likely';
+	delete output.organisations[hdfc];
 	const result = run(output);
 	assert.deepEqual(result.merges, [
-		{ key: 'ref:hdfc-bank', why: 'organisations', organisations: ['hdfc-bank', 'hdfc-ltd'] }
+		{ key: icici, why: 'organisations', organisations: ['hdfc-bank', 'icici-bank'] }
 	]);
 	assert.ok(totals(result, 'same_org').wrong > 0, 'rows on the merged key are wrong');
 	assert.equal(result.failed, true);
@@ -213,10 +295,10 @@ test('one key over two labelled organisations is a merge and fails the run', () 
 test("a link by a code's own reason to any key but the code's canonical key breaks the format, so no key holds two codes", () => {
 	const moves = [
 		['natwest-statement', 'NWBKGB2L', 'IBAN GB NWBK', /goes to its code's key, "BIC NWBKGB2L"/],
-		['natwest-statement', 'GB29NWBK60161331926819', 'iban GB NWBK', /"IBAN GB NWBK"/],
-		['hdfc-statement-sep', 'HDFC0SAMPL1', 'ifsc HDFC', /"IFSC HDFC"/],
-		['hdfc-statement-sep', 'HDFC0SAMPL1', 'ref:hdfc-bank', /"IFSC HDFC"/],
-		['transfer-rows', 'ICIC0SAMPL2', 'ref:hdfc-bank', /"IFSC ICIC"/]
+		['natwest-statement', 'GB29NWBK60161331926819', 'BIC NWBKGB2L', /"IBAN GB NWBK"/],
+		['hdfc-statement-sep', 'HDFC0SAMPL1', 'IFSC ICIC', /"IFSC HDFC"/],
+		['hdfc-statement-sep', 'HDFC0SAMPL1', 'name:hdfc-statement-sep:hdfcbank', /"IFSC HDFC"/],
+		['transfer-rows', 'ICIC0SAMPL2', 'name:transfer-rows:icicibank', /"IFSC ICIC"/]
 	];
 	for (const [id, value, key, message] of moves) {
 		const output = perfect();
@@ -227,33 +309,77 @@ test("a link by a code's own reason to any key but the code's canonical key brea
 	}
 });
 
-// Keys a statement's printed name to its code's key, as an extractor that
-// merges would.
-const nameOnCode = (output, id, key) => {
-	const d = doc(output, id);
-	d.orgs[0].org = key;
-	d.statement.issuer = key;
+// Keys the HDFC Bank mentions of neft-receipt-tied to ICICI Bank's key there,
+// as an extractor that merges would. ICICI Bank, the longest name on the key,
+// still spells it, and a key that holds HDFC's names has no certain
+// directory join.
+const mergeInNeft = (output) => {
+	const d = doc(output, 'neft-receipt-tied');
+	const hdfc = keyIn(output, d.id, 'hdfc-bank');
+	const icici = keyIn(output, d.id, 'icici-bank');
+	delete output.organisations[hdfc];
+	for (const m of d.orgs) if (m.org === hdfc) m.org = icici;
 	prune(d);
+	for (const row of d.same_org) if (row.keys.includes(icici)) row.tier = 'likely';
+	return icici;
 };
 
-test('a key holding a printed name and an institution code is a merge', () => {
-	const output = perfect();
-	nameOnCode(output, 'hdfc-statement-sep', 'IFSC HDFC');
-	const result = run(output);
-	assert.deepEqual(result.merges, [{ key: 'IFSC HDFC', why: 'name-and-code' }]);
-	assert.equal(sum(result, 'wrong'), 0, JSON.stringify(result.wrong));
-	assert.equal(result.failed, true);
+test("a printed name, a statement's issuer or a code from another document on a code's key breaks the format", () => {
+	const cases = [
+		[
+			'a mention',
+			(o) => (doc(o, 'hdfc-statement-sep').orgs[0].org = 'IFSC HDFC'),
+			/orgs\[0\]: key IFSC HDFC is a code's key; a printed name's key is a document key/
+		],
+		[
+			'an issuer',
+			(o) => (doc(o, 'hdfc-statement-sep').statement.issuer = 'IFSC HDFC'),
+			/statement: issuer IFSC HDFC is a code's key/
+		],
+		[
+			"another document's code",
+			(o) => (linkOf(o, 'hdfc-statement-sep', '50100417263958').org = 'IFSC ICIC'),
+			/links\[\d+\]: key IFSC ICIC is the key of a code no identifier of the document gives/
+		]
+	];
+	for (const [what, change, message] of cases) {
+		const output = perfect();
+		change(output);
+		assert.throws(() => run(output), (e) => e instanceof FormatError && message.test(e.message), what);
+	}
+	// Two documents' names on one code-shaped key that no code of theirs gives.
+	const output = perfect('off');
+	for (const id of ['hdfc-statement-sep', 'hdfc-statement-aug']) {
+		const d = doc(output, id);
+		output.organisations['IFSC ZZZZ'] = output.organisations[d.orgs[0].org];
+		d.orgs[0].org = 'IFSC ZZZZ';
+		d.statement.issuer = 'IFSC ZZZZ';
+		prune(d);
+	}
+	assert.throws(() => run(output), /key IFSC ZZZZ is a code's key/);
 });
 
 test('one labelled organisation over two keys is a split, counted and not wrong', () => {
 	const output = perfect();
-	output.organisations['hdfc-2'] = { name: 'HDFC Bank Limited', directory: 'Q631047' };
-	for (const m of doc(output, 'hdfc-branch-letter').orgs) m.org = 'hdfc-2';
+	const d = doc(output, 'neft-receipt-tied');
+	const key = keyIn(output, d.id, 'hdfc-bank');
+	const short = d.orgs.find((m) => m.text === 'HDFC');
+	const second = documentKey(d.id, short.text);
+	output.organisations[second] = { ...output.organisations[key] };
+	short.org = second;
 	const result = run(output);
-	assert.deepEqual(
-		result.splits.find((s) => s.organisation === 'hdfc-bank'),
-		{ organisation: 'hdfc-bank', keys: ['IFSC HDFC', 'hdfc-2', 'ref:hdfc-bank'] }
-	);
+	assert.deepEqual(result.splits.find((s) => s.organisation === 'hdfc-bank').keys, [
+		'IFSC HDFC',
+		'name:email-fee-payment:hdfcbank',
+		'name:hdfc-branch-letter:hdfcbank',
+		'name:hdfc-card-statement:hdfcbank',
+		'name:hdfc-letter-hindi:एचडीएफसीबैंक',
+		'name:hdfc-statement-aug:hdfcbank',
+		'name:hdfc-statement-jul:hdfcbank',
+		'name:hdfc-statement-sep:hdfcbank',
+		'name:neft-receipt-tied:hdfc',
+		'name:neft-receipt-tied:hdfcbank'
+	]);
 	assert.equal(sum(result, 'wrong'), 0, JSON.stringify(result.wrong));
 	assert.equal(result.failed, false);
 });
@@ -274,7 +400,7 @@ test('a wrong passport expiry is wrong, and a date where the labels cannot tell 
 	doc(output, 'passport-bad-mrz').passport.expiry = '2031-04-15';
 	const result = run(output);
 	assert.equal(totals(result, 'passport_expiry').wrong, 2);
-	assert.equal(totals(result, 'passport_expiry').right, 2);
+	assert.equal(totals(result, 'passport_expiry').right, 3);
 });
 
 test('a passport where the labels have none is wrong', () => {
@@ -335,19 +461,21 @@ test('an invalid IBAN reported as valid is wrong', () => {
 test('a short name nothing settles is wrong as an organisation, in both modes', () => {
 	for (const directory of ['on', 'off']) {
 		const output = perfect(directory);
-		doc(output, 'household-notes').orgs.find((m) => m.text === 'HDFC').org = 'ref:hdfc-bank';
+		output.organisations['name:household-notes:hdfc'] = { name: 'HDFC Bank', directory: null };
+		doc(output, 'household-notes').orgs.find((m) => m.text === 'HDFC').org = 'name:household-notes:hdfc';
 		assert.equal(totals(run(output), 'mentions').wrong, 1, directory);
 	}
 });
 
 test('a name inside a longer name reported as a mention is wrong', () => {
 	const output = perfect();
+	output.organisations['name:hdfc-life-receipt:hdfc'] = { name: 'HDFC Bank', directory: null };
 	doc(output, 'hdfc-life-receipt').orgs.push({
 		page: 1,
 		start: 58,
 		end: 62,
 		text: 'HDFC',
-		org: 'ref:hdfc-bank',
+		org: 'name:hdfc-life-receipt:hdfc',
 		settled_by: 'code'
 	});
 	const result = run(output);
@@ -359,18 +487,20 @@ for (const directory of ['on', 'off'])
 	for (const set of ['text', 'text-ocr'])
 		test(`a keyed mention on a name the labels exclude for its organisation is a wrong attachment, listed and not failing, directory ${directory}, ${set}`, () => {
 			const output = perfect(directory, set);
-			doc(output, 'hdfc-life-receipt').orgs.push({
-				...spanOf(output, 'hdfc-life-receipt', 'HDFC'),
-				org: 'ref:hdfc-bank',
+			// ICICI inside ICICI Lombard's name, keyed to the card of the ICICI Bank the page names.
+			const key = keyIn(output, 'icici-lombard-notice', 'icici-bank');
+			doc(output, 'icici-lombard-notice').orgs.push({
+				...spanOf(output, 'icici-lombard-notice', 'ICICI'),
+				org: key,
 				settled_by: 'name'
 			});
 			const result = run(output);
 			assert.deepEqual(result.wrong_attachments, [
 				{
-					document: 'hdfc-life-receipt',
-					key: 'ref:hdfc-bank',
-					organisation: 'hdfc-bank',
-					mention: 'HDFC at 1:58',
+					document: 'icici-lombard-notice',
+					key,
+					organisation: 'icici-bank',
+					mention: 'ICICI at 1:57',
 					why: 'inside-other-name'
 				}
 			]);
@@ -390,7 +520,7 @@ for (const directory of ['on', 'off'])
 		assert.deepEqual(result.wrong_attachments, [
 			{
 				document: 'school-fee-banks',
-				key: 'ref:bank-of-india',
+				key: keyIn(output, 'school-fee-banks', 'bank-of-india'),
 				organisation: null,
 				mention: 'Bank of India at 1:144',
 				why: 'inside-other-name'
@@ -402,7 +532,7 @@ test('a name inside a longer name keyed to the longer name’s own card is no wr
 	const output = perfect();
 	doc(output, 'school-fee-banks').orgs.push({
 		...spanOf(output, 'school-fee-banks', 'Bank of India'),
-		org: 'ref:sbi',
+		org: keyIn(output, 'school-fee-banks', 'sbi'),
 		settled_by: 'name'
 	});
 	const result = run(output);
@@ -411,19 +541,20 @@ test('a name inside a longer name keyed to the longer name’s own card is no wr
 	assert.equal(result.failed, false);
 });
 
-// An output whose only card is `card`, reporting the first four characters of
-// each labelled name in `hits` as that card's only mention in its document.
+// An output whose only cards are `card`, one in each document, reporting the
+// first four characters of each labelled name in `hits` as that card's only
+// mention in its document.
 const shortHits = (directory, set, card, hits) => {
 	const output = perfect(directory, set);
 	return {
 		...output,
-		organisations: { k: card },
+		organisations: Object.fromEntries(hits.map(([id, name]) => [documentKey(id, name.slice(0, 4)), card])),
 		documents: hits.map(([id, name]) => {
 			const span = spanOf(output, id, name);
 			const text = name.slice(0, 4);
 			return {
 				id,
-				orgs: [{ ...span, end: span.start + 4, text, org: 'k', settled_by: 'name' }],
+				orgs: [{ ...span, end: span.start + 4, text, org: documentKey(id, text), settled_by: 'name' }],
 				identifiers: [],
 				links: []
 			};
@@ -434,7 +565,7 @@ const shortHits = (directory, set, card, hits) => {
 
 for (const directory of ['on', 'off'])
 	for (const set of ['text', 'text-ocr'])
-		test(`one card named by a name two organisations share, with short hits in a document of each, is a wrong attachment, directory ${directory}, ${set}`, () => {
+		test(`a card named by a name two organisations share, with short hits in a document of each, is a wrong attachment, directory ${directory}, ${set}`, () => {
 			const output = shortHits(directory, set, { name: 'HDFC', directory: null }, [
 				['hdfc-branch-letter', 'HDFC Bank Limited'],
 				['hdfc-ltd-loan-2019', 'HDFC Ltd']
@@ -452,15 +583,20 @@ for (const directory of ['on', 'off'])
 			);
 			assert.deepEqual(
 				result.wrong_attachments.map((a) => [a.document, a.key]),
-				[['hdfc-branch-letter', 'k']]
+				[['hdfc-branch-letter', 'name:hdfc-branch-letter:hdfc']]
 			);
 		});
 
 test('a keyed mention on a name the labels exclude, keyed to some other card, is a wrong attachment', () => {
 	const output = perfect();
-	doc(output, 'hdfc-life-receipt').orgs.push({
-		...spanOf(output, 'hdfc-life-receipt', 'HDFC'),
-		org: 'ref:sample-traders',
+	const d = doc(output, 'neft-receipt-tied');
+	const { page, start, end, text } = labels.documents.find((l) => l.id === d.id).not_orgs[0];
+	d.orgs.push({
+		page,
+		start,
+		end,
+		text,
+		org: keyIn(output, d.id, 'sample-traders'),
 		settled_by: 'name'
 	});
 	const result = run(output);
@@ -475,7 +611,7 @@ test('a keyed mention the labels exclude, keyed to the enclosing name’s card, 
 		const output = perfect();
 		doc(output, 'hdfc-life-receipt').orgs.push({
 			...spanOf(output, 'hdfc-life-receipt', 'HDFC'),
-			org: 'ref:hdfc-life',
+			org: keyIn(output, 'hdfc-life-receipt', 'hdfc-life'),
 			settled_by: 'name'
 		});
 		const result = run(output);
@@ -484,7 +620,8 @@ test('a keyed mention the labels exclude, keyed to the enclosing name’s card, 
 		assert.equal(result.failed, false);
 	}
 	const output = perfect();
-	doc(output, 'household-notes').orgs.find((m) => m.text === 'BOI').org = 'ref:bank-of-india';
+	output.organisations['name:household-notes:boi'] = { name: 'Bank of India', directory: null };
+	doc(output, 'household-notes').orgs.find((m) => m.text === 'BOI').org = 'name:household-notes:boi';
 	const result = run(output);
 	assert.deepEqual(result.wrong_attachments, []);
 	assert.equal(totals(result, 'mentions').wrong, 1);
@@ -511,21 +648,21 @@ test('on the OCR text set, a page the OCR did not change matches by span, so swa
 for (const directory of ['on', 'off'])
 	test(`a card name ignores case and all whitespace and nothing else, directory ${directory}`, () => {
 		const spaced = perfect(directory);
-		card(spaced, 'mufg-bank').name = '三菱 UFJ 銀行';
-		card(spaced, 'kotak').name = 'kotakmahindra BANK';
+		card(spaced, 'mufg-remittance-ja', 'mufg-bank').name = '三菱 UFJ 銀行';
+		card(spaced, 'kotak-statement', 'kotak').name = 'kotakmahindra BANK';
 		const result = run(spaced);
 		assert.deepEqual(result.wrong_cards, []);
 		assert.equal(result.failed, false);
 		for (const name of ['HDFC Ltd', 'HDFC-Bank']) {
 			const output = perfect(directory);
-			card(output, 'hdfc-bank').name = name;
+			card(output, 'hdfc-statement-sep', 'hdfc-bank').name = name;
 			assert.deepEqual(run(output).wrong_cards.map((c) => c.claims), [[`name "${name}"`]], name);
 		}
 	});
 
 test('with the directory off, a directory id or a mention settled by the directory is wrong', () => {
 	const output = perfect('off');
-	output.organisations['ref:kotak'].directory = 'Q2040404';
+	card(output, 'kotak-statement', 'kotak').directory = 'Q2040404';
 	doc(output, 'kotak-statement').orgs[0].settled_by = 'directory';
 	const result = run(output);
 	assert.equal(totals(result, 'org_directory').wrong, 1);
@@ -534,15 +671,15 @@ test('with the directory off, a directory id or a mention settled by the directo
 
 test('with the directory on, an organisation without its directory id is left out', () => {
 	const output = perfect('on');
-	output.organisations['ref:kotak'].directory = null;
+	card(output, 'kotak-statement', 'kotak').directory = null;
 	assert.equal(totals(run(output), 'org_directory').left_out, 1);
 });
 
 test('an empty output leaves everything out and fails nothing', () => {
-	const output = { ...perfect(), documents: [], answers: {} };
+	const output = cardsInUse({ ...perfect(), documents: [], answers: {} });
 	const result = run(output);
 	assert.equal(sum(result, 'wrong'), 0);
-	assert.equal(totals(result, 'links').left_out, 47);
+	assert.equal(totals(result, 'links').left_out, 49);
 	assert.equal(result.failed, false);
 });
 
@@ -563,51 +700,79 @@ for (const directory of ['on', 'off']) {
 		assert.ok(output.documents.some((d) => d.links.some((l) => l.org === 'IFSC HDFC')));
 		const result = run(output);
 		assert.equal(sum(result, 'wrong'), 0, JSON.stringify(result.wrong));
-		assert.deepEqual(
-			result.splits.find((s) => s.organisation === 'hdfc-bank').keys,
-			['IFSC HDFC', 'ref:hdfc-bank']
-		);
+		assert.deepEqual(result.splits.find((s) => s.organisation === 'hdfc-bank').keys, [
+			'IFSC HDFC',
+			'name:email-fee-payment:hdfcbank',
+			'name:hdfc-branch-letter:hdfcbank',
+			'name:hdfc-card-statement:hdfcbank',
+			'name:hdfc-letter-hindi:एचडीएफसीबैंक',
+			'name:hdfc-statement-aug:hdfcbank',
+			'name:hdfc-statement-jul:hdfcbank',
+			'name:hdfc-statement-sep:hdfcbank',
+			'name:neft-receipt-tied:hdfcbank'
+		]);
 	});
+
+	// A key on a printed word of transfer-rows that is no organisation: no
+	// mention of it lands on a labelled one.
+	const noOrganisation = (output) => {
+		const key = documentKey('transfer-rows', 'SAMPLE');
+		output.organisations[key] = { ...output.organisations['IFSC ICIC'] };
+		doc(output, 'transfer-rows').orgs.push({ ...spanOf(output, 'transfer-rows', 'SAMPLE'), org: key, settled_by: 'name' });
+		return key;
+	};
 
 	test(`an account never says who a key is, so a key with only an account is no organisation, directory ${directory}`, () => {
 		const output = perfect(directory);
-		output.organisations['code-only'] = { ...card(output, 'icici-bank') };
-		linkOf(output, 'transfer-rows', '50100417263958').org = 'code-only';
+		const codeOnly = noOrganisation(output);
+		linkOf(output, 'transfer-rows', '50100417263958').org = codeOnly;
 		const result = run(output);
 		assert.deepEqual(
 			wrongs(result, 'links').map((w) => w.what),
-			['account 50100417263958 at code-only: key code-only lands on no labelled organisation']
+			[`account 50100417263958 at ${codeOnly}: key ${codeOnly} lands on no labelled organisation`]
 		);
 	});
 
 	test(`a wrong link beside the right one is still wrong, directory ${directory}`, () => {
 		const output = perfect(directory);
-		output.organisations['code-only'] = { ...card(output, 'icici-bank') };
+		const codeOnly = noOrganisation(output);
 		const d = doc(output, 'transfer-rows');
-		d.links.push({ ...linkOf(output, 'transfer-rows', '50100417263958'), org: 'code-only' });
+		d.links.push({ ...linkOf(output, 'transfer-rows', '50100417263958'), org: codeOnly });
 		const result = run(output);
 		assert.equal(totals(result, 'links').wrong, 1);
-		assert.equal(totals(result, 'links').right, 47);
+		assert.equal(totals(result, 'links').right, 49);
 	});
 
 	test(`a card named for another organisation is a wrong card, and every row on its key is wrong, directory ${directory}`, () => {
 		for (const name of ['ICICI Bank', 'HDFC Ltd']) {
 			const output = perfect(directory);
-			card(output, 'hdfc-bank').name = name;
+			const key = keyIn(output, 'hdfc-statement-sep', 'hdfc-bank');
+			output.organisations[key].name = name;
+			// The statement's account held at its header's name as well as at its code.
+			doc(output, 'hdfc-statement-sep').links.push({
+				identifier: linkOf(output, 'hdfc-statement-sep', '50100417263958').identifier,
+				org: key,
+				reasons: ['statement-header'],
+				tier: 'likely'
+			});
 			const result = run(output);
 			assert.deepEqual(result.wrong_cards, [
-				{ key: 'ref:hdfc-bank', organisation: 'hdfc-bank', claims: [`name "${name}"`] }
+				{ key, organisation: 'hdfc-bank', claims: [`name "${name}"`] }
 			]);
-			assert.equal(totals(result, 'links').right, 47 - 1, name);
-			assert.equal(totals(result, 'statement_issuer').wrong, 4, name);
-			assert.equal(totals(result, 'same_org').wrong, 4, name);
+			assert.equal(totals(result, 'links').right, 49, 'the link at the code is still right');
+			assert.deepEqual(
+				wrongs(result, 'links').map((w) => w.what),
+				[`account 50100417263958 at ${key}: key ${key} is hdfc-bank but its card claims name "${name}"`]
+			);
+			assert.equal(totals(result, 'statement_issuer').wrong, 1, name);
+			assert.equal(totals(result, 'same_org').wrong, 1, name);
 			assert.equal(result.failed, directory === 'on', 'the directory makes its joins certain');
 		}
 	});
 
 	test(`a key known only by a code that names another organisation is a wrong card, directory ${directory}`, () => {
 		const output = perfect(directory);
-		output.organisations['IFSC HDFC'] = { ...card(output, 'icici-bank') };
+		output.organisations['IFSC HDFC'] = { ...card(output, 'neft-receipt-tied', 'icici-bank') };
 		let onKey = 0;
 		for (const d of output.documents) {
 			for (const link of d.links.filter((l) => l.org === 'IFSC HDFC')) {
@@ -625,7 +790,7 @@ for (const directory of ['on', 'off']) {
 
 	test(`a wrong card is listed even when nothing links to it, and alone fails nothing, directory ${directory}`, () => {
 		const output = perfect(directory);
-		card(output, 'bundesbank').name = 'Deutsche Bank';
+		card(output, 'deutsche-bank-brief', 'bundesbank').name = 'Deutsche Bank';
 		const result = run(output);
 		assert.equal(result.wrong_cards.length, 1);
 		assert.equal(totals(result, 'links').wrong, 0);
@@ -635,58 +800,153 @@ for (const directory of ['on', 'off']) {
 
 	test(`a card may give no name, or any name the labels give its organisation, directory ${directory}`, () => {
 		const output = perfect(directory);
+		const hdfc = card(output, 'hdfc-statement-sep', 'hdfc-bank');
+		const kotak = card(output, 'kotak-statement', 'kotak');
 		for (const c of Object.values(output.organisations)) c.name = null;
-		card(output, 'hdfc-bank').name = 'hdfc bank  ltd';
-		card(output, 'kotak').name = 'Kotak Mahindra Bank';
+		hdfc.name = 'hdfc bank  ltd';
+		kotak.name = 'Kotak Mahindra Bank';
 		const result = run(output);
 		assert.equal(sum(result, 'wrong'), 0, JSON.stringify(result.wrong));
 		assert.deepEqual(result.wrong_cards, []);
 	});
 
-	test(`a key spelt like the scorer's own bookkeeping is only a key, directory ${directory}`, () => {
-		const output = perfect(directory);
-		const rename = (from, to) => {
+	test(`a document key's name part is the match key of a mention on it, and nothing else, directory ${directory}`, () => {
+		const id = 'hdfc-statement-sep';
+		for (const [name, message] of [
+			[':extra', /a key is an institution code's key/],
+			['\nextra', /a key is an institution code's key/],
+			['extra', /is not spelt from the text of a mention on it/],
+			[`["labelled","ifsc"]`, /a key is an institution code's key/],
+			[`\u0000IFSC ICIC`, /a key is an institution code's key/]
+		]) {
+			const output = perfect(directory);
+			const from = keyIn(output, id, 'hdfc-bank');
+			const to = `${from}${name}`;
 			output.organisations[to] = output.organisations[from];
 			delete output.organisations[from];
-			for (const d of output.documents) {
-				for (const e of [...d.orgs, ...d.links]) if (e.org === from) e.org = to;
-				if (d.statement?.issuer === from) d.statement.issuer = to;
-				for (const r of d.same_org) r.keys = r.keys.map((k) => (k === from ? to : k));
-			}
-		};
-		rename('ref:hdfc-bank', '["labelled","ifsc"]');
-		rename('ref:icici-bank', 'key:ref:hdfc-bank\u0000IFSC ICIC');
-		const result = run(output);
-		assert.equal(sum(result, 'wrong'), 0, JSON.stringify(result.wrong));
-		assert.deepEqual(result.merges, []);
-		assert.equal(result.failed, false);
+			const d = doc(output, id);
+			for (const e of [...d.orgs, ...d.links]) if (e.org === from) e.org = to;
+			d.statement.issuer = to;
+			for (const r of d.same_org) r.keys = r.keys.map((k) => (k === from ? to : k));
+			assert.throws(() => run(output), message, JSON.stringify(name));
+		}
 	});
 }
 
 test("a card that gives another organisation's directory id is a wrong card", () => {
 	const output = perfect('on');
-	card(output, 'kotak').directory = card(output, 'icici-bank').directory;
+	const key = keyIn(output, 'kotak-statement', 'kotak');
+	output.organisations[key].directory = output.organisations['IFSC ICIC'].directory;
 	const result = run(output);
 	assert.deepEqual(result.wrong_cards, [
-		{ key: 'ref:kotak', organisation: 'kotak', claims: ['directory id Q1653258'] }
+		{ key, organisation: 'kotak', claims: ['directory id Q1653258'] }
 	]);
 	assert.equal(totals(result, 'links').wrong, 1);
 });
 
 test("a directory entry's own name is a name of the card only with the directory on", () => {
 	const on = perfect('on');
-	card(on, 'hdfc-bank').name = 'HDFC銀行';
+	card(on, 'hdfc-statement-sep', 'hdfc-bank').name = 'HDFC銀行';
 	assert.deepEqual(run(on).wrong_cards, []);
 	const off = perfect('off');
-	card(off, 'hdfc-bank').name = 'HDFC銀行';
+	card(off, 'hdfc-statement-sep', 'hdfc-bank').name = 'HDFC銀行';
 	assert.equal(run(off).wrong_cards.length, 1);
 });
 
-test('an empty key breaks the format', () => {
+test('a key that is neither a code key nor a document key breaks the format', () => {
+	for (const key of ['', 'name:kotak', 'kotak', 'ifsc HDFC', 'IFSC 1234', 'BIC 1234DEFF', 'BIC COBA1EFF', 'IBAN GB NWBK60', 'name:no-such-document:kotak']) {
+		const output = perfect();
+		output.organisations[key] = { ...card(output, 'kotak-statement', 'kotak') };
+		doc(output, 'kotak-statement').links[0].org = key;
+		assert.throws(
+			() => run(output),
+			/a key is an institution code's key \("Code keys"\) or a document key, name:<document id>:<name>/,
+			key
+		);
+	}
+});
+
+test('a declared document key that no mention of its document has breaks the format', () => {
+	const id = 'hdfc-statement-sep';
+	const ghost = documentKey(id, 'No mention on the sample page');
+	for (const [what, drop] of [
+		['its document given', () => {}],
+		['its document left out', (o) => (o.documents = o.documents.filter((d) => d.id !== id))]
+	]) {
+		const given = perfect();
+		drop(given);
+		const output = cardsInUse(given);
+		output.organisations[ghost] = { name: 'Sample Ghost Bank', directory: null };
+		assert.throws(
+			() => run(output),
+			new RegExp(
+				`organisations\\["${ghost}"\\]: a document key is the key of a mention of its document in the output`
+			),
+			what
+		);
+	}
+});
+
+test('a key with several printed names on it is spelt from the longest, so two extractors spell it alike', () => {
+	assert.equal(nameKey('d', ['HDFC', 'HDFC Bank', 'HDFC']), 'name:d:hdfcbank');
+	assert.equal(nameKey('d', ['HDFC Bank', 'HDFC']), nameKey('d', ['HDFC', 'HDFC Bank']));
+	assert.equal(nameKey('d', ['Bank B', 'Bank A']), 'name:d:banka', 'a tie goes to code-point order');
+	assert.equal(nameKey('d', ['Bank Ä', 'Bank Z']), 'name:d:bankz', 'Z (U+005A) before Ä (U+00C4)');
+	assert.equal(nameKey('d', ['桜銀行株式会社Ltd']), 'name:d:桜銀行', '株式会社 is a word boundary');
+	// The read's case: neft-receipt-tied prints HDFC and HDFC Bank on one key.
+	const output = perfect('off');
+	const d = doc(output, 'neft-receipt-tied');
+	const key = keyIn(output, d.id, 'hdfc-bank');
+	assert.equal(key, 'name:neft-receipt-tied:hdfcbank');
+	const short = documentKey(d.id, 'HDFC');
+	output.organisations[short] = output.organisations[key];
+	delete output.organisations[key];
+	for (const row of [...d.orgs, ...d.links]) if (row.org === key) row.org = short;
+	for (const row of d.same_org) row.keys = row.keys.map((k) => (k === key ? short : k));
+	assert.throws(
+		() => run(output),
+		/key name:neft-receipt-tied:hdfc is spelt from a mention on it, but the key of these mentions is name:neft-receipt-tied:hdfcbank/
+	);
+});
+
+test("a printed name's key is for one document: used in another, it breaks the format", () => {
 	const output = perfect();
-	output.organisations[''] = output.organisations['ref:kotak'];
-	doc(output, 'kotak-statement').links[0].org = '';
-	assert.throws(() => run(output), /a key must be a non-empty string/);
+	const ca = doc(output, 'credit-advice-smbk-ca');
+	const gb = doc(output, 'payroll-release-smbk-gb');
+	assert.equal(ca.orgs[0].org, 'name:credit-advice-smbk-ca:smbk');
+	gb.orgs[0].org = ca.orgs[0].org;
+	prune(gb);
+	assert.throws(
+		() => run(output),
+		/documents\[\d+\]: key name:credit-advice-smbk-ca:smbk is a key of document credit-advice-smbk-ca; a printed name's key is for one document/
+	);
+});
+
+test('the same-name report counts the pairs of document keys whose names are spelt the same, and fails nothing', () => {
+	for (const directory of ['on', 'off']) {
+		const output = perfect(directory);
+		const receipts = ['credit-advice-smbk-ca', 'payroll-release-smbk-gb'];
+		output.documents = output.documents.filter((d) => receipts.includes(d.id));
+		const result = run(cardsInUse(output));
+		assert.deepEqual(result.same_name, {
+			one_organisation: 0,
+			two_organisations: 1,
+			pairs: [
+				{
+					keys: ['name:credit-advice-smbk-ca:smbk', 'name:payroll-release-smbk-gb:smbk'],
+					organisations: ['sample-maple-bank', 'sample-moor-bank']
+				}
+			]
+		});
+		assert.equal(result.failed, false);
+		assert.match(
+			table(result),
+			/same name, two organisations: name:credit-advice-smbk-ca:smbk \(sample-maple-bank\) and name:payroll-release-smbk-gb:smbk \(sample-moor-bank\)/
+		);
+		const whole = run(perfect(directory));
+		assert.deepEqual([whole.same_name.one_organisation, whole.same_name.two_organisations], [31, 1]);
+		assert.equal(whole.same_name.pairs.length, 32);
+	}
 });
 
 test('a link from an identifier on a decoy is wrong: no such identifier', () => {
@@ -731,7 +991,7 @@ test('two mentions or two identifiers on one span break the format, on both text
 	for (const set of ['text', 'text-ocr']) {
 		const mentions = perfect('on', set);
 		const k = doc(mentions, 'kotak-statement');
-		k.orgs.push({ ...k.orgs[0], org: 'ref:hdfc-bank' });
+		k.orgs.push({ ...k.orgs[0], org: null });
 		assert.throws(() => run(mentions), /orgs\[1\]: has the span of .*orgs\[0\]/, set);
 		const identifiers = perfect('on', set);
 		const n = doc(identifiers, 'kotak-statement');
@@ -771,7 +1031,7 @@ test('the same link given twice is one link with the union of its reasons, in ei
 		return run(output);
 	});
 	assert.deepEqual(results[0], results[1]);
-	assert.equal(totals(results[0], 'links').right, 47);
+	assert.equal(totals(results[0], 'links').right, 49);
 	assert.equal(results[0].failed, false);
 });
 
@@ -779,15 +1039,17 @@ test("the order of an output's rows never changes its score", () => {
 	for (const set of ['text', 'text-ocr']) {
 		const output = perfect('on', set);
 		doc(output, 'transfer-rows').links[1].reasons = ['statement-header'];
-		doc(output, 'hdfc-ltd-loan-2019').orgs[0].org = 'ref:hdfc-bank';
 		const neft = doc(output, 'neft-receipt-tied');
+		const merged = mergeInNeft(output);
 		const join = (keys, tier) => ({ keys, reason: 'printed-together', tier });
 		neft.same_org.push(
-			join(['IFSC ICIC', 'ref:hdfc-bank'], 'likely'),
-			join(['IFSC HDFC', 'ref:icici-bank'], 'likely'),
+			join(['IFSC HDFC', merged], 'likely'),
+			join(['IFSC HDFC', keyIn(output, neft.id, 'sample-traders')], 'likely'),
 			{ ...neft.same_org[0], reason: 'spells-code', tier: 'likely' }
 		);
 		const inOrder = run(output);
+		assert.deepEqual(inOrder.merges.map((m) => m.key), [merged], 'the output holds a merge');
+		assert.ok(wrongs(inOrder, 'same_org').length >= 2, 'two wrong joins in one document');
 		for (const d of output.documents) {
 			for (const list of ['orgs', 'identifiers', 'links', 'same_org']) d[list].reverse();
 			for (const r of d.same_org) r.keys.reverse();
@@ -898,7 +1160,7 @@ test("only an identifier's characters or the directory's exact code make a claim
 				}),
 			/no reason passes its test for certain/
 		],
-		['on', (o) => (o.organisations['IFSC HDFC'].directory = card(o, 'icici-bank').directory), /no reason passes its test for certain/],
+		['on', (o) => (o.organisations['IFSC HDFC'].directory = o.organisations['IFSC ICIC'].directory), /no reason passes its test for certain/],
 		[
 			'on',
 			(o) => {
@@ -918,7 +1180,7 @@ test("only an identifier's characters or the directory's exact code make a claim
 test('a same_org row joining two organisations is wrong: likely, it fails nothing; certain, it fails the run', () => {
 	const likely = perfect();
 	doc(likely, 'neft-receipt-tied').same_org.push({
-		keys: ['IFSC ICIC', 'ref:hdfc-bank'],
+		keys: ['IFSC ICIC', keyIn(likely, 'neft-receipt-tied', 'hdfc-bank')],
 		reason: 'printed-together',
 		tier: 'likely'
 	});
@@ -929,7 +1191,7 @@ test('a same_org row joining two organisations is wrong: likely, it fails nothin
 	// The code's key claims to be ICICI Bank, so a certain join of it to HDFC
 	// Bank's name joins two organisations' cards.
 	const certain = perfect();
-	certain.organisations['IFSC HDFC'] = { ...card(certain, 'icici-bank') };
+	certain.organisations['IFSC HDFC'] = { ...card(certain, 'neft-receipt-tied', 'icici-bank') };
 	for (const d of certain.documents)
 		for (const row of [...d.links, ...d.same_org])
 			if (d.id !== 'hdfc-statement-sep' && (row.org === 'IFSC HDFC' || row.keys?.includes('IFSC HDFC')))
@@ -951,7 +1213,7 @@ test('a join of two keys of one organisation that no row gives is left out, and 
 	];
 	const result = run(output);
 	assert.deepEqual(leftOut(result), ['same_org hdfc-statement-sep']);
-	assert.equal(totals(result, 'same_org').right, 16);
+	assert.equal(totals(result, 'same_org').right, 18);
 	assert.equal(result.failed, false);
 });
 
@@ -968,8 +1230,8 @@ test('same_org rows for the same two keys are one claim, certain when one row is
 test('a same_org row joins two keys the document uses, by a known reason, and only a directory row may be certain', () => {
 	const row = (o, change) => Object.assign(doc(o, 'hdfc-statement-sep').same_org[0], change);
 	const cases = [
-		['on', { keys: ['ref:kotak', 'ref:hdfc-bank'] }, /key ref:kotak is not used/],
-		['on', { keys: ['ref:hdfc-bank', 'ref:hdfc-bank'] }, /two different keys/],
+		['on', { keys: ['IFSC ICIC', 'name:hdfc-statement-sep:hdfcbank'] }, /key IFSC ICIC is not used/],
+		['on', { keys: ['name:hdfc-statement-sep:hdfcbank', 'name:hdfc-statement-sep:hdfcbank'] }, /two different keys/],
 		['on', { reason: 'nearby' }, /reason must be one of/],
 		['on', { reason: 'spells-code' }, /only a directory row/],
 		['off', { reason: 'directory', tier: 'certain' }, /only a directory row/]
@@ -1017,13 +1279,14 @@ test('a same_org row is certain only when the printed name and the code each loo
 	// bare name HDFC looks up to two entries: the document's wording settles it.
 	const ambiguous = perfect('on');
 	const neft = doc(ambiguous, 'neft-receipt-tied');
-	assert.equal(card(ambiguous, 'hdfc-bank').directory, ambiguous.organisations['IFSC HDFC'].directory);
+	assert.equal(card(ambiguous, 'neft-receipt-tied', 'hdfc-bank').directory, ambiguous.organisations['IFSC HDFC'].directory);
 	Object.assign(neft.same_org.find((r) => r.keys.includes('IFSC HDFC')), { reason: 'directory', tier: 'certain' });
 	assert.throws(() => inBothOrders(ambiguous), /only a directory row whose printed name and code each look up to one entry/);
 	// HDFC Bank Ltd and the code HDFC look up to one entry each, the same one,
 	// so the row is certain whatever ids the cards give.
 	const exact = perfect('on');
-	for (const key of ['ref:hdfc-bank', 'IFSC HDFC']) exact.organisations[key].directory = null;
+	for (const key of [keyIn(exact, 'hdfc-statement-sep', 'hdfc-bank'), 'IFSC HDFC'])
+		exact.organisations[key].directory = null;
 	for (const d of exact.documents)
 		for (const l of d.links) if (l.org === 'IFSC HDFC') l.tier = 'likely';
 	assert.equal(doc(exact, 'hdfc-statement-sep').same_org[0].tier, 'certain');
@@ -1032,22 +1295,16 @@ test('a same_org row is certain only when the printed name and the code each loo
 	assert.equal(result.failed, false);
 });
 
-test('two same_org rows whose keys joined by a separator would spell one claim are two claims', () => {
+test('a document key holds no separator, so no two pairs of keys spell one claim', () => {
 	const output = perfect('on');
 	const d = doc(output, 'neft-receipt-tied');
-	const keyOf = { HDFC: 'a', 'HDFC Bank': 'b\u0000c', 'Sample Traders': 'a\u0000b', 'ICICI Bank': 'c' };
-	for (const key of Object.values(keyOf)) output.organisations[key] = { name: null, directory: null };
-	for (const m of d.orgs) m.org = keyOf[m.text];
+	// A pair joined by a NUL that would spell another pair: a + bc is ab + c.
+	const at = `name:${d.id}:`;
+	const bc = `${at}b\u0000${at}c`;
+	output.organisations[bc] = { name: null, directory: null };
+	d.orgs.find((m) => m.text === 'HDFC Bank').org = bc;
 	prune(d);
-	const join = (keys) => ({ keys, reason: 'printed-together', tier: 'likely' });
-	for (const rows of [[['a', 'b\u0000c'], ['a\u0000b', 'c']], [['a\u0000b', 'c'], ['a', 'b\u0000c']]]) {
-		d.same_org = rows.map(join);
-		const result = inBothOrders(output);
-		assert.deepEqual(
-			wrongs(result, 'same_org').map((w) => w.what),
-			['a\u0000b and c: a\u0000b is sample-traders, c is icici-bank']
-		);
-	}
+	assert.throws(() => run(output), /organisations\[".*"\]: a key is an institution code's key/);
 });
 
 test('an identifier is certain only when its own strong check proves its kind, and a wrong certain identifier fails the run', () => {
@@ -1108,7 +1365,7 @@ const ibanPage = (value, valid = true) => {
 		docs: new Map([['iban-page', { id: 'iban-page', lang: 'en', pages: [{ text: value, scanned: false }] }]])
 	};
 	const output = (key, identifierTier, linkTier) => ({
-		format: 2,
+		format: 3,
 		extractor: 'test',
 		directory: 'off',
 		text_set: 'text',
@@ -1124,13 +1381,13 @@ const ibanPage = (value, valid = true) => {
 		],
 		answers: { latest_statement: [], current_passport: [] }
 	});
-	return { output, run: (o) => score(labels, textSet, o, { entries: [] }) };
+	return { labels, textSet, output, run: (o) => score(labels, textSet, o, { entries: [] }) };
 };
 
 test("an IBAN of any country in the registry table is certain, and its link certain to the key spelt from the table's bank identifier", () => {
 	const shapes = [
-		['AT545432100000012345', 'IBAN AT 54321', 'IBAN AT 5432', 'digits at the start'],
-		['BG32ZZZB12345600000001', 'IBAN BG ZZZB', 'IBAN BG ZZZB1', 'letters'],
+		['AT545432100000012345', 'IBAN AT 54321', 'IBAN AT 45432', 'digits at the start'],
+		['BG32ZZZB12345600000001', 'IBAN BG ZZZB', 'IBAN BG ZZB1', 'letters'],
 		['IT88A9876543210000000000042', 'IBAN IT 98765', 'IBAN IT A9876', 'after a check letter']
 	];
 	for (const [value, key, misplaced, shape] of shapes) {
@@ -1147,15 +1404,42 @@ test("an IBAN of any country in the registry table is certain, and its link cert
 	}
 });
 
-test('an IBAN of a country the registry table does not have is likely, with a free-form key, and never certain', () => {
+test('an IBAN of a country the registry table does not have is likely, with a document key, and never certain', () => {
 	const page = ibanPage('DZ560001200034000005678901', null);
-	const result = inBothOrders(page.output('name:invented-bank', 'likely', 'likely'), page.run);
+	const key = 'name:iban-page:dz560001200034000005678901';
+	const result = inBothOrders(page.output(key, 'likely', 'likely'), page.run);
 	assert.deepEqual(byTier(result, 'identifier:iban', 'likely'), { right: 1, wrong: 0 });
 	assert.deepEqual(byTier(result, 'links', 'likely'), { right: 1, wrong: 0 });
 	assert.equal(result.failed, false);
 	const why = /country DZ is not in the IBAN registry table/;
-	assert.throws(() => page.run(page.output('name:invented-bank', 'certain', 'likely')), why);
-	assert.throws(() => page.run(page.output('name:invented-bank', 'likely', 'certain')), why);
+	assert.throws(() => page.run(page.output(key, 'certain', 'likely')), why);
+	assert.throws(() => page.run(page.output(key, 'likely', 'certain')), why);
+	// Its key is the document key spelt from the IBAN: not another IBAN's code
+	// key, not a printed name's key, and no printed name sits on it.
+	for (const other of ['IBAN DE 37040044', 'name:iban-page:invented'])
+		assert.throws(
+			() => page.run(page.output(other, 'likely', 'likely')),
+			new RegExp(`a link by iban-bank-code goes to its code's key, "${key}"`),
+			other
+		);
+	const named = page.output(key, 'likely', 'likely');
+	const { id, ...span } = named.documents[0].identifiers[0];
+	named.documents[0].orgs = [{ page: span.page, start: span.start, end: span.end, text: span.text, org: key, settled_by: 'name' }];
+	named.documents[0].identifiers[0] = { id, ...span, start: 0, end: 2, text: 'DZ' };
+	assert.throws(() => page.run(named), new RegExp(`orgs\\[0\\]: key ${key} is a code's key`));
+});
+
+test('the reference gives an IBAN of a country the registry table does not have its document key', () => {
+	const page = ibanPage('DZ560001200034000005678901', null);
+	const output = reference(page.labels, page.textSet, 'off', { entries: [] });
+	const key = 'name:iban-page:dz560001200034000005678901';
+	assert.deepEqual(output.documents[0].links, [
+		{ identifier: 'i1', org: key, reasons: ['iban-bank-code'], tier: 'likely' }
+	]);
+	assert.deepEqual(output.organisations, { [key]: { name: null, directory: null } });
+	const result = page.run(output);
+	assert.deepEqual(byTier(result, 'links', 'likely'), { right: 1, wrong: 0 });
+	assert.equal(result.failed, false);
 });
 
 test('an IBAN whose check digits pass at a length its country does not have is not certain', () => {
@@ -1217,16 +1501,207 @@ test('a certain passport fact rests on a certain zone and equals what that zone 
 	assert.ok(byTier(honest, 'passport_expiry', 'certain').right > 0);
 });
 
+test('a certain expiry cites a printed date that gives the century the zone leaves out', () => {
+	const output = perfect('on');
+	const p = doc(output, 'passport-meera-1988').passport;
+	assert.deepEqual(
+		[p.expiry, p.expiry_at.text, p.tiers.expiry],
+		['1998-06-02', '02 JUN 1998', 'certain'],
+		'the date below its label is the span'
+	);
+	const result = inBothOrders(output);
+	assert.deepEqual(byTier(result, 'passport_expiry', 'certain'), { right: 4, wrong: 0 });
+	assert.equal(result.failed, false);
+	const issueDate = spanOf(output, 'passport-meera-1988', '03 JUN 1988');
+	const refused = [
+		['no printed date', (q) => (q.expiry_at = null)],
+		['a printed date of another year', (q) => (q.expiry_at = issueDate)],
+		['the century guessed from the zone', (q) => (q.expiry = '2098-06-02')]
+	];
+	for (const [what, change] of refused) {
+		const o = perfect('on');
+		change(doc(o, 'passport-meera-1988').passport);
+		assert.throws(
+			() => run(o),
+			/passport\.tiers\.expiry: cannot be certain here: the zone gives two digits of the year/,
+			what
+		);
+	}
+	const likely = perfect('on');
+	Object.assign(doc(likely, 'passport-meera-1988').passport, { expiry_at: null }).tiers.expiry = 'likely';
+	assert.deepEqual(byTier(run(likely), 'passport_expiry', 'likely'), { right: 2, wrong: 0 }, 'it may still be likely');
+});
+
+test("a printed expiry gives the zone's date its century only when its year and day are the zone's", () => {
+	const cases = [
+		['02 JUN 1998', '1998-06-02'],
+		['02.06.1998', '1998-06-02'],
+		['06/02/1998', '1998-06-02'],
+		['1998年6月2日', '1998-06-02'],
+		['２ JUN １９９８', '1998-06-02'],
+		['02 JUN 2098', '2098-06-02'],
+		['02 JUN 1997', null],
+		['03 JUN 1998', null],
+		['02.07.1998', null],
+		['02 JUN 98', null],
+		['02 JUN 1998 03', null],
+		['002 JUN 1998', null],
+		['02 JUN 1998 1998', null],
+		['02 JUN 1998 2098', null]
+	];
+	for (const [text, want] of cases) assert.equal(printedExpiry(text, '980602'), want, text);
+});
+
+// A copy of a text set with some pages changed, and a scorer over it.
+const changedSet = (set, change) => {
+	const copy = structuredClone(sets[set]);
+	change((id) => copy.docs.get(id).pages);
+	const span = (id, text, page = 1) => {
+		const t = copy.docs.get(id).pages[page - 1].text;
+		assert.ok(t.includes(text), text);
+		const start = [...t.slice(0, t.indexOf(text))].length;
+		return { page, start, end: start + [...text].length, text };
+	};
+	return {
+		span,
+		run: (o) => score(labels, copy, o, banks),
+		perfect: () => structuredClone(reference(labels, copy, 'on', banks))
+	};
+};
+// Replaces text on the first page of a document and marks the page scanned,
+// as an OCR reading that got it wrong.
+const misread = (pages, from, to) => {
+	assert.ok(pages[0].text.includes(from), from);
+	pages[0].text = pages[0].text.replaceAll(from, to);
+	pages[0].scanned = true;
+};
+
+test('a claim the output gives is judged against the labels, even where the OCR text makes the labelled item impossible', () => {
+	const ocr = changedSet('text-ocr', (pages) => {
+		misread(pages('hdfc-statement-sep'), '01 Sep 2026 to 30 Sep 2026', '0l Sep 2O26 to 3O Sep 2O26');
+		misread(pages('hdfc-statement-sep'), 'HDFC Bank Ltd', 'HDFC Bonk Ltd');
+		misread(pages('passport-rohan'), 'KALPIT', 'KALP1T');
+		misread(pages('passport-rohan'), '04 JAN 2028', '04 JAN 2O28');
+	});
+	const output = ocr.perfect();
+	const measures = [
+		'statement_period',
+		'statement_issuer',
+		'passport_holder',
+		'passport_expiry',
+		'passport_current',
+		'answer_latest_statement',
+		'answer_current_passport'
+	];
+	const silent = ocr.run(
+		cardsInUse({ ...output, documents: [], answers: { latest_statement: [], current_passport: [] } })
+	);
+	for (const measure of measures)
+		assert.equal(totals(silent, measure).impossible, 1, `${measure} is impossible when not given`);
+	const sep = doc(output, 'hdfc-statement-sep');
+	Object.assign(sep.statement, { from: '2026-08-01', to: '2026-08-31' });
+	const bonk = documentKey(sep.id, 'HDFC Bonk Ltd');
+	output.organisations[bonk] = { name: null, directory: null };
+	sep.orgs.push({ ...ocr.span(sep.id, 'HDFC Bonk Ltd'), org: bonk, settled_by: 'name' });
+	Object.assign(sep.statement, { issuer: bonk, tiers: { ...sep.statement.tiers, issuer: 'likely' } });
+	const rohan = doc(output, 'passport-rohan').passport;
+	Object.assign(rohan, { holder: { surname: 'KALPIT', given: 'OTHER' }, expiry: '2028-01-05', current: false });
+	Object.assign(rohan.tiers, { holder: 'likely', expiry: 'likely', current: 'likely' });
+	output.answers.latest_statement.find((a) => a.document === sep.id).document = 'hdfc-statement-jul';
+	output.answers.current_passport.find((a) => a.document === 'passport-rohan').document = 'passport-asha-current';
+	const result = ocr.run(output);
+	for (const measure of measures) {
+		assert.equal(totals(result, measure).impossible, 0, measure);
+		assert.equal(totals(result, measure).wrong, 1, measure);
+	}
+	assert.equal(result.failed, false, 'every wrong claim here is likely');
+
+	// The read's case: the expiry is unreadable, and a certain 2098 cites
+	// another printed date whose year ends in the zone's 98.
+	const meera = changedSet('text-ocr', (pages) => {
+		misread(pages('passport-meera-1988'), '02 JUN 1998', '02 JUN 19B8');
+		misread(pages('passport-meera-1988'), '03 JUN 1988', '02 JUN 2098');
+	});
+	const claim = meera.perfect();
+	const p = doc(claim, 'passport-meera-1988').passport;
+	assert.equal(p.expiry, null, 'no extractor could read the expiry');
+	Object.assign(p, { expiry: '2098-06-02', expiry_at: meera.span('passport-meera-1988', '02 JUN 2098') });
+	p.tiers.expiry = 'certain';
+	const wrong = meera.run(claim);
+	assert.equal(byTier(wrong, 'passport_expiry', 'certain').wrong, 1);
+	assert.deepEqual(
+		wrong.wrong.filter((w) => w.document === 'passport-meera-1988').map((w) => [w.measure, w.tier]),
+		[['passport_expiry', 'certain']]
+	);
+	assert.equal(totals(wrong, 'passport_expiry').impossible, 0);
+	assert.equal(wrong.failed, true);
+});
+
+test('a certain expiry cites the printed date of expiry, and no other text that spells its digits', () => {
+	const id = 'passport-meera-1988';
+	const changed = changedSet('text', (pages) => {
+		pages(id)[0].text += '\nDate of birth: 02 JUN 1998\nReference ID 02 SKU 1998';
+		pages(id).push({ text: 'Printed 02 JUN 1998', scanned: false });
+	});
+	const right = changed.run(changed.perfect());
+	assert.deepEqual(byTier(right, 'passport_expiry', 'certain'), { right: 4, wrong: 0 });
+	const at = (needle, page) => changed.span(id, needle, page);
+	for (const [what, span] of [
+		['a span past the date', at('02 JUN 1998\nAuthority: UTOPIA PASSPORT OFFICE')],
+		['the same date in another field', at('Date of birth: 02 JUN 1998')],
+		['digits that are no date', at('Reference ID 02 SKU 1998')],
+		['a date on another page', at('Printed 02 JUN 1998', 2)]
+	]) {
+		const output = changed.perfect();
+		doc(output, id).passport.expiry_at = span;
+		const result = changed.run(output);
+		assert.deepEqual(byTier(result, 'passport_expiry', 'certain'), { right: 3, wrong: 1 }, what);
+		assert.match(wrongs(result, 'passport_expiry')[0].what, /not the printed date of expiry/, what);
+		assert.equal(result.failed, true, what);
+	}
+	// On a page the OCR read, the citation matches by page and text.
+	const scanned = changedSet('text-ocr', (pages) => (pages(id)[0].scanned = true));
+	const cited = scanned.perfect();
+	assert.equal(doc(cited, id).passport.tiers.expiry, 'certain');
+	assert.deepEqual(
+		byTier(scanned.run(cited), 'passport_expiry', 'certain'),
+		byTier(run(perfect('on', 'text-ocr')), 'passport_expiry', 'certain')
+	);
+	// The read's case: the OCR spaced the printed expiry's words unevenly.
+	const spaced = changedSet('text-ocr', (pages) => misread(pages(id), '02 JUN 1998', '02  JUN 1998'));
+	const respaced = spaced.perfect();
+	assert.equal(doc(respaced, id).passport.expiry_at.text, '02  JUN 1998');
+	assert.deepEqual(
+		byTier(spaced.run(respaced), 'passport_expiry', 'certain'),
+		byTier(run(perfect('on', 'text-ocr')), 'passport_expiry', 'certain')
+	);
+});
+
+test('a format 2 output is refused with what changed, and the saved one that shared a name key across documents breaks format 3', () => {
+	const saved = JSON.parse(
+		readFileSync(new URL('fixtures/format-2-shared-name-key.json', import.meta.url), 'utf8')
+	);
+	assert.throws(
+		() => run(saved),
+		/format 2 shares a printed name's key across documents and takes an expiry's century from the zone; write format 3/
+	);
+	assert.throws(
+		() => run({ ...saved, format: 3 }),
+		/organisations\["name:smbk"\]: a key is an institution code's key \("Code keys"\) or a document key/
+	);
+});
+
 test("a code linked to a printed name's key by layout alone gives the key no code and does not remap it", () => {
 	const output = perfect();
 	const d = doc(output, 'neft-receipt-tied');
 	const ifsc = d.identifiers.find((i) => i.value === 'HDFC0SAMPL1');
-	d.links.push({ identifier: ifsc.id, org: 'ref:sample-traders', reasons: ['statement-header'], tier: 'likely' });
+	const traders = keyIn(output, d.id, 'sample-traders');
+	d.links.push({ identifier: ifsc.id, org: traders, reasons: ['statement-header'], tier: 'likely' });
 	const result = inBothOrders(output);
 	assert.deepEqual(result.merges, []);
 	assert.deepEqual(
 		wrongs(result, 'links').map((w) => w.what),
-		['ifsc HDFC0SAMPL1 at ref:sample-traders (sample-traders): a not_link (code-names-other-bank)']
+		[`ifsc HDFC0SAMPL1 at ${traders} (sample-traders): a not_link (code-names-other-bank)`]
 	);
 	assert.equal(result.failed, false);
 });
@@ -1234,8 +1709,12 @@ test("a code linked to a printed name's key by layout alone gives the key no cod
 test('a card no certain row stands on is counted as resting on likely rows only', () => {
 	const on = run(perfect('on'));
 	assert.ok(!on.likely_only_cards.includes('IFSC HDFC'));
-	assert.ok(!on.likely_only_cards.includes('ref:hdfc-bank'), 'a certain join stands on it');
-	assert.ok(on.likely_only_cards.includes('ref:kotak'));
+	const output = perfect('on');
+	assert.ok(
+		!on.likely_only_cards.includes(keyIn(output, 'hdfc-statement-sep', 'hdfc-bank')),
+		'a certain join stands on it'
+	);
+	assert.ok(on.likely_only_cards.includes(keyIn(output, 'kotak-statement', 'kotak')));
 	const off = run(perfect('off'));
 	assert.ok(off.likely_only_cards.includes('IFSC HDFC'));
 	assert.ok(!off.likely_only_cards.includes('IBAN GB NWBK'), 'a valid IBAN stands on its own');
@@ -1247,7 +1726,7 @@ test('every JSON block in FORMAT.md holds against the committed text and the sco
 	const blocks = [...format.matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => JSON.parse(m[1]));
 	assert.equal(blocks.length, 4);
 	const outputOf = (documents, directory = 'on') => ({
-		format: 2,
+		format: 3,
 		extractor: 'FORMAT.md',
 		directory,
 		text_set: 'text',
@@ -1328,11 +1807,11 @@ test('the tools run when started through a symlinked path', () => {
 		writeFileSync(output, JSON.stringify(likely));
 		assert.equal(node(join(sample, 'tools', 'score.mjs'), output).status, 0, 'a likely row');
 		const merged = JSON.parse(readFileSync(output, 'utf8'));
-		nameOnCode(merged, 'hdfc-statement-sep', 'IFSC HDFC');
+		mergeInNeft(merged);
 		writeFileSync(output, JSON.stringify(merged));
 		const failing = node(join(sample, 'tools', 'score.mjs'), output);
 		assert.equal(failing.status, 1);
-		assert.match(failing.stdout, /MERGE: key IFSC HDFC is an institution code and holds a printed name/);
+		assert.match(failing.stdout, /MERGE: key name:neft-receipt-tied:icicibank covers hdfc-bank, icici-bank/);
 		const checked = node(join(sample, 'tools', 'text.mjs'), '--check');
 		assert.equal(checked.status, 0, checked.stderr);
 		assert.match(checked.stdout, /match what text.mjs writes/);
@@ -1349,7 +1828,7 @@ test('a root that is not an object, a format 1 output, and paired-code with no v
 		const cases = [
 			['null', /output: must be an object/],
 			['[]', /output: must be an object/],
-			[JSON.stringify({ ...perfect(), format: 1 }), /format 1 has no tiers. Write format 2/],
+			[JSON.stringify({ ...perfect(), format: 1 }), /format 1 has no tiers. Write format 3/],
 			[JSON.stringify(noVia), /links\[\d+\]: paired-code needs a via/]
 		];
 		for (const [text, error] of cases) {

@@ -10,25 +10,29 @@ import { readLabels } from './lib/labels.mjs';
 import { isMain } from './lib/main.mjs';
 import {
 	CODE_REASONS,
-	codeKey,
 	mayBeCertainIdentifier,
 	mayBeCertainJoin,
 	mayBeCertainLink,
-	mayBeCertainPassport
+	mayBeCertainPassport,
+	nameKey,
+	ownCodeKey
 } from './lib/tiers.mjs';
 import { readTextSet, TEXT_SETS } from './text.mjs';
 
-// Keys of its own, so a pass proves the scorer maps keys, not label ids. A
-// printed name's organisation has the key ref:<local id>; an institution code
-// has its own canonical key, such as IFSC HDFC, and same_org rows join the two.
-const keyOf = (target) => `ref:${target}`;
+// Keys of its own, so a pass proves the scorer maps keys, not label ids. In
+// each document, a printed name's organisation has a document key spelt from
+// the names the document prints for it (nameKey), such as
+// name:hdfc-statement-sep:hdfcbank; an institution code has its own canonical
+// key, such as IFSC HDFC, and same_org rows join the two.
 const squash = (v) => v.normalize('NFKC').toUpperCase().replace(/\s/gu, '');
 
 export function reference(labels, textSet, directory, banks) {
 	const entries = new Map(banks.entries.map((e) => [e.id, e]));
 	const organisations = {};
+	// The document's key for each organisation it names, by local id.
+	let nameKeys;
 	const declare = (target, name) => {
-		const key = keyOf(target);
+		const key = nameKeys.get(target);
 		if (target.startsWith('directory:'))
 			organisations[key] ??= { name, directory: directory === 'on' ? target.slice(10) : null };
 		else {
@@ -40,8 +44,9 @@ export function reference(labels, textSet, directory, banks) {
 		}
 		return key;
 	};
-	// The key of an institution code. With the directory on, its card is the
-	// directory entry that holds the code; a code is never a printed name.
+	// The key of an institution code, or of an IBAN of a country the registry
+	// table does not have. With the directory on, its card is the directory
+	// entry that holds the code; a code is never a printed name.
 	const codeKeyOf = new Map();
 	const declareCode = (key, target) => {
 		organisations[key] ??= {
@@ -67,8 +72,7 @@ export function reference(labels, textSet, directory, banks) {
 			const at = locate(text, s.text, value);
 			return at && { page: s.page, ...at };
 		};
-		const orgs = [];
-		const mentionTarget = new Map();
+		const found = [];
 		for (const m of label.orgs) {
 			const at = find(m);
 			if (!at) continue;
@@ -78,6 +82,17 @@ export function reference(labels, textSet, directory, banks) {
 				target = dirToLocal.get(m.directory.id) ?? `directory:${m.directory.id}`;
 				settled = 'directory';
 			}
+			found.push({ m, at, target, settled });
+		}
+		nameKeys = new Map();
+		for (const { target } of found)
+			if (target && !nameKeys.has(target)) {
+				const texts = found.filter((f) => f.target === target).map((f) => f.at.text);
+				nameKeys.set(target, nameKey(label.id, texts));
+			}
+		const orgs = [];
+		const mentionTarget = new Map();
+		for (const { m, at, target, settled } of found) {
 			const org = target && declare(target, m.text);
 			mentionTarget.set(m.id, org);
 			orgs.push({ ...at, org, settled_by: settled });
@@ -93,20 +108,23 @@ export function reference(labels, textSet, directory, banks) {
 		}
 		const byId = new Map(identifiers.map((i) => [i.id, i]));
 		// A code's own reason puts the link on the code's key, and paired-code
-		// on its via's key. Every other link is held at the printed name.
+		// on its via's key. Every other link is held at the printed name, and
+		// is left out when the text set does not hold the name.
 		const keyFor = (l, reasons) => {
 			const ident = byId.get(l.identifier);
 			if (reasons.some((r) => CODE_REASONS.get(r) === ident.kind))
-				return declareCode(codeKey(ident), l.org);
-			if (reasons.includes('paired-code')) return declareCode(codeKey(byId.get(l.via)), l.org);
-			return declare(l.org);
+				return declareCode(ownCodeKey(ident, label.id), l.org);
+			if (reasons.includes('paired-code'))
+				return declareCode(ownCodeKey(byId.get(l.via), label.id), l.org);
+			return nameKeys.get(l.org) ?? null;
 		};
 		const links = label.links
 			.filter((l) => kept.has(l.identifier))
 			.map((l) => ({ l, reasons: l.reasons.filter((r) => r !== 'paired-code' || kept.has(l.via)) }))
 			.filter(({ reasons }) => reasons.length)
-			.map(({ l, reasons }) => {
-				const org = keyFor(l, reasons);
+			.map(({ l, reasons }) => ({ l, reasons, org: keyFor(l, reasons) }))
+			.filter(({ org }) => org !== null)
+			.map(({ l, reasons, org }) => {
 				const test = { identifier: byId.get(l.identifier), reasons, card: organisations[org] };
 				return {
 					identifier: l.identifier,
@@ -151,7 +169,8 @@ export function reference(labels, textSet, directory, banks) {
 				mrz: byId.get(mrz),
 				number: byId.get(doc.passport.number),
 				holder: doc.passport.holder,
-				expiry: doc.passport.expiry
+				expiry: doc.passport.expiry,
+				expiryAt: seen
 			};
 			doc.passport.tiers = Object.fromEntries(
 				['holder', 'number', 'expiry', 'current']
@@ -173,7 +192,7 @@ export function reference(labels, textSet, directory, banks) {
 		const rows = [];
 		for (const target of new Set(doc.links.map((l) => codeKeyOf.get(l.org)).filter(Boolean))) {
 			const codes = [...used].filter((k) => codeKeyOf.get(k) === target).sort();
-			const name = used.has(keyOf(target)) ? keyOf(target) : null;
+			const name = used.has(nameKeys.get(target)) ? nameKeys.get(target) : null;
 			const [first, ...rest] = name ? [name, ...codes] : codes;
 			for (const other of rest) {
 				const row = joinRow(label, doc, target, first, other);
@@ -224,7 +243,7 @@ export function reference(labels, textSet, directory, banks) {
 		return [...text].slice(0, s.start).filter((c) => c === '\n').length;
 	}
 	return {
-		format: 2,
+		format: 3,
 		extractor: 'reference (labels.json)',
 		directory,
 		text_set: textSet.index.text_set,

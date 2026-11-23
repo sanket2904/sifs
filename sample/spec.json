@@ -1512,6 +1512,94 @@
 					]
 				}
 			]
+		},
+		{
+			"id": "credit-advice-smbk-ca",
+			"file": "avis-de-credit.pdf",
+			"format": "pdf",
+			"lang": "fr",
+			"title": "Avis de crédit",
+			"created": "2026-10-14T09:00:00Z",
+			"about": "A Canadian credit advice from a made-up bank printed only as SMBK, settled by its BIC. A British receipt prints the same short name for another made-up bank: one printed name, two organisations.",
+			"planted": {
+				"orgs": ["SMBK"],
+				"identifiers": [{ "text": "SMBKCAT0XXX", "kind": "bic" }]
+			},
+			"pages": [
+				{
+					"lines": [
+						"DOCUMENT D'EXEMPLE. Inventé pour des tests. Ce n'est pas un vrai avis.",
+						"SAMPLE DOCUMENT. Made up for testing.",
+						"Avis de crédit : virement reçu",
+						"Bénéficiaire : E. Exemple, Montréal",
+						"Banque créditée : SMBK ; SWIFT : SMBKCAT0XXX",
+						"Montant crédité : 640,00 CAD"
+					]
+				}
+			]
+		},
+		{
+			"id": "payroll-release-smbk-gb",
+			"file": "payroll-release.pdf",
+			"format": "pdf",
+			"lang": "en",
+			"title": "Payroll release",
+			"created": "2026-10-30T16:00:00Z",
+			"about": "A British payroll receipt from a made-up bank printed only as SMBK, settled by its BIC. The Canadian credit advice prints the same short name for another made-up bank.",
+			"planted": {
+				"orgs": ["SMBK"],
+				"identifiers": [{ "text": "SMBKGB20XXX", "kind": "bic" }]
+			},
+			"pages": [
+				{
+					"lines": [
+						"SAMPLE DOCUMENT. Made up for testing. Not a real receipt.",
+						"Payroll release: proof of payment",
+						"Ledger copy, batch 31, paid on 30 Oct 2026",
+						"Originating institution: SMBK (BIC SMBKGB20XXX)",
+						"Batch amount: GBP 8,104.38"
+					]
+				}
+			]
+		},
+		{
+			"id": "passport-meera-1988",
+			"file": "passport-meera-1988.pdf",
+			"format": "pdf",
+			"lang": "en",
+			"title": "Passport",
+			"created": "1988-06-03T08:00:00Z",
+			"about": "An old passport that expired in 1998. Its zone gives the expiry year as 98, and the page prints the full date on the line below its label: only the printed date gives the century.",
+			"planted": {
+				"orgs": ["UTOPIA PASSPORT OFFICE"],
+				"identifiers": [
+					{ "text": "SMP000088", "kind": "passport_number" },
+					{ "text": "P<UTOKALPIT<<MEERA<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0000889UTO6102146F9806021<<<<<<<<<<<<<<<2", "kind": "mrz" }
+				]
+			},
+			"pages": [
+				{
+					"lines": [
+						"SAMPLE DOCUMENT. Made up for testing. Not a real passport.",
+						"Specimen page of the fictional state of Utopia (ICAO code UTO).",
+						"PASSPORT",
+						"Type: P Issuing state: UTO",
+						"Passport No.: SMP000088",
+						"Surname: KALPIT",
+						"Given names: MEERA",
+						"Nationality: UTOPIAN",
+						"Date of birth: 14 FEB 1961",
+						"Sex: F",
+						"Place of birth: SAMPLE CITY",
+						"Date of issue: 03 JUN 1988",
+						"Date of expiry:",
+						"02 JUN 1998",
+						"Authority: UTOPIA PASSPORT OFFICE",
+						"P<UTOKALPIT<<MEERA<<<<<<<<<<<<<<<<<<<<<<<<<<",
+						"SMP0000889UTO6102146F9806021<<<<<<<<<<<<<<<2"
+					]
+				}
+			]
 		}
 	]
 }
