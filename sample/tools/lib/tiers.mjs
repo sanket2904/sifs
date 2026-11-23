@@ -1,6 +1,6 @@
 // The test for `certain` in sample/FORMAT.md, "Tiers". Only the characters of
 // an identifier, or the directory's exact code, make a claim certain.
-import { ibanBankCode, KINDS, parseMrz } from './ids.mjs';
+import { ibanBankCode, ibanBankCodeLength, KINDS, parseMrz } from './ids.mjs';
 import { matchKey } from './key.mjs';
 
 export const TIERS = new Set(['certain', 'likely']);
@@ -26,6 +26,21 @@ export function codeKey({ kind, value }) {
 	}
 	return null;
 }
+
+// Whether a key is spelt as an institution code's key: a key codeKey can give.
+export function isCodeKey(key) {
+	if (/^IFSC [A-Z0-9]{4}$/.test(key) || /^BIC [A-Z0-9]{8}$/.test(key)) return true;
+	const iban = /^IBAN ([A-Z]{2}) ([A-Z0-9]+)$/.exec(key);
+	return iban !== null && ibanBankCodeLength(iban[1]) === iban[2].length;
+}
+
+// A document key stands for one printed name inside one document (FORMAT.md,
+// "No merging"): name:<document id>:<the name>. documentOfKey gives the
+// document a key names, or null when the key is not spelt as a document key.
+export const documentKey = (document, name) => `name:${document}:${name}`;
+const DOCUMENT_KEY = /^name:([a-z0-9-]+):(.+)$/s;
+export const documentOfKey = (key) => DOCUMENT_KEY.exec(key)?.[1] ?? null;
+export const nameOfKey = (key) => DOCUMENT_KEY.exec(key)?.[2] ?? null;
 
 // Whether the directory entry holds the identifier's institution code exactly:
 // an IFSC's four letters, a BIC's first eight characters, an IBAN's country and
@@ -74,14 +89,33 @@ export function mayBeCertainLink({ identifier, reasons, card }, mode, entries) {
 	});
 }
 
+// The zone's date of expiry (YYMMDD) with the century the page prints, or null
+// when the printed date does not prove it. The printed text must hold one
+// four-digit year ending in the zone's two digits, and besides it only the
+// zone's day, or its day and month in either order. The zone's check digit
+// proves its six digits, never the century.
+export function printedExpiry(text, yymmdd) {
+	const numbers = text.normalize('NFKC').match(/\d+/g) ?? [];
+	const years = numbers.filter((n) => n.length === 4);
+	const rest = numbers.filter((n) => n.length !== 4);
+	if (years.length !== 1 || years[0].slice(2) !== yymmdd.slice(0, 2)) return null;
+	if (rest.some((n) => n.length > 2)) return null;
+	const [month, day] = [Number(yymmdd.slice(2, 4)), Number(yymmdd.slice(4, 6))];
+	const given = rest.map(Number).sort((a, b) => a - b);
+	const want = rest.length === 1 ? [day] : [day, month].sort((a, b) => a - b);
+	if (given.length !== want.length || given.some((n, i) => n !== want[i])) return null;
+	return `${years[0]}-${yymmdd.slice(2, 4)}-${yymmdd.slice(4, 6)}`;
+}
+
 // A passport's holder, number and expiry may be certain when each is what the
 // passport's machine-readable zone says, and the zone is a certain passport
 // zone whose check digits all pass. A certain zone that is not the page's own
 // fails the run as a wrong identifier, so only the page's zone proves a fact.
 // The number rests on the zone, not on the printed number. A name ignores case
-// and spacing; an expiry's year is the zone's two digits of it.
+// and spacing. The zone gives an expiry's year in two digits, so a certain
+// expiry also cites the printed date that gives its century (expiryAt).
 const name = (v) => v.normalize('NFKC').toUpperCase().replace(/\s+/gu, ' ').trim();
-export function mayBeCertainPassport(fact, { mrz, number, holder, expiry }) {
+export function mayBeCertainPassport(fact, { mrz, number, holder, expiry, expiryAt }) {
 	if (fact === 'current') return false;
 	if (mrz?.tier !== 'certain') return false;
 	const zone = mrz.kind === 'mrz' ? parseMrz(mrz.value) : null;
@@ -89,7 +123,8 @@ export function mayBeCertainPassport(fact, { mrz, number, holder, expiry }) {
 	if (fact === 'number') return number?.value === zone.number;
 	if (fact === 'holder')
 		return name(holder.surname) === name(zone.surname) && name(holder.given) === name(zone.given);
-	return /^\d{4}-\d\d-\d\d$/.test(expiry) && expiry.slice(2).replaceAll('-', '') === zone.expiry;
+	if (!expiryAt) return false;
+	return printedExpiry(expiryAt.text, zone.expiry) === expiry;
 }
 
 // A same_org row may be certain when its reason is directory, the directory is

@@ -6,11 +6,13 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { SAMPLE } from './generate.mjs';
 import { locate, readsBack } from './lib/find.mjs';
+import { matchKey } from './lib/key.mjs';
 import { readLabels } from './lib/labels.mjs';
 import { isMain } from './lib/main.mjs';
 import {
 	CODE_REASONS,
 	codeKey,
+	documentKey,
 	mayBeCertainIdentifier,
 	mayBeCertainJoin,
 	mayBeCertainLink,
@@ -18,17 +20,25 @@ import {
 } from './lib/tiers.mjs';
 import { readTextSet, TEXT_SETS } from './text.mjs';
 
-// Keys of its own, so a pass proves the scorer maps keys, not label ids. A
-// printed name's organisation has the key ref:<local id>; an institution code
-// has its own canonical key, such as IFSC HDFC, and same_org rows join the two.
-const keyOf = (target) => `ref:${target}`;
+// Keys of its own, so a pass proves the scorer maps keys, not label ids. In
+// each document, a printed name's organisation has a document key spelt from
+// the first name the document prints for it, such as
+// name:hdfc-statement-sep:hdfcbank; an institution code has its own canonical
+// key, such as IFSC HDFC, and same_org rows join the two.
 const squash = (v) => v.normalize('NFKC').toUpperCase().replace(/\s/gu, '');
 
 export function reference(labels, textSet, directory, banks) {
 	const entries = new Map(banks.entries.map((e) => [e.id, e]));
 	const organisations = {};
-	const declare = (target, name) => {
-		const key = keyOf(target);
+	// The document's key for each organisation it names, by local id.
+	let nameKeys;
+	const declare = (document, target, name) => {
+		if (!nameKeys.has(target))
+			nameKeys.set(
+				target,
+				documentKey(document, matchKey(name ?? labels.organisations[target].name))
+			);
+		const key = nameKeys.get(target);
 		if (target.startsWith('directory:'))
 			organisations[key] ??= { name, directory: directory === 'on' ? target.slice(10) : null };
 		else {
@@ -59,6 +69,7 @@ export function reference(labels, textSet, directory, banks) {
 	const documents = [];
 	for (const label of labels.documents) {
 		if (label.nothing_to_find) continue;
+		nameKeys = new Map();
 		const pages = textSet.docs.get(label.id).pages;
 		// The span of a labelled text in this text set, or null when it is not there.
 		const find = (s, value) => {
@@ -78,7 +89,7 @@ export function reference(labels, textSet, directory, banks) {
 				target = dirToLocal.get(m.directory.id) ?? `directory:${m.directory.id}`;
 				settled = 'directory';
 			}
-			const org = target && declare(target, m.text);
+			const org = target && declare(label.id, target, m.text);
 			mentionTarget.set(m.id, org);
 			orgs.push({ ...at, org, settled_by: settled });
 		}
@@ -99,7 +110,7 @@ export function reference(labels, textSet, directory, banks) {
 			if (reasons.some((r) => CODE_REASONS.get(r) === ident.kind))
 				return declareCode(codeKey(ident), l.org);
 			if (reasons.includes('paired-code')) return declareCode(codeKey(byId.get(l.via)), l.org);
-			return declare(l.org);
+			return declare(label.id, l.org);
 		};
 		const links = label.links
 			.filter((l) => kept.has(l.identifier))
@@ -151,7 +162,8 @@ export function reference(labels, textSet, directory, banks) {
 				mrz: byId.get(mrz),
 				number: byId.get(doc.passport.number),
 				holder: doc.passport.holder,
-				expiry: doc.passport.expiry
+				expiry: doc.passport.expiry,
+				expiryAt: seen
 			};
 			doc.passport.tiers = Object.fromEntries(
 				['holder', 'number', 'expiry', 'current']
@@ -173,7 +185,7 @@ export function reference(labels, textSet, directory, banks) {
 		const rows = [];
 		for (const target of new Set(doc.links.map((l) => codeKeyOf.get(l.org)).filter(Boolean))) {
 			const codes = [...used].filter((k) => codeKeyOf.get(k) === target).sort();
-			const name = used.has(keyOf(target)) ? keyOf(target) : null;
+			const name = used.has(nameKeys.get(target)) ? nameKeys.get(target) : null;
 			const [first, ...rest] = name ? [name, ...codes] : codes;
 			for (const other of rest) {
 				const row = joinRow(label, doc, target, first, other);
@@ -224,7 +236,7 @@ export function reference(labels, textSet, directory, banks) {
 		return [...text].slice(0, s.start).filter((c) => c === '\n').length;
 	}
 	return {
-		format: 2,
+		format: 3,
 		extractor: 'reference (labels.json)',
 		directory,
 		text_set: textSet.index.text_set,

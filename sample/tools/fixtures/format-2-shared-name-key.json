@@ -1,0 +1,118 @@
+{
+ "format": 2,
+ "extractor": "go-m1a",
+ "directory": "on",
+ "text_set": "text",
+ "organisations": {
+  "BIC MMBKCATT": {
+   "name": "Meridian Meadow Bank of Canada",
+   "directory": "FIXTURE:meridian-ca"
+  },
+  "BIC MMBKGB2L": {
+   "name": "Meridian Meadow Bank of Britain",
+   "directory": "FIXTURE:meridian-gb"
+  },
+  "name:mmbk": {
+   "name": "MMBK",
+   "directory": null
+  }
+ },
+ "documents": [
+  {
+   "id": "ca-origin-archived-trace",
+   "orgs": [
+    {
+     "page": 1,
+     "start": 119,
+     "end": 123,
+     "text": "MMBK",
+     "org": "name:mmbk",
+     "settled_by": "code"
+    }
+   ],
+   "identifiers": [
+    {
+     "page": 1,
+     "start": 132,
+     "end": 143,
+     "text": "MMBKCATTXXX",
+     "id": "i1",
+     "kind": "bic",
+     "value": "MMBKCATTXXX",
+     "valid": true,
+     "tier": "certain"
+    }
+   ],
+   "links": [
+    {
+     "identifier": "i1",
+     "org": "BIC MMBKCATT",
+     "reasons": [
+      "bic-institution"
+     ],
+     "tier": "certain"
+    }
+   ],
+   "same_org": [
+    {
+     "keys": [
+      "BIC MMBKCATT",
+      "name:mmbk"
+     ],
+     "reason": "spells-code",
+     "tier": "likely"
+    }
+   ]
+  },
+  {
+   "id": "gb-one-sided-payroll-confirmation",
+   "orgs": [
+    {
+     "page": 1,
+     "start": 122,
+     "end": 126,
+     "text": "MMBK",
+     "org": "name:mmbk",
+     "settled_by": "code"
+    }
+   ],
+   "identifiers": [
+    {
+     "page": 1,
+     "start": 132,
+     "end": 143,
+     "text": "MMBKGB2LXXX",
+     "id": "i1",
+     "kind": "bic",
+     "value": "MMBKGB2LXXX",
+     "valid": true,
+     "tier": "certain"
+    }
+   ],
+   "links": [
+    {
+     "identifier": "i1",
+     "org": "BIC MMBKGB2L",
+     "reasons": [
+      "bic-institution"
+     ],
+     "tier": "certain"
+    }
+   ],
+   "same_org": [
+    {
+     "keys": [
+      "BIC MMBKGB2L",
+      "name:mmbk"
+     ],
+     "reason": "spells-code",
+     "tier": "likely"
+    }
+   ]
+  }
+ ],
+ "answers": {
+  "latest_statement": [],
+  "current_passport": []
+ }
+}

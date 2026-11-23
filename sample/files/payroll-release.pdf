@@ -1,0 +1,61 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [10 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Title <FEFF0050006100790072006F006C006C002000720065006C0065006100730065> /Producer (sample/tools/generate.mjs) /CreationDate (D:20261030160000Z) /ModDate (D:20261030160000Z) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 209 >>
+stream
+/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /T def /CMapType 2 def 1 begincodespacerange <0000> <FFFF> endcodespacerange
+endcmap CMapName currentdict /CMap defineresource pop end end
+endstream
+endobj
+6 0 obj
+<< /Type /FontDescriptor /FontName /T /Flags 32 /FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /CIDFontType2 /BaseFont /T /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 6 0 R /DW 600 >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type0 /BaseFont /T /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 5 0 R >>
+endobj
+9 0 obj
+<< /Length 366 >>
+stream
+BT /F2 10 Tf 50 760 Td (SAMPLE DOCUMENT. Made up for testing. Not a real receipt.) Tj ET
+BT /F2 10 Tf 50 746 Td (Payroll release: proof of payment) Tj ET
+BT /F2 10 Tf 50 732 Td (Ledger copy, batch 31, paid on 30 Oct 2026) Tj ET
+BT /F2 10 Tf 50 718 Td (Originating institution: SMBK \(BIC SMBKGB20XXX\)) Tj ET
+BT /F2 10 Tf 50 704 Td (Batch amount: GBP 8,104.38) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 8 0 R /F2 4 0 R >> >> /Contents 9 0 R >>
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000122 00000 n 
+0000000318 00000 n 
+0000000415 00000 n 
+0000000675 00000 n 
+0000000833 00000 n 
+0000001006 00000 n 
+0000001132 00000 n 
+0000001549 00000 n 
+trailer
+<< /Size 11 /Root 1 0 R /Info 3 0 R >>
+startxref
+1686
+%%EOF

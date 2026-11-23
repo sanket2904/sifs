@@ -35,15 +35,15 @@ One JSON file per run.
 
 | Field | Value |
 | --- | --- |
-| `format` | `2`. Format 1 had no tiers, and the scorer refuses it. |
+| `format` | `3`. Format 1 had no tiers. Format 2 let a printed name's key stand in every document and took an expiry's century from the zone. The scorer refuses both. |
 | `extractor` | The extractor's name, for example `rust-m1a`. |
 | `directory` | `on` or `off`. |
 | `text_set` | `text` or `text-ocr`. |
-| `organisations` | The extractor's own keys, each `{"name", "directory"}`. `name` is a name of the organisation, or `null`. `directory` is a directory id, or `null`. With the directory off it is always `null`. A key is one institution code or one printed name, never both ("No merging"). |
+| `organisations` | The extractor's own keys, each `{"name", "directory"}`. `name` is a name of the organisation, or `null`. `directory` is a directory id, or `null`. With the directory off it is always `null`. A key is an institution code's key or a document key, never both ("No merging"). |
 | `documents` | One entry per document the extractor read. A document left out of the list has nothing found. |
 | `answers` | `latest_statement`, a list of `{"account", "document"}`, and `current_passport`, a list of `{"holder", "document"}`. |
 
-A key is a non-empty string. It is the extractor's identity for an organisation across all documents, as a local id is in the labels. The extractor never sees the labels' local ids. "Code keys" says how a key is spelt.
+A key is the extractor's identity for an organisation. An institution code's key is the same in every document. A document key names one document and is used only there. The extractor never sees the labels' local ids. "No merging" and "Code keys" say how a key is spelt.
 
 A span is `page` (from 1), `start`, `end` (Unicode scalar values, end exclusive) and `text`, counted in the page text of the run's text set. Every span must lie inside its page (`0 <= start <= end <=` the page's length) and read back its `text`, or the scorer rejects the file. One occurrence in the text is one row: two mentions, or two identifiers, with the same span in one document make the scorer reject the file.
 
@@ -56,10 +56,10 @@ A document entry holds:
 | `identifiers` | A span, `id` (the extractor's own, unique in the document), `kind` (a README identifier kind), `value` (as "Values" below gives it), `valid` (`true`, `false`, or `null` for a kind with no check), and `tier`, the tier of the kind ("Identifier tiers"). |
 | `links` | Identifier held at organisation: `identifier` (an identifier `id`), `org` (a key), `reasons` (README link reasons), `via` (an identifier `id`), which a link with `paired-code` must give, and `tier`. |
 | `statement` | `from`, `to` (`YYYY-MM-DD`), `accounts` (identifier ids that spell the statement's own account), `issuer` (a key, or `null`), and `tiers`: a tier for `period`, for `accounts` when it is not empty, and for `issuer` when it is not `null`. Absent when the document is not a statement. |
-| `passport` | `holder` (`surname`, `given`), `number` and `mrz` (identifier ids of the document, or `null`), `issued` (a date, or `null`), `expiry` (a date, `cannot-tell`, or `null`), `expiry_at` (a span, or `null`), `current`, and `tiers`: a tier for each of `holder`, `number`, `expiry` and `current` that is not `null`. Absent when the document is not a passport. |
+| `passport` | `holder` (`surname`, `given`), `number` and `mrz` (identifier ids of the document, or `null`), `issued` (a date, or `null`), `expiry` (a date, `cannot-tell`, or `null`), `expiry_at` (the span of the printed expiry, or `null`; a certain expiry needs it), `current`, and `tiers`: a tier for each of `holder`, `number`, `expiry` and `current` that is not `null`. Absent when the document is not a passport. |
 | `same_org` | Two keys that the document shows to be one organisation: `keys` (two different keys), `reason` and `tier` ("Same organisation"). |
 
-Dates are `YYYY-MM-DD` and must be dates of the calendar. The scorer checks every passport field as the table gives it, and scores `holder`, `number`, `expiry` and `current`. It does not score `issued`, `mrz` or `expiry_at`; the machine-readable zone is scored as an identifier.
+Dates are `YYYY-MM-DD` and must be dates of the calendar. The scorer checks every passport field as the table gives it, and scores `holder`, `number`, `expiry` and `current`. It does not score `issued`, `mrz` or `expiry_at`; the machine-readable zone is scored as an identifier. It reads the text of `expiry_at` again for a certain expiry ("Tiers").
 
 The answers use `reference_date` from `index.json`. `account` is any spelling of the account. `holder` is `SURNAME, GIVEN NAMES`.
 
@@ -78,14 +78,14 @@ A run with the directory on writes, among the other documents:
 
 ```json
 {
-  "format": 2, "extractor": "go-m1a", "directory": "on", "text_set": "text",
+  "format": 3, "extractor": "go-m1a", "directory": "on", "text_set": "text",
   "organisations": {
-    "name:hdfcbank": {"name": "HDFC Bank Ltd", "directory": "Q631047"},
+    "name:hdfc-statement-sep:hdfcbank": {"name": "HDFC Bank Ltd", "directory": "Q631047"},
     "IFSC HDFC": {"name": null, "directory": "Q631047"}
   },
   "documents": [{
     "id": "hdfc-statement-sep",
-    "orgs": [{"page": 1, "start": 60, "end": 73, "text": "HDFC Bank Ltd", "org": "name:hdfcbank", "settled_by": "name"}],
+    "orgs": [{"page": 1, "start": 60, "end": 73, "text": "HDFC Bank Ltd", "org": "name:hdfc-statement-sep:hdfcbank", "settled_by": "name"}],
     "identifiers": [
       {"id": "i1", "page": 1, "start": 193, "end": 207, "text": "50100417263958", "kind": "account", "value": "50100417263958", "valid": null, "tier": "likely"},
       {"id": "i2", "page": 1, "start": 214, "end": 225, "text": "HDFC0SAMPL1", "kind": "ifsc", "value": "HDFC0SAMPL1", "valid": true, "tier": "certain"}
@@ -93,17 +93,17 @@ A run with the directory on writes, among the other documents:
     "links": [
       {"identifier": "i2", "org": "IFSC HDFC", "reasons": ["ifsc-prefix"], "tier": "certain"},
       {"identifier": "i1", "org": "IFSC HDFC", "reasons": ["paired-code"], "via": "i2", "tier": "likely"},
-      {"identifier": "i1", "org": "name:hdfcbank", "reasons": ["statement-header"], "tier": "likely"}
+      {"identifier": "i1", "org": "name:hdfc-statement-sep:hdfcbank", "reasons": ["statement-header"], "tier": "likely"}
     ],
-    "statement": {"from": "2026-09-01", "to": "2026-09-30", "accounts": ["i1"], "issuer": "name:hdfcbank",
+    "statement": {"from": "2026-09-01", "to": "2026-09-30", "accounts": ["i1"], "issuer": "name:hdfc-statement-sep:hdfcbank",
                   "tiers": {"period": "likely", "accounts": "likely", "issuer": "likely"}},
-    "same_org": [{"keys": ["name:hdfcbank", "IFSC HDFC"], "reason": "directory", "tier": "certain"}]
+    "same_org": [{"keys": ["name:hdfc-statement-sep:hdfcbank", "IFSC HDFC"], "reason": "directory", "tier": "certain"}]
   }],
   "answers": {"latest_statement": [{"account": "50100417263958", "document": "hdfc-statement-sep"}], "current_passport": []}
 }
 ```
 
-The printed name and the IFSC have one key each. The IFSC is certain to be an IFSC, and its link certain, because the directory holds `HDFC` for the entry on its card. The account number is likely: nothing in its digits says it is an account. The account is held at both keys, and both links are likely: one is read from the line beside the code, the other from the header. The `same_org` row says the two keys are one bank, and it is certain because the name `HDFC Bank Ltd` looks up to exactly one directory entry and the code `HDFC` to that same entry. A person sees one HDFC Bank card.
+The printed name and the IFSC have one key each. The name's key is a document key: it stands for `HDFC Bank Ltd` in this statement only, and the August statement gives its own name its own key. The IFSC is certain to be an IFSC, and its link certain, because the directory holds `HDFC` for the entry on its card. The account number is likely: nothing in its digits says it is an account. The account is held at both keys, and both links are likely: one is read from the line beside the code, the other from the header. The `same_org` row says the two keys are one bank, and it is certain because the name `HDFC Bank Ltd` looks up to exactly one directory entry and the code `HDFC` to that same entry. A person sees one HDFC Bank card.
 
 With the directory off, both cards give `"directory": null`, the IFSC and its link are `likely`, and the `same_org` row is `likely` with the reason `spells-code`: the name begins with the code's four letters. A person then sees two cards and the row "may be the same organisation". A `…` in the input stands for lines left out here. `score.test.mjs` checks every JSON block in this file against the committed text and the scorer.
 
@@ -138,18 +138,18 @@ A claim is `certain` only when the characters of an identifier prove it, or when
 
 | Claim | Certain when |
 | --- | --- |
-| Link with `iban-bank-code` | The identifier is an IBAN that may be certain ("Identifier tiers"): its country is in the IBAN registry table, `iban-registry.json`, it has that country's length, and its check digits pass. The scorer checks all three again from `value`. Such an IBAN is held at the institution that has its bank code in its country, the bank identifier the table places, so the link goes to that code's key. The directory is not needed. For a country the table does not have, the link is likely, and its key is free-form. |
+| Link with `iban-bank-code` | The identifier is an IBAN that may be certain ("Identifier tiers"): its country is in the IBAN registry table, `iban-registry.json`, it has that country's length, and its check digits pass. The scorer checks all three again from `value`. Such an IBAN is held at the institution that has its bank code in its country, the bank identifier the table places, so the link goes to that code's key. The directory is not needed. For a country the table does not have, the link is likely, and its key is a document key ("No merging"). |
 | Link with `ifsc-prefix` | The IFSC may be certain ("Identifier tiers"), and the directory entry that the key's card gives lists its first four letters. An IFSC has no check digit, so with the directory off the link is likely. |
 | Link with `bic-institution` | The BIC may be certain ("Identifier tiers"), and the directory entry that the key's card gives lists a BIC with the same first eight characters, the institution ("Code keys"). A BIC has no check digit, so with the directory off the link is likely. |
 | Link with `paired-code`, `same-account`, `inside-iban` or `statement-header` alone | Never. These reasons are read from the page's layout. |
 | Statement `period`, `accounts`, `issuer` | Never. |
-| Passport `holder`, `number`, `expiry` | The passport's `mrz` is a certain identifier that is a passport machine-readable zone (it starts with `P`) whose check digits all pass, and the fact is what that zone says: `number` is the zone's document number, `holder` the zone's surname and given names (case and spacing ignored), and `expiry` the zone's date of expiry, whose year the zone gives in two digits. A visa's zone makes no passport fact certain. |
+| Passport `holder`, `number`, `expiry` | The passport's `mrz` is a certain identifier that is a passport machine-readable zone (it starts with `P`) whose check digits all pass, and the fact is what that zone says: `number` is the zone's document number, and `holder` the zone's surname and given names (case and spacing ignored). The zone's date of expiry proves a day, a month and the last two digits of a year, never the century. So `expiry` is certain only when `expiry_at` is also the span of a date the page prints, whose text holds one four-digit year ending in the zone's two digits and, besides it, only the zone's day, or its day and month in either order, as digits. The certain `expiry` is that printed year with the zone's month and day. The scorer reads the span's text again, as it checks an IBAN again from `value`. Without such a printed date, an expiry may still be given as `likely`, or as `cannot-tell`. A visa's zone makes no passport fact certain. |
 | Passport `current` | Never. It depends on other documents and on the reference date. |
 | `same_org` row | Its reason is `directory` ("Same organisation" gives the test). |
 
 A link with several reasons is certain when one of them passes its test. An output that calls a claim certain where a table here does not allow it breaks the format. Mentions and cards carry no tier: they are what the extractor read, and the claims above are built on them. The answers carry no tier and are always likely, because "latest" and "current" are judgements over many documents.
 
-A claim is never certain when the identifier it rests on is only likely, except where the claim's own test proves the identifier. These are the exceptions, and the only ones. `iban-bank-code`, `ifsc-prefix` and `bic-institution` each include the identifier's own test, so a certain link's identifier always passes it, whatever tier the output gives the identifier. A passport's `holder`, `number` and `expiry` rest on the machine-readable zone, not on the printed number, whose kind has no check: a certain passport fact names the zone it rests on, that zone is itself certain, so a zone that is not the page's own fails the run as a wrong certain identifier, and the fact equals what the zone says. No statement fact is certain.
+A claim is never certain when the identifier it rests on is only likely, except where the claim's own test proves the identifier. These are the exceptions, and the only ones. `iban-bank-code`, `ifsc-prefix` and `bic-institution` each include the identifier's own test, so a certain link's identifier always passes it, whatever tier the output gives the identifier. A passport's `holder`, `number` and `expiry` rest on the machine-readable zone, not on the printed number, whose kind has no check: a certain passport fact names the zone it rests on, that zone is itself certain, so a zone that is not the page's own fails the run as a wrong certain identifier, and the fact equals what the zone says. A certain `expiry` rests on the printed date in `expiry_at` as well, for the century the zone leaves out. No statement fact is certain.
 
 ### Identifier tiers
 
@@ -171,10 +171,14 @@ A card that no certain link and no certain `same_org` row stands on is built onl
 
 ### No merging
 
-An extractor never merges two organisations into one key. A key is one of these:
+An extractor never merges two organisations into one key. A key is one of two things, and nothing else:
 
-- An institution code. The key is that code, spelt as "Code keys" says: two different codes are two keys, always.
-- A printed name. The key stands for that name, and the extractor may use it in every document that prints the name.
+- An institution code's key, spelt as "Code keys" says. It is the same in every document, every run and every extractor: two different codes are two keys, always.
+- A document key. It stands for one printed name inside one document, or for one code of an IBAN country that `iban-registry.json` does not have. It is spelt `name:<document id>:<the name>`, such as `name:hdfc-statement-sep:hdfcbank`. The name part is spelt from the name's text, never from a counter or a position in the file, so the key comes out the same on every run and no two documents share one. A mention that the document settles as a short form of the name ("Mentions, with the directory on and off" in `README.md`) may use the name's key.
+
+The scorer rejects any other key, and a document key used by a mention, link, issuer or `same_org` row of a document other than the one it names.
+
+The same printed name in two documents does not prove one organisation. `SMBK` in `credit-advice-smbk-ca` is a Canadian bank and `SMBK` in `payroll-release-smbk-gb` a British one, each settled by its own BIC. So the extractor writes nothing that says "this name in document A is that name in document B". Inside one document, a `same_org` row may join a name's key to a code's key, and a code's key is the same everywhere: that is the only way an output joins documents. Joining two documents' names is a judgement over many documents, like `latest_statement`. It belongs to the engine's rule "may be the same organisation", which a person confirms or rejects. So that this rule's work is known, the scorer reports, and never fails a run on, the pairs of document keys in different documents whose names are spelt the same, with how many pairs the labels say are one organisation and how many are two.
 
 A key holds the institution code of every IFSC, BIC or IBAN linked to it with that code's own reason (`ifsc-prefix`, `bic-institution` or `iban-bank-code`). A key is a MERGE when it holds an institution code and a mention is keyed to it, or when its papers land on two labelled organisations ("Organisation keys"). Any merge fails the run. A key cannot hold two codes: the link of the second would not go to its own code's key, which breaks the format.
 
@@ -190,9 +194,9 @@ A key that stands for an institution code is spelt one way, the same in every do
 
 A BIC's institution is its first eight characters because in ISO 9362 those eight (the party prefix, the country and the party suffix) identify one business party, and the last three a branch of it. The two characters after the country belong to the party's identifier, not to a place inside it, so two parties can share the first six. Eight characters never put two institutions on one key; at worst one bank with two such codes has two keys, a split, which `same_org` rows join.
 
-A link by an identifier's own code reason (`ifsc-prefix` for an IFSC, `bic-institution` for a BIC, `iban-bank-code` for an IBAN) goes to that identifier's code key, or the output breaks the format. `iban-registry.json` holds, for every country of the IBAN registry that SWIFT publishes as the ISO 13616 registration authority, the IBAN's length and where its bank identifier sits; its header names the source and the release. For an IBAN of a country the table does not have, the scorer reads no code and checks no key: the IBAN and its link are likely, the key is free-form like a printed name's, and only the labels can find a merge.
+A link by an identifier's own code reason (`ifsc-prefix` for an IFSC, `bic-institution` for a BIC, `iban-bank-code` for an IBAN) goes to that identifier's code key, or the output breaks the format. `iban-registry.json` holds, for every country of the IBAN registry that SWIFT publishes as the ISO 13616 registration authority, the IBAN's length and where its bank identifier sits; its header names the source and the release. For an IBAN of a country the table does not have, the scorer reads no code: the IBAN and its link are likely, the key is a document key like a printed name's, and only the labels can find a merge.
 
-A key that stands for a printed name is free-form, but it is spelt from the name's text, such as `name:hdfcbank`, never from a counter or a position in the file. A claim's id is made from its keys ("Ids"), and a person's confirmation is kept by that id, so a key must come out the same when the extractor runs again over the same files.
+A claim's id is made from its keys ("Ids"), and a person's confirmation is kept by that id, so a key must come out the same when the extractor runs again over the same files. That is why a document key's name is spelt from the printed text.
 
 "This name is that code's bank" and "these two keys are one organisation" are claims of their own, written as `same_org` rows. A code's key may still have a card name, such as the directory entry's name with the directory on.
 
@@ -230,7 +234,7 @@ Each claim can be named without its position in the file, so that a person's con
 
 - A key whose set holds one organisation is that organisation.
 - A key whose set holds two or more is a MERGE: two organisations' papers on one card. Every mention, link, issuer and `same_org` row that uses it is wrong, and the run fails. The other merge of "No merging", a code and a printed name on one key, fails the run as well, but the rows on the key are scored as the organisation the labels give it.
-- A labelled organisation that two or more keys land on is a SPLIT. Splits are listed and counted. They are not wrong.
+- A labelled organisation that two or more keys land on is a SPLIT. Splits are listed and counted. They are not wrong. An organisation named in two documents always has two document keys, so it is always split unless a code's key joins them.
 - A key whose set is empty is no labelled organisation. A link to it is wrong.
 
 **Cards.** A key's entry in `organisations` states who the key is, and the scorer checks it against the organisation the key maps to. `name` may be `null`, for example for a bank known only by a code with the directory off. When given, it must be a name the labels give that organisation: its `name` or one of its `names` in `labels.json`, the text of a labelled mention of it, or, with the directory on, a name of its directory entry. Case and whitespace do not count, so `三菱 UFJ 銀行` is `三菱UFJ銀行`. Both names also go through Unicode compatibility folding (NFKC), so a full-width `＆` is `&` and full-width letters are ordinary letters. Nothing else is folded: `HDFC Ltd` is not `HDFC`, and punctuation counts. `directory`, when given, must be that organisation's directory id. A key whose card gives another name or another organisation's directory id is a WRONG CARD: the organisation's papers are on a card that says it is someone else. As with a merge, every mention, link, issuer and `same_org` row that uses the key is wrong. A wrong card fails the run through the certain rows on it. A missing directory id is left out, not wrong.
@@ -251,7 +255,7 @@ Each claim can be named without its position in the file, so that a person's con
 
 **What OCR made impossible.** On `text-ocr/`, a labelled item whose text or value the page does not hold, with any spacing, is counted as impossible instead of left out. A link is impossible when its identifier is, or when its only reason is `paired-code` through an impossible code. An extractor that repairs the OCR text and finds the value anyway scores it as right.
 
-**Exit status.** 0 when no certain row is wrong and no key merges. 1 when one is wrong or one merges. 2 when the output breaks this format, including a root that is not an object, a format 1 output, a missing tier, a certain claim the tables do not allow, and a code link to a key that is not the code's key. A likely row and a left-out row never fail a run.
+**Exit status.** 0 when no certain row is wrong and no key merges. 1 when one is wrong or one merges. 2 when the output breaks this format, including a root that is not an object, a format 1 or format 2 output, a missing tier, a certain claim the tables do not allow, a certain expiry whose `expiry_at` does not give its year and day, a code link to a key that is not the code's key, a key that is neither a code's key nor a document key, and a document key used in another document. A likely row and a left-out row never fail a run.
 
 ## How to score an extractor
 
@@ -262,10 +266,10 @@ Each claim can be named without its position in the file, so that a person's con
    node sample/tools/score.mjs run-on-text.json
    ```
 
-   It prints a table (right, wrong, left out and impossible for each measure, in total, per tier and per language), the merges, wrong cards, wrong attachments and splits, and every wrong, impossible and left-out item. It writes the same as JSON to `run-on-text.score.json`, or to the path after `--json`.
+   It prints a table (right, wrong, left out and impossible for each measure, in total, per tier and per language), the merges, wrong cards, wrong attachments and splits, the same-name report ("No merging") with each pair the labels say is two organisations, and every wrong, impossible and left-out item. It writes the same as JSON to `run-on-text.score.json`, or to the path after `--json`.
 3. The bar is no wrong certain row and no merge on all four runs. Leaving something out is allowed. The likely rows' precision says how often a "may be" is right.
 
-`node sample/tools/reference.mjs <on|off> <text|text-ocr> <path>` writes the output a perfect extractor would give, made from the labels. It gives each printed name and each institution code a key of its own and joins them with `same_org` rows. It scores full marks on `text/`, and on `text-ocr/` it loses only what OCR made impossible. With the directory off it leaves out the joins that only the directory could make. `node --test sample/tools/score.test.mjs` tests each scoring rule, and `node sample/tools/score-mutants.mjs` removes one rule at a time from `score.mjs` and shows that a test fails.
+`node sample/tools/reference.mjs <on|off> <text|text-ocr> <path>` writes the output a perfect extractor would give, made from the labels. It gives each organisation a document names a document key in that document, spelt from the first name the document prints for it, gives each institution code its code's key, and joins them with `same_org` rows. It scores full marks on `text/`, and on `text-ocr/` it loses only what OCR made impossible. With the directory off it leaves out the joins that only the directory could make. `node --test sample/tools/score.test.mjs` tests each scoring rule, and `node sample/tools/score-mutants.mjs` removes one rule at a time from `score.mjs` and shows that a test fails.
 
 ## Changes in round 1
 
@@ -317,3 +321,10 @@ Each claim can be named without its position in the file, so that a person's con
 
 - `iban-registry.json` gives every IBAN registry country's length and bank identifier place. An IBAN of any of them may be certain, and its key is spelt from that bank identifier. An IBAN of a country the table does not have is likely, with its link, and its key is free-form.
 - A certain passport `holder`, `number` or `expiry` needs a certain zone, and must be what that zone says.
+
+## Changes in round 7
+
+- Output format 3. The scorer refuses format 2 with a sentence that names the two changes below.
+- A printed name's key is for one document. A key is an institution code's key or a document key, `name:<document id>:<name>`, and nothing else. A document key used in another document breaks the format. Format 2 let one key stand for a printed name in every document that printed it, and `MMBK` on a Canadian receipt and on a British one, two banks, landed on one key. Only the engine's rule "may be the same organisation" joins names across documents. The scorer reports the pairs of document keys whose names are spelt the same, and how many the labels say are one organisation and how many two.
+- A zone does not prove a century. A certain `expiry` cites in `expiry_at` a printed date with a four-digit year that ends in the zone's two digits, and the zone's day. Format 2 let an extractor write the zone's `98` as `2098` at certain, for a passport that expired in 1998.
+- `credit-advice-smbk-ca`, `payroll-release-smbk-gb` and `passport-meera-1988` join the sample. They show the two faults.

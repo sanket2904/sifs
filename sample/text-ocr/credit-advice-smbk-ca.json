@@ -1,0 +1,14 @@
+{
+	"id": "credit-advice-smbk-ca",
+	"file": "avis-de-credit.pdf",
+	"sha256": "fde4ddabcbfeb674a8cda8f8521d2ae42a2f9c3fe5f1ac92fb0f5320229e5b16",
+	"format": "pdf",
+	"lang": "fr",
+	"created": "2026-10-14T09:00:00Z",
+	"pages": [
+		{
+			"text": "DOCUMENT D'EXEMPLE. Inventé pour des tests. Ce n'est pas un vrai avis.\nSAMPLE DOCUMENT. Made up for testing.\nAvis de crédit : virement reçu\nBénéficiaire : E. Exemple, Montréal\nBanque créditée : SMBK ; SWIFT : SMBKCAT0XXX\nMontant crédité : 640,00 CAD",
+			"scanned": false
+		}
+	]
+}

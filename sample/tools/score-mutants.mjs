@@ -214,7 +214,7 @@ const MUTANTS = [
 	[
 		'tools/lib/tiers.mjs',
 		"a certain passport expiry is the zone's expiry",
-		"return /^\\d{4}-\\d\\d-\\d\\d$/.test(expiry) && expiry.slice(2).replaceAll('-', '') === zone.expiry;",
+		'return printedExpiry(expiryAt.text, zone.expiry) === expiry;',
 		'return true;'
 	],
 	[
@@ -399,12 +399,6 @@ const MUTANTS = [
 	],
 	[
 		'tools/score.mjs',
-		'a key is a non-empty string',
-		"if (!key) fail(where, 'a key must be a non-empty string');",
-		''
-	],
-	[
-		'tools/score.mjs',
 		'a link counts only from an identifier that matched a labelled one',
 		'const ident = w.labelOf.get(link.identifier) ?? null;',
 		'const ident =\n\t\t\t\tw.labelOf.get(link.identifier) ??\n\t\t\t\tlabel.identifiers.find((l) => same(l, link.identifier)) ??\n\t\t\t\tnull;'
@@ -540,10 +534,70 @@ const MUTANTS = [
 	[
 		'FORMAT.md',
 		'the worked example joins its two keys',
-		'"same_org": [{"keys": ["name:hdfcbank", "IFSC HDFC"], "reason": "directory", "tier": "certain"}]',
+		'"same_org": [{"keys": ["name:hdfc-statement-sep:hdfcbank", "IFSC HDFC"], "reason": "directory", "tier": "certain"}]',
 		'"same_org": []'
 	],
-	['FORMAT.md', 'the sort code example must hold', '"value": "601613"', '"value": "60-16-13"']
+	['FORMAT.md', 'the sort code example must hold', '"value": "601613"', '"value": "60-16-13"'],
+	[
+		'tools/score.mjs',
+		'a key is a code key or a document key',
+		'if (!isCodeKey(key) && !textSet.docs.has(documentOfKey(key)))',
+		'if (false)'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		"an IBAN code key has the length of its country's bank identifier",
+		'return iban !== null && ibanBankCodeLength(iban[1]) === iban[2].length;',
+		'return iban !== null;'
+	],
+	[
+		'tools/score.mjs',
+		"a printed name's key is for one document",
+		'if (owner !== null && owner !== doc.id)',
+		'if (false)'
+	],
+	[
+		'tools/score.mjs',
+		'the same-name report groups document keys by their name',
+		'const name = nameOfKey(k);',
+		'const name = documentOfKey(k) && k;'
+	],
+	[
+		'tools/score.mjs',
+		'the same-name report counts one organisation and two apart',
+		'x !== null && y !== null && (x === y) === one',
+		'x !== null && y !== null'
+	],
+	[
+		'tools/score.mjs',
+		'a format 2 output is refused with what changed',
+		'if (output.format === 2)',
+		'if (false)'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		'a certain expiry cites a printed date, not the zone alone',
+		'if (!expiryAt) return false;\n\treturn printedExpiry(expiryAt.text, zone.expiry) === expiry;',
+		"return expiry.slice(2).replaceAll('-', '') === zone.expiry;"
+	],
+	[
+		'tools/lib/tiers.mjs',
+		"a printed expiry's year ends in the zone's two digits",
+		'if (years.length !== 1 || years[0].slice(2) !== yymmdd.slice(0, 2)) return null;',
+		'if (years.length !== 1) return null;'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		"a printed expiry's day is the zone's",
+		'if (given.length !== want.length || given.some((n, i) => n !== want[i])) return null;',
+		'if (given.length !== want.length) return null;'
+	],
+	[
+		'tools/reference.mjs',
+		'the reference cites the printed expiry',
+		'				expiryAt: seen\n',
+		'				expiryAt: null\n'
+	]
 ];
 
 let missed = 0;

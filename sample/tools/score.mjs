@@ -13,10 +13,13 @@ import { isMain } from './lib/main.mjs';
 import {
 	CODE_REASONS,
 	codeKey,
+	documentOfKey,
+	isCodeKey,
 	mayBeCertainIdentifier,
 	mayBeCertainJoin,
 	mayBeCertainLink,
 	mayBeCertainPassport,
+	nameOfKey,
 	TIERS
 } from './lib/tiers.mjs';
 import { readTextSet, TEXT_SETS } from './text.mjs';
@@ -41,6 +44,7 @@ const SAME_ORG_REASONS = new Set([
 ]);
 const DATE = /^\d{4}-\d\d-\d\d$/;
 const TIERS_HELP = 'FORMAT.md, "Tiers"';
+const KEYS_HELP = 'FORMAT.md, "No merging"';
 const MEASURES = [
 	'mentions',
 	'org_directory',
@@ -84,9 +88,14 @@ function parseOutput(output, textSet, entries) {
 	if (output.format === 1)
 		fail(
 			'format',
-			`format 1 has no tiers. Write format 2: a tier on every link, tiers on every statement and passport, and same_org rows for keys that are one organisation (${TIERS_HELP})`
+			`format 1 has no tiers. Write format 3: a tier on every link, tiers on every statement and passport, and same_org rows for keys that are one organisation (${TIERS_HELP})`
 		);
-	if (output.format !== 2) fail('format', 'must be 2');
+	if (output.format === 2)
+		fail(
+			'format',
+			`format 2 shares a printed name's key across documents and takes an expiry's century from the zone; write format 3, where a name's key is name:<document id>:<name> and a certain expiry cites a printed date with a four-digit year (FORMAT.md, "Changes in round 7")`
+		);
+	if (output.format !== 3) fail('format', 'must be 3');
 	if (typeof output.extractor !== 'string' || !output.extractor)
 		fail('extractor', 'must be a name');
 	if (output.directory !== 'on' && output.directory !== 'off')
@@ -99,7 +108,11 @@ function parseOutput(output, textSet, entries) {
 	const cards = new Map();
 	for (const [key, card] of Object.entries(output.organisations)) {
 		const where = `organisations[${JSON.stringify(key)}]`;
-		if (!key) fail(where, 'a key must be a non-empty string');
+		if (!isCodeKey(key) && !textSet.docs.has(documentOfKey(key)))
+			fail(
+				where,
+				`a key is an institution code's key ("Code keys") or a document key, name:<document id>:<name> (${KEYS_HELP})`
+			);
 		if (!isObject(card)) fail(where, 'must be {name, directory}');
 		if (card.name !== null && (typeof card.name !== 'string' || !card.name))
 			fail(where, 'name must be a name or null');
@@ -147,14 +160,14 @@ function parseOutput(output, textSet, entries) {
 	const tierOf = (v, where) =>
 		TIERS.has(v) ? v : fail(where, `needs a tier, "certain" or "likely" (${TIERS_HELP})`);
 	// The tiers of the facts an entry gives: one for each fact that is not null.
-	const factTiers = (tiers, facts, where, mayBeCertain) => {
+	const factTiers = (tiers, facts, where, mayBeCertain, hint = () => '') => {
 		if (!isObject(tiers))
 			fail(`${where}.tiers`, `needs a tier for ${facts.join(', ')} (${TIERS_HELP})`);
 		const out = {};
 		for (const fact of facts) {
 			out[fact] = tierOf(tiers[fact], `${where}.tiers.${fact}`);
 			if (out[fact] === 'certain' && !mayBeCertain(fact))
-				fail(`${where}.tiers.${fact}`, `cannot be certain here (${TIERS_HELP})`);
+				fail(`${where}.tiers.${fact}`, `cannot be certain here${hint(fact)} (${TIERS_HELP})`);
 		}
 		return out;
 	};
@@ -279,8 +292,15 @@ function parseOutput(output, textSet, entries) {
 			if (![true, false, null].includes(current)) fail(w, 'current must be true, false or null');
 			const given = { holder, number, expiry, current };
 			const facts = Object.keys(given).filter((f) => given[f] !== null);
-			const tiers = factTiers(p.tiers, facts, w, (fact) =>
-				mayBeCertainPassport(fact, { mrz, number, holder, expiry })
+			const tiers = factTiers(
+				p.tiers,
+				facts,
+				w,
+				(fact) => mayBeCertainPassport(fact, { mrz, number, holder, expiry, expiryAt }),
+				(fact) =>
+					fact === 'expiry'
+						? `: the zone gives two digits of the year, so a certain expiry cites in expiry_at a printed date whose four-digit year ends in them and whose day is the zone's`
+						: ''
 			);
 			passport = {
 				holder,
@@ -297,6 +317,14 @@ function parseOutput(output, textSet, entries) {
 		const used = new Set(
 			[...mentions.map((m) => m.org), ...links.map((l) => l.org), statement?.issuer].filter(Boolean)
 		);
+		for (const k of used) {
+			const owner = documentOfKey(k);
+			if (owner !== null && owner !== doc.id)
+				fail(
+					where,
+					`key ${k} is a key of document ${owner}; a printed name's key is for one document (${KEYS_HELP})`
+				);
+		}
 		const sameOrg = list(doc.same_org, `${where}.same_org`).map((row, i) => {
 			const w = `${where}.same_org[${i}]`;
 			if (!isObject(row)) fail(w, 'must be an object');
@@ -593,6 +621,24 @@ export function score(labels, textSet, rawOutput, directory) {
 		.filter(([, ks]) => ks.length > 1)
 		.map(([t, ks]) => ({ organisation: t, keys: ks.sort() }))
 		.sort((a, b) => a.organisation.localeCompare(b.organisation));
+	// Document keys of two documents whose names are spelt the same. Nothing in
+	// one document joins them; that is the engine's rule "may be the same
+	// organisation", which a person confirms or rejects. This reports what the
+	// rule will face and fails nothing (FORMAT.md, "No merging").
+	const byName = new Map();
+	for (const d of out.docs.values())
+		for (const k of d.used) {
+			const name = nameOfKey(k);
+			if (name !== null) byName.set(name, [...(byName.get(name) ?? []), k]);
+		}
+	const sameName = [...byName.values()]
+		.flatMap((ks) => ks.sort().flatMap((a, i) => ks.slice(i + 1).map((b) => [a, b])))
+		.sort((x, y) => (x.join('\n') < y.join('\n') ? -1 : 1))
+		.map((keys) => ({ keys, organisations: keys.map(single) }));
+	const labelsSay = (one) =>
+		sameName.filter(
+			({ organisations: [x, y] }) => x !== null && y !== null && (x === y) === one
+		).length;
 	const keyVerdict = (key, want) => {
 		if (merged.has(key)) return `key ${key} merges ${[...targetsOf(key)].join(' and ')}`;
 		const card = wrongCard.get(key);
@@ -1093,6 +1139,11 @@ export function score(labels, textSet, rawOutput, directory) {
 		wrong_cards: wrongCards,
 		wrong_attachments: wrongAttachments,
 		splits,
+		same_name: {
+			one_organisation: labelsSay(true),
+			two_organisations: labelsSay(false),
+			pairs: sameName
+		},
 		likely_only_cards: keys.filter((k) => !certainKeys.has(k)).sort(),
 		...items
 	};
@@ -1157,6 +1208,13 @@ export function table(result) {
 		);
 	for (const s of result.splits)
 		out.push(`split: ${s.organisation} over keys ${s.keys.join(', ')}`);
+	const { one_organisation: one, two_organisations: two, pairs } = result.same_name;
+	out.push(
+		`same name in two documents: ${pairs.length} pairs of keys, the labels say ${one} are one organisation and ${two} are two`
+	);
+	for (const { keys: k, organisations: o } of pairs)
+		if (o[0] !== null && o[1] !== null && o[0] !== o[1])
+			out.push(`same name, two organisations: ${k[0]} (${o[0]}) and ${k[1]} (${o[1]})`);
 	const heading = {
 		wrong: (i) => (i.tier === 'certain' ? 'WRONG CERTAIN' : i.tier ? `wrong ${i.tier}` : 'wrong'),
 		impossible: () => 'impossible',

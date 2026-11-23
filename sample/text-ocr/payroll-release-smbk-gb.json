@@ -1,0 +1,14 @@
+{
+	"id": "payroll-release-smbk-gb",
+	"file": "payroll-release.pdf",
+	"sha256": "e4f7cf0e138c77acd4f486c49115f0ac7eb7d40f097a7d1490b94039d90bdbed",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-10-30T16:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real receipt.\nPayroll release: proof of payment\nLedger copy, batch 31, paid on 30 Oct 2026\nOriginating institution: SMBK (BIC SMBKGB20XXX)\nBatch amount: GBP 8,104.38",
+			"scanned": false
+		}
+	]
+}
