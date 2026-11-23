@@ -174,6 +174,9 @@ function parseOutput(output, textSet, entries) {
 	};
 	const seen = new Set();
 	const docs = new Map();
+	// The document keys a mention, or an IBAN of a country the table does not
+	// have, stands behind.
+	const named = new Set();
 	list(output.documents, 'documents').forEach((doc, n) => {
 		const where = `documents[${n}]`;
 		if (!isObject(doc)) fail(where, 'must be an object');
@@ -331,6 +334,7 @@ function parseOutput(output, textSet, entries) {
 		const codes = new Set([...identifiers.values()].map((i) => ownCodeKey(i, doc.id)).filter(Boolean));
 		const ibanKeys = new Set([...codes].filter((k) => !isCodeKey(k)));
 		const isCode = (k) => isCodeKey(k) || ibanKeys.has(k);
+		for (const k of [...mentions.map((m) => m.org), ...ibanKeys]) if (k !== null) named.add(k);
 		const NAME_HELP = `a printed name's key is a document key, and a name joins a code's key only by a same_org row (${KEYS_HELP})`;
 		mentions.forEach((m, i) => {
 			if (m.org !== null && isCode(m.org))
@@ -398,6 +402,12 @@ function parseOutput(output, textSet, entries) {
 			used
 		});
 	});
+	for (const key of cards.keys())
+		if (documentOfKey(key) !== null && !named.has(key))
+			fail(
+				`organisations[${JSON.stringify(key)}]`,
+				`a document key is the key of a mention of its document in the output, or of an IBAN of a country the table does not have that the document gives (${KEYS_HELP})`
+			);
 	const answers = isObject(output.answers) ? output.answers : fail('answers', 'must be an object');
 	const latest = list(answers.latest_statement, 'answers.latest_statement').map((a, i) => {
 		if (typeof a?.account !== 'string' || !textSet.docs.has(a.document))

@@ -680,6 +680,12 @@ const MUTANTS = [
 		'onPage(s.page, s.text)'
 	],
 	[
+		'tools/score.mjs',
+		'a declared document key is the key of a mention of its document',
+		'if (documentOfKey(key) !== null && !named.has(key))',
+		'if (false)'
+	],
+	[
 		'tools/reference.mjs',
 		'the reference cites the printed expiry',
 		'				expiryAt: seen\n',

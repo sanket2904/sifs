@@ -16,7 +16,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { SAMPLE } from './generate.mjs';
 import { readLabels } from './lib/labels.mjs';
-import { documentKey, printedExpiry } from './lib/tiers.mjs';
+import { documentKey, documentOfKey, printedExpiry } from './lib/tiers.mjs';
 import { reference } from './reference.mjs';
 import { FormatError, score, table } from './score.mjs';
 import { checkTextSets, readTextSet } from './text.mjs';
@@ -59,6 +59,15 @@ const linkOf = (output, id, value) => {
 const prune = (d) => {
 	const used = new Set([...d.orgs.map((m) => m.org), ...d.links.map((l) => l.org), d.statement?.issuer]);
 	d.same_org = d.same_org.filter((r) => r.keys.every((k) => used.has(k)));
+};
+// The output with only the cards its documents use, and the codes' cards, as
+// an output that gives fewer documents or mentions declares them.
+const cardsInUse = (output) => {
+	const used = new Set(output.documents.flatMap((d) => [...d.orgs, ...d.links].map((r) => r.org)));
+	const cards = Object.entries(output.organisations).filter(
+		([k]) => documentOfKey(k) === null || used.has(k)
+	);
+	return { ...output, organisations: Object.fromEntries(cards) };
 };
 // A span of the committed text of a document, found by its text.
 const spanOf = (output, id, text) => {
@@ -271,6 +280,7 @@ test('one key over two labelled organisations is a merge and fails the run', () 
 	const icici = keyIn(output, d.id, 'icici-bank');
 	for (const row of [...d.orgs, ...d.links]) if (row.org === icici) row.org = hdfc;
 	prune(d);
+	delete output.organisations[icici];
 	const result = run(output);
 	assert.deepEqual(result.merges, [
 		{ key: hdfc, why: 'organisations', organisations: ['hdfc-bank', 'icici-bank'] }
@@ -301,6 +311,7 @@ test("a link by a code's own reason to any key but the code's canonical key brea
 const mergeInNeft = (output) => {
 	const d = doc(output, 'neft-receipt-tied');
 	const hdfc = keyIn(output, d.id, 'hdfc-bank');
+	delete output.organisations[keyIn(output, d.id, 'icici-bank')];
 	d.orgs.find((m) => m.text === 'ICICI Bank').org = hdfc;
 	prune(d);
 	return hdfc;
@@ -658,7 +669,7 @@ test('with the directory on, an organisation without its directory id is left ou
 });
 
 test('an empty output leaves everything out and fails nothing', () => {
-	const output = { ...perfect(), documents: [], answers: {} };
+	const output = cardsInUse({ ...perfect(), documents: [], answers: {} });
 	const result = run(output);
 	assert.equal(sum(result, 'wrong'), 0);
 	assert.equal(totals(result, 'links').left_out, 49);
@@ -848,6 +859,27 @@ test('a key that is neither a code key nor a document key breaks the format', ()
 	}
 });
 
+test('a declared document key that no mention of its document has breaks the format', () => {
+	const id = 'hdfc-statement-sep';
+	const ghost = documentKey(id, 'No mention on the sample page');
+	for (const [what, drop] of [
+		['its document given', () => {}],
+		['its document left out', (o) => (o.documents = o.documents.filter((d) => d.id !== id))]
+	]) {
+		const given = perfect();
+		drop(given);
+		const output = cardsInUse(given);
+		output.organisations[ghost] = { name: 'Sample Ghost Bank', directory: null };
+		assert.throws(
+			() => run(output),
+			new RegExp(
+				`organisations\\["${ghost}"\\]: a document key is the key of a mention of its document in the output`
+			),
+			what
+		);
+	}
+});
+
 test("a printed name's key is for one document: used in another, it breaks the format", () => {
 	const output = perfect();
 	const ca = doc(output, 'credit-advice-smbk-ca');
@@ -866,7 +898,7 @@ test('the same-name report counts the pairs of document keys whose names are spe
 		const output = perfect(directory);
 		const receipts = ['credit-advice-smbk-ca', 'payroll-release-smbk-gb'];
 		output.documents = output.documents.filter((d) => receipts.includes(d.id));
-		const result = run(output);
+		const result = run(cardsInUse(output));
 		assert.deepEqual(result.same_name, {
 			one_organisation: 0,
 			two_organisations: 1,
@@ -1532,7 +1564,9 @@ test('a claim the output gives is judged against the labels, even where the OCR 
 		'answer_latest_statement',
 		'answer_current_passport'
 	];
-	const silent = ocr.run({ ...output, documents: [], answers: { latest_statement: [], current_passport: [] } });
+	const silent = ocr.run(
+		cardsInUse({ ...output, documents: [], answers: { latest_statement: [], current_passport: [] } })
+	);
 	for (const measure of measures)
 		assert.equal(totals(silent, measure).impossible, 1, `${measure} is impossible when not given`);
 	const sep = doc(output, 'hdfc-statement-sep');
