@@ -3,6 +3,8 @@ package extract
 import (
 	"sort"
 	"strings"
+
+	"github.com/sanket2904/sifs/engine/extract/orgkey"
 )
 
 // Link reasons, as the label schema names them.
@@ -27,7 +29,7 @@ const (
 // reason the format names.
 type Link struct {
 	Ident  string
-	Key    string
+	Key    orgkey.Key
 	Reason string
 	Via    string // the code a paired-code link goes through
 	proof  proof
@@ -36,14 +38,13 @@ type Link struct {
 // Join says two keys are one organisation, as one document shows it. It is
 // a claim of its own: keys are never merged.
 type Join struct {
-	A, B   string
+	A, B   orgkey.Key
 	Reason string
 	proof  proof
 }
 
-// DocResult is everything found in one document. Keys are spelt from the
-// document's text: "name:<match key>" for a printed name, and the code key
-// ("IFSC ABCD", "BIC ABCDGB2L", "IBAN DE 37040044") for an institution code.
+// DocResult is everything found in one document. A printed name's key is
+// the document's own; a code's key is the same in every document.
 type DocResult struct {
 	ID          string
 	Mentions    []Mention
@@ -71,8 +72,8 @@ func Extract(doc Document, reg *IBANRegistry, ref Date) DocResult {
 	}
 	for i := range names {
 		if names[i].kind == wholeName {
-			if k := matchKey(names[i].Text); k != "" {
-				names[i].Key, names[i].SettledBy = "name:"+k, "name"
+			if k, ok := orgkey.Name(doc.ID, names[i].Text); ok {
+				names[i].Key, names[i].SettledBy = k, "name"
 			}
 		}
 	}
@@ -82,7 +83,7 @@ func Extract(doc Document, reg *IBANRegistry, ref Date) DocResult {
 			r.Mentions = append(r.Mentions, n)
 		}
 	}
-	short, joins := shortForms(lines, names, r.Identifiers, r.Joins)
+	short, joins := shortForms(doc.ID, lines, names, r.Identifiers, r.Joins)
 	r.Mentions = append(r.Mentions, short...)
 	r.Joins = append(r.Joins, joins...)
 	sortSpans(r.Mentions, func(m Mention) Span { return m.Span })
@@ -101,8 +102,8 @@ func Extract(doc Document, reg *IBANRegistry, ref Date) DocResult {
 // joined groups the keys that a document's joins say are one organisation.
 // It is the document's own reading, used to settle what else it says; the
 // keys themselves stay apart.
-func joined(joins []Join) *union {
-	u := newUnion()
+func joined(joins []Join) *union[orgkey.Key] {
+	u := newUnion[orgkey.Key]()
 	for _, j := range joins {
 		u.join(j.A, j.B)
 	}
@@ -137,12 +138,12 @@ func sortSpans[T any](xs []T, span func(T) Span) {
 func codeJoins(names []Mention, ids []Identifier) []Join {
 	var joins []Join
 	for _, c := range ids {
-		if !c.isCode() || c.Code == "" {
+		if !c.isCode() || c.Code.IsZero() {
 			continue
 		}
-		fit := map[string]bool{}
+		fit := map[orgkey.Key]bool{}
 		for _, n := range names {
-			if n.bank && n.Key != "" && strings.EqualFold(fold(n.words[0]), c.Value[:4]) {
+			if n.bank && !n.Key.IsZero() && strings.EqualFold(orgkey.Fold(n.words[0]), c.Value[:4]) {
 				fit[n.Key] = true
 			}
 		}
@@ -152,10 +153,10 @@ func codeJoins(names []Mention, ids []Identifier) []Join {
 			}
 		}
 	}
-	ibans, bics := map[string]map[string]bool{}, map[string]map[string]bool{} // country -> code keys
+	ibans, bics := map[string]map[orgkey.Key]bool{}, map[string]map[orgkey.Key]bool{} // country -> code keys
 	for _, id := range ids {
 		switch {
-		case id.Code == "":
+		case id.Code.IsZero():
 		case id.Kind == KindIBAN:
 			addKey(ibans, id.Value[:2], id.Code)
 		case id.Kind == KindBIC:
@@ -163,7 +164,7 @@ func codeJoins(names []Mention, ids []Identifier) []Join {
 		}
 	}
 	for _, a := range ids {
-		if a.Kind != KindIBAN || a.Code == "" {
+		if a.Kind != KindIBAN || a.Code.IsZero() {
 			continue
 		}
 		c := pairedCode(a, ids)
@@ -177,9 +178,9 @@ func codeJoins(names []Mention, ids []Identifier) []Join {
 	return joins
 }
 
-func addKey(m map[string]map[string]bool, country, key string) {
+func addKey(m map[string]map[orgkey.Key]bool, country string, key orgkey.Key) {
 	if m[country] == nil {
-		m[country] = map[string]bool{}
+		m[country] = map[orgkey.Key]bool{}
 	}
 	m[country][key] = true
 }
@@ -189,7 +190,7 @@ func addKey(m map[string]map[string]bool, country, key string) {
 // IBANs or two BICs of one country in a document, only such a pair is the
 // one reading of which code goes with which.
 func spellsBIC(iban, bic Identifier) bool {
-	return strings.Fields(iban.Code)[2] == bic.Value[:4]
+	return strings.Fields(iban.Code.String())[2] == bic.Value[:4]
 }
 
 // pairedCode is the IFSC or BIC an account or IBAN sits with: the only code
@@ -201,7 +202,7 @@ func pairedCode(a Identifier, ids []Identifier) *Identifier {
 			if id.Line.Page != page || id.Line.Index != index {
 				continue
 			}
-			if id.isCode() && id.Code != "" {
+			if id.isCode() && !id.Code.IsZero() {
 				codes = append(codes, i)
 			} else {
 				others = append(others, i)
@@ -247,7 +248,7 @@ var codeReasons = map[string]string{KindIFSC: ReasonIFSCPrefix, KindBIC: ReasonB
 func codeLinks(ids []Identifier) []Link {
 	var out []Link
 	for _, id := range ids {
-		if id.Code != "" {
+		if !id.Code.IsZero() {
 			l := Link{Ident: id.ID, Key: id.Code, Reason: codeReasons[id.Kind]}
 			if id.Kind == KindIBAN {
 				l.proof = id.proof
@@ -256,7 +257,7 @@ func codeLinks(ids []Identifier) []Link {
 		}
 	}
 	for _, id := range ids {
-		if !id.isAccount() || id.Code != "" || id.Valid != nil && !*id.Valid {
+		if !id.isAccount() || !id.Code.IsZero() || id.Valid != nil && !*id.Valid {
 			continue
 		}
 		if c := pairedCode(id, ids); c != nil {
@@ -264,7 +265,7 @@ func codeLinks(ids []Identifier) []Link {
 		}
 	}
 	for _, iban := range ids {
-		if iban.Kind != KindIBAN || iban.Code == "" {
+		if iban.Kind != KindIBAN || iban.Code.IsZero() {
 			continue
 		}
 		p := ibanParts[iban.Value[:2]]
@@ -273,7 +274,7 @@ func codeLinks(ids []Identifier) []Link {
 		case "GB", "IE":
 			parts[KindSortCode] = iban.Value[p.branch0:p.branch1]
 		case "FR", "MC":
-			parts[KindFRBank], parts[KindFRBranch] = strings.Fields(iban.Code)[2], iban.Value[p.branch0:p.branch1]
+			parts[KindFRBank], parts[KindFRBranch] = strings.Fields(iban.Code.String())[2], iban.Value[p.branch0:p.branch1]
 		}
 		for _, id := range ids {
 			switch {
@@ -293,22 +294,24 @@ func codeLinks(ids []Identifier) []Link {
 // leading words of a full name in it, or as the initials of one. A word
 // settled by a code alone keeps a key of its own, spelt from its text, and
 // a join says it spells the code: a mention never stands on a code's key.
-func shortForms(lines []Line, names []Mention, ids []Identifier, joins []Join) ([]Mention, []Join) {
+// A word settled by a full name stands on the name's key: it is the name's
+// leading words or initials, so its match key never outranks the name's.
+func shortForms(docID string, lines []Line, names []Mention, ids []Identifier, joins []Join) ([]Mention, []Join) {
 	same := joined(joins)
 	var full []Mention
 	for _, n := range names {
-		if n.Key != "" {
+		if !n.Key.IsZero() {
 			full = append(full, n)
 		}
 	}
 	var out []Mention
 	var spelt []Join
 	settle := func(m Mention, words []string) (Mention, bool) {
-		found := map[string]string{} // root -> key
+		found := map[orgkey.Key]orgkey.Key{} // root -> key
 		by := ""
-		add := func(key, how string) {
+		add := func(key orgkey.Key, how string) {
 			r := same.find(key)
-			if _, ok := found[r]; !ok || strings.HasPrefix(key, "name:") {
+			if _, ok := found[r]; !ok || key.IsName() {
 				found[r] = key
 			}
 			if by == "" || how == "mention" {
@@ -316,7 +319,7 @@ func shortForms(lines []Line, names []Mention, ids []Identifier, joins []Join) (
 			}
 		}
 		for _, c := range ids {
-			if c.isCode() && c.Code != "" && len(words) == 1 && words[0] == c.Value[:4] {
+			if c.isCode() && !c.Code.IsZero() && len(words) == 1 && words[0] == c.Value[:4] {
 				add(c.Code, "code")
 			}
 		}
@@ -329,13 +332,13 @@ func shortForms(lines []Line, names []Mention, ids []Identifier, joins []Join) (
 			return m, false
 		}
 		for _, key := range found {
-			if !strings.HasPrefix(key, "name:") {
-				own := matchKey(m.Text)
-				if own == "" {
+			if !key.IsName() {
+				own, ok := orgkey.Name(docID, m.Text)
+				if !ok {
 					return m, false
 				}
-				spelt = append(spelt, Join{A: "name:" + own, B: key, Reason: JoinSpellsCode})
-				key = "name:" + own
+				spelt = append(spelt, Join{A: own, B: key, Reason: JoinSpellsCode})
+				key = own
 			}
 			m.Key, m.SettledBy = key, by
 		}
@@ -355,11 +358,11 @@ func shortForms(lines []Line, names []Mention, ids []Identifier, joins []Join) (
 			// grow the word while it reads as the leading words of a name
 			best := c.Mention
 			for _, n := range full {
-				if fold(c.toks[c.i].text) != fold(n.words[0]) {
+				if orgkey.Fold(c.toks[c.i].text) != orgkey.Fold(n.words[0]) {
 					continue
 				}
 				j := 1
-				for c.i+j < len(c.toks) && j < len(n.words)-1 && c.toks[c.i+j].joined() && fold(c.toks[c.i+j].text) == fold(n.words[j]) {
+				for c.i+j < len(c.toks) && j < len(n.words)-1 && c.toks[c.i+j].joined() && orgkey.Fold(c.toks[c.i+j].text) == orgkey.Fold(n.words[j]) {
 					j++
 				}
 				if end := c.toks[c.i+j-1].b1; j > len(best.words) {
@@ -382,7 +385,7 @@ func isWordPrefix(words, name []string) bool {
 		return false
 	}
 	for i, w := range words {
-		if fold(w) != fold(name[i]) {
+		if orgkey.Fold(w) != orgkey.Fold(name[i]) {
 			return false
 		}
 	}
@@ -397,7 +400,7 @@ func isInitials(words, name []string) bool {
 		return false
 	}
 	for _, w := range words[1:] {
-		if !legalForms[strings.ToLower(fold(w))] {
+		if !legalForms[strings.ToLower(orgkey.Fold(w))] {
 			return false
 		}
 	}

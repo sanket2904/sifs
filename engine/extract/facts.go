@@ -5,6 +5,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/sanket2904/sifs/engine/extract/orgkey"
 )
 
 // Statement is a document's own statement period, its one account (in
@@ -82,7 +84,7 @@ func isNumberMark(line string, toks []token, t token) bool {
 // specimenBefore reports whether the text before a role word ends in a
 // word that says real ("a real", "echter", "本物の").
 func specimenBefore(prefix string) bool {
-	p := strings.TrimSuffix(strings.ToLower(fold(strings.TrimSpace(prefix))), "の")
+	p := strings.TrimSuffix(strings.ToLower(orgkey.Fold(strings.TrimSpace(prefix))), "の")
 	for w := range specimen {
 		if strings.HasSuffix(p, w) {
 			return true
@@ -128,7 +130,7 @@ func findStatement(lines []Line, ids []Identifier, mentions []Mention) *Statemen
 			break
 		}
 	}
-	if at < 0 || len(mentions) == 0 || mentions[0].Key == "" {
+	if at < 0 || len(mentions) == 0 || mentions[0].Key.IsZero() {
 		return nil
 	}
 	st.Issuer = mentions[0]
@@ -300,8 +302,15 @@ func findPassport(lines []Line, ids []Identifier, ref Date) *Passport {
 			p.Surname, p.Given = sur, given
 		}
 		// The zone and the printed date must agree; a zone that fails its
-		// check digits cannot say which date is right.
-		zd, ok := makeDate(2000+atoi(l2[21:23]), atoi(l2[23:25]), atoi(l2[25:27]))
+		// check digits cannot say which date is right. The zone gives two
+		// digits of the year: a printed date that agrees gives the century,
+		// and without one the century is a guess.
+		yy := atoi(l2[21:23])
+		century := 2000
+		if p.Expiry != nil && p.Expiry.Y%100 == yy {
+			century = p.Expiry.Y - yy
+		}
+		zd, ok := makeDate(century+yy, atoi(l2[23:25]), atoi(l2[25:27]))
 		if !*p.MRZ.Valid || !ok || p.Expiry != nil && *p.Expiry != zd {
 			if p.Expiry != nil {
 				p.candidates = append(p.candidates, *p.Expiry)
@@ -321,9 +330,7 @@ func findPassport(lines []Line, ids []Identifier, ref Date) *Passport {
 			if p.Number != nil && p.Number.Value == strings.ReplaceAll(l2[0:9], "<", "") {
 				p.numberProof = zoneSays
 			}
-			if p.Expiry != nil && ok && *p.Expiry == zd {
-				p.expiryProof = zoneSays
-			}
+			p.expiryProof = expiryProof(l2[21:27], p.ExpiryAt, p.Expiry)
 		}
 	}
 	if p.Surname == "" || p.Given == "" {
@@ -331,6 +338,52 @@ func findPassport(lines []Line, ids []Identifier, ref Date) *Passport {
 	}
 	p.Current = isCurrent(p, cancelled, ref)
 	return &p
+}
+
+// expiryProof is why a passport's expiry is what it is, given the zone's
+// date of expiry (YYMMDD), the span of the printed date of expiry, and the
+// expiry the extractor gives. The zone proves a day, a month and the last
+// two digits of a year, never the century, so the expiry is the zone's
+// only when the printed date at its span gives the century
+// (printedExpiry) and the expiry is that date. Without the span it is read.
+func expiryProof(zone string, at *Span, expiry *Date) proof {
+	if at == nil || expiry == nil {
+		return read
+	}
+	if d, ok := printedExpiry(at.Text, zone); ok && d == *expiry {
+		return zoneAndPrintedYear
+	}
+	return read
+}
+
+// printedExpiry is the zone's date of expiry with the century a printed
+// date gives (sample/FORMAT.md, "Tiers"): the printed text's digits, ASCII
+// or full width, hold one four-digit year ending in the zone's two digits
+// and, besides it, only the zone's day, or its day and month in either
+// order.
+func printedExpiry(text, zone string) (Date, bool) {
+	var years, rest []int
+	for _, n := range strings.FieldsFunc(orgkey.Fold(text), func(r rune) bool { return r < '0' || r > '9' }) {
+		switch {
+		case len(n) == 4:
+			years = append(years, atoi(n))
+		case len(n) > 2:
+			return Date{}, false
+		default:
+			rest = append(rest, atoi(n))
+		}
+	}
+	yy, mm, dd := atoi(zone[0:2]), atoi(zone[2:4]), atoi(zone[4:6])
+	if len(years) != 1 || years[0]%100 != yy {
+		return Date{}, false
+	}
+	switch {
+	case len(rest) == 1 && rest[0] == dd:
+	case len(rest) == 2 && (rest[0] == dd && rest[1] == mm || rest[0] == mm && rest[1] == dd):
+	default:
+		return Date{}, false
+	}
+	return makeDate(years[0], mm, dd)
 }
 
 // sameZoneName reports whether a printed name is the zone's, case and
@@ -364,7 +417,7 @@ func hasCancelWord(s string) bool {
 	}
 	toks := tokenize(s)
 	for _, t := range toks {
-		if strings.ToUpper(t.text) != t.text || !cancelWords[fold(t.text)] {
+		if strings.ToUpper(t.text) != t.text || !cancelWords[orgkey.Fold(t.text)] {
 			return false
 		}
 	}

@@ -6,6 +6,8 @@ import (
 	"math/big"
 	"os"
 	"strings"
+
+	"github.com/sanket2904/sifs/engine/extract/orgkey"
 )
 
 // IBANRegistry is sample/iban-registry.json, the table the scorer reads:
@@ -95,13 +97,13 @@ func (reg *IBANRegistry) proves(iban string) bool {
 }
 
 // codeKey is the key of the bank an IBAN names by its bank code ("Code
-// keys"), for a country whose bank code the extractor reads, or "".
-func (reg *IBANRegistry) codeKey(iban string) string {
+// keys"), for a country whose bank code the extractor reads, or zero.
+func (reg *IBANRegistry) codeKey(iban string) orgkey.Key {
 	if _, ok := ibanParts[iban[:2]]; !ok {
-		return ""
+		return orgkey.Key{}
 	}
 	c := reg.countries[iban[:2]]
-	return "IBAN " + iban[:2] + " " + iban[c.bank0:c.bank1]
+	return orgkey.IBAN(iban[:2], iban[c.bank0:c.bank1])
 }
 
 func itoa(n int) string {

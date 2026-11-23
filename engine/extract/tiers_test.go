@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/sanket2904/sifs/engine/extract/orgkey"
 )
 
 // TestTierTable holds the table to sample/FORMAT.md's: of every claim the
@@ -29,7 +31,7 @@ func TestTierTable(t *testing.T) {
 	for _, r := range []string{JoinDirectory, JoinSpellsCode, JoinPrintedTogether, "statement-header"} {
 		claims = append(claims, joinClaim(r))
 	}
-	names := map[proof]string{read: "read", ibanRegistered: "ibanRegistered", zoneChecked: "zoneChecked", directoryCode: "directoryCode", zoneSays: "zoneSays", directoryJoin: "directoryJoin"}
+	names := map[proof]string{read: "read", ibanRegistered: "ibanRegistered", zoneChecked: "zoneChecked", directoryCode: "directoryCode", zoneSays: "zoneSays", zoneAndPrintedYear: "zoneAndPrintedYear", directoryJoin: "directoryJoin"}
 	var got []string
 	for _, c := range claims {
 		for p := range names {
@@ -47,7 +49,7 @@ func TestTierTable(t *testing.T) {
 		"link bic-institution by directoryCode",
 		"link iban-bank-code by ibanRegistered",
 		"link ifsc-prefix by directoryCode",
-		"passport expiry by zoneSays",
+		"passport expiry by zoneAndPrintedYear",
 		"passport holder by zoneSays",
 		"passport number by zoneSays",
 		"same_org directory by directoryJoin",
@@ -109,11 +111,19 @@ func TestPassportFactsAreCertainOnlyAsTheZoneSaysThem(t *testing.T) {
 	page := func(number, surname string, zone ...string) Document {
 		return doc("p", append([]string{"PASSPORT", "Passport No.: " + number, "Surname: " + surname, "Given names: Anna  Maria", "Date of expiry: 15 APR 2012"}, zone...)...)
 	}
+	printed := func(expiry string, zone ...string) Document {
+		return doc("p", append([]string{"PASSPORT", "Passport No.: L898902C3", "Surname: Eriksson", "Given names: Anna Maria", expiry}, zone...)...)
+	}
+	zone1912 := []string{zone[0], "L898902C36UTO7408122F1204159ZE184226B<<<<<10"}
 	for _, c := range []struct {
 		name string
 		d    Document
 		want map[string]Tier
 	}{
+		{"no printed date: the zone gives no century", printed("Valid for ten years", zone...), map[string]Tier{"holder": Certain, "number": Certain, "expiry": Likely, "current": Likely}},
+		{"the printed date is on the next line", printed("Date of expiry:\n15 APR 2012", zone...), map[string]Tier{"holder": Certain, "number": Certain, "expiry": Likely, "current": Likely}},
+		{"a printed year of another century", printed("Date of expiry: 15 APR 1912", zone1912...), map[string]Tier{"holder": Certain, "number": Certain, "expiry": Certain, "current": Likely}},
+		{"a printed date the zone does not give", printed("Date of expiry: 16 APR 2012", zone...), map[string]Tier{"holder": Certain, "number": Certain, "expiry": Likely, "current": Likely}},
 		{"the zone says every fact", page("L898902C3", "Eriksson", zone...), map[string]Tier{"holder": Certain, "number": Certain, "expiry": Certain, "current": Likely}},
 		{"a printed number the zone does not give", page("L898902C4", "Eriksson", zone...), map[string]Tier{"holder": Certain, "number": Likely, "expiry": Certain, "current": Likely}},
 		{"a printed surname the zone does not give", page("L898902C3", "Ericsson", zone...), map[string]Tier{"holder": Likely, "number": Certain, "expiry": Certain, "current": Likely}},
@@ -127,6 +137,39 @@ func TestPassportFactsAreCertainOnlyAsTheZoneSaysThem(t *testing.T) {
 		}
 		if !mapsEqual(e.Passport.Tiers, c.want) {
 			t.Errorf("%s: tiers %v, want %v", c.name, e.Passport.Tiers, c.want)
+		}
+		if p := e.Passport; p.Tiers["expiry"] == Certain {
+			if at := p.ExpiryAt; at == nil || p.Expiry == nil || at.Text[len(at.Text)-4:] != (*p.Expiry)[:4] {
+				t.Errorf("%s: a certain expiry %v cites the printed date that gives its year: %+v", c.name, p.Expiry, at)
+			}
+		}
+	}
+}
+
+// TestPrintedExpiry holds printedExpiry to the scorer's test of a certain
+// expiry's printed date (sample/tools/lib/tiers.mjs, printedExpiry).
+func TestPrintedExpiry(t *testing.T) {
+	for _, c := range []struct{ text, zone, want string }{
+		{"15 APR 2012", "120415", "2012-04-15"},
+		{"15.04.2012", "120415", "2012-04-15"},
+		{"04/15/2012", "120415", "2012-04-15"},
+		{"2012年4月15日", "120415", "2012-04-15"},
+		{"１５ APR ２０１２", "120415", "2012-04-15"},
+		{"02 JUN 1998", "980602", "1998-06-02"},
+		{"15 APR 2013", "120415", ""},
+		{"16 APR 2012", "120415", ""},
+		{"15 APR 12", "120415", ""},
+		{"15.05.2012", "120415", ""},
+		{"15 APR 2012 2012", "120415", ""},
+		{"015 APR 2012", "120415", ""},
+		{"१५ APR २०१२", "120415", ""},
+	} {
+		got := ""
+		if d, ok := printedExpiry(c.text, c.zone); ok {
+			got = d.String()
+		}
+		if got != c.want {
+			t.Errorf("printedExpiry(%q, %s) = %q, want %q", c.text, c.zone, got, c.want)
 		}
 	}
 }
@@ -155,8 +198,8 @@ func TestNoTwoOrganisationsShareAKey(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	eq(t, "keys", keys, []string{"BIC COBADE33", "BIC COBADEFF", "IFSC ALFA", "IFSC BETA", "name:cobabank"})
-	eq(t, "same_org", joinsOf(e), []string{"BIC COBADE33 = name:cobabank: spells-code likely", "BIC COBADEFF = name:cobabank: spells-code likely"})
+	eq(t, "keys", keys, []string{"BIC COBADE33", "BIC COBADEFF", "IFSC ALFA", "IFSC BETA", "name:d:cobabank"})
+	eq(t, "same_org", joinsOf(e), []string{"BIC COBADE33 = name:d:cobabank: spells-code likely", "BIC COBADEFF = name:d:cobabank: spells-code likely"})
 }
 
 // A payment order names two banks: the payer's and the payee's. Whatever
@@ -172,8 +215,8 @@ func TestPayerAndPayeeStayApart(t *testing.T) {
 		"DE56500700809876543210": "payee", "IBAN DE 50070080": "payee", "PAYEDEFFXXX": "payee", "BIC PAYEDEFF": "payee",
 	}
 	for name, lines := range map[string][]string{
-		"one BIC, payer first": {"Payment order", "Ordering customer IBAN: " + payerIBAN, "Beneficiary BIC: PAYEDEFFXXX", "Beneficiary IBAN: " + payeeIBAN},
-		"one BIC, payee first": {"Payment order", "Beneficiary IBAN: " + payeeIBAN, "Beneficiary BIC: PAYEDEFFXXX", "Ordering customer IBAN: " + payerIBAN},
+		"one BIC, payer first":  {"Payment order", "Ordering customer IBAN: " + payerIBAN, "Beneficiary BIC: PAYEDEFFXXX", "Beneficiary IBAN: " + payeeIBAN},
+		"one BIC, payee first":  {"Payment order", "Beneficiary IBAN: " + payeeIBAN, "Beneficiary BIC: PAYEDEFFXXX", "Ordering customer IBAN: " + payerIBAN},
 		"two BICs, payer first": {"Payment order", "Ordering customer IBAN: " + payerIBAN, "Beneficiary BIC: PAYEDEFFXXX", "Beneficiary IBAN: " + payeeIBAN, "Ordering BIC: PAYRDEFFXXX"},
 		"two BICs, payee first": {"Payment order", "Beneficiary IBAN: " + payeeIBAN, "Ordering BIC: PAYRDEFFXXX", "Ordering customer IBAN: " + payerIBAN, "Beneficiary BIC: PAYEDEFFXXX"},
 	} {
@@ -208,13 +251,13 @@ func TestLettersPickTheOnlyReading(t *testing.T) {
 
 func TestShortFormSettledByACodeKeepsItsOwnKey(t *testing.T) {
 	o, e := runOne(t, doc("d", "Bank: EXMB", "Account: 4720195386 IFSC: EXMB0123456"), nil)
-	if len(e.Orgs) != 1 || e.Orgs[0].Org == nil || *e.Orgs[0].Org != "name:exmb" || *e.Orgs[0].SettledBy != "code" {
+	if len(e.Orgs) != 1 || e.Orgs[0].Org == nil || *e.Orgs[0].Org != "name:d:exmb" || *e.Orgs[0].SettledBy != "code" {
 		t.Fatalf("mention: %+v", e.Orgs)
 	}
-	if c := o.Organisations["name:exmb"]; c.Name == nil || *c.Name != "EXMB" {
+	if c := o.Organisations["name:d:exmb"]; c.Name == nil || *c.Name != "EXMB" {
 		t.Errorf("card: %+v", c)
 	}
-	eq(t, "same_org", joinsOf(e), []string{"IFSC EXMB = name:exmb: spells-code likely"})
+	eq(t, "same_org", joinsOf(e), []string{"IFSC EXMB = name:d:exmb: spells-code likely"})
 }
 
 func loadSample(t *testing.T, set string) ([]Document, Date, *Directory) {
@@ -308,11 +351,25 @@ func TestIdsAreStable(t *testing.T) {
 			eq(t, set+": claims with the documents reversed", claimIDs(other), ids)
 		}
 	}
+
+	// two documents print one name: each keeps its own key, whatever the order
+	advice := doc("advice-ca", "SMBK", "Credit advice", "Account: 4720195386", "BIC: SMBKCAT0XXX")
+	payroll := doc("payroll-gb", "SMBK", "Payroll release", "Account: 12345678", "BIC: SMBKGB20XXX")
+	want := map[string]string{"advice-ca": "name:advice-ca:smbk", "payroll-gb": "name:payroll-gb:smbk"}
+	forward, backward := Run([]Document{advice, payroll}, nil, registry, ref), Run([]Document{payroll, advice}, nil, registry, ref)
+	eq(t, "claims with two documents that print one name, reversed", claimIDs(backward), claimIDs(forward))
+	for _, o := range []Output{forward, backward} {
+		for _, d := range o.Documents {
+			if len(d.Orgs) != 1 || d.Orgs[0].Org == nil || *d.Orgs[0].Org != want[d.ID] {
+				t.Errorf("%s: mentions %+v, want the key %s", d.ID, d.Orgs, want[d.ID])
+			}
+		}
+	}
 }
 
 // TestNoMergeInTheSample checks the sample's runs against "No merging": a
-// mention's key is a printed name's, spelt from text; a code link goes to
-// its code's key.
+// mention's key is a printed name's of its own document, spelt from the
+// texts of the mentions on it; a code link goes to its code's key.
 func TestNoMergeInTheSample(t *testing.T) {
 	for _, set := range []string{"text", "text-ocr"} {
 		docs, day, dir := loadSample(t, set)
@@ -323,15 +380,21 @@ func TestNoMergeInTheSample(t *testing.T) {
 				for _, i := range doc.Identifiers {
 					ident[i.ID] = i
 				}
+				texts := map[string][]string{}
 				for _, m := range doc.Orgs {
-					if m.Org != nil && (!strings.HasPrefix(*m.Org, "name:") || *m.Org == "name:") {
-						t.Errorf("%s %s: mention %q on key %q", set, doc.ID, m.Text, *m.Org)
+					if m.Org != nil {
+						texts[*m.Org] = append(texts[*m.Org], m.Text)
+					}
+				}
+				for key, ts := range texts {
+					if k, _ := orgkey.Name(doc.ID, ts...); k.String() != key {
+						t.Errorf("%s %s: mentions %q on key %q, spelt %q", set, doc.ID, ts, key, k)
 					}
 				}
 				for _, l := range doc.Links {
 					i := ident[l.Identifier]
 					own := codeReasons[i.Kind]
-					if own != "" && contains(l.Reasons, own) && l.Org != codeKey(i.Kind, i.Value, i.Valid, registry) {
+					if own != "" && contains(l.Reasons, own) && l.Org != codeKey(i.Kind, i.Value, i.Valid, registry).String() {
 						t.Errorf("%s %s: %s %s by %s goes to %q", set, doc.ID, i.Kind, i.Value, own, l.Org)
 					}
 				}

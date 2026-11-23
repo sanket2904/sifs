@@ -26,6 +26,10 @@ const (
 	// zoneSays: a passport fact is what the page's passport zone says, and
 	// that zone is itself zoneChecked.
 	zoneSays
+	// zoneAndPrintedYear: a passport's expiry is the zone's day, month and
+	// two digits of the year, the zone is zoneChecked, and the printed date
+	// of expiry it cites gives the four-digit year.
+	zoneAndPrintedYear
 	// directoryJoin: in a run with the directory on, every printed name on
 	// one key and the code on the other each look up to exactly one entry,
 	// the same one.
@@ -57,7 +61,7 @@ var certainBy = map[claim]proof{
 
 	passportClaim("holder"): zoneSays,
 	passportClaim("number"): zoneSays,
-	passportClaim("expiry"): zoneSays,
+	passportClaim("expiry"): zoneAndPrintedYear,
 
 	joinClaim(JoinDirectory): directoryJoin,
 }

@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+
+	"github.com/sanket2904/sifs/engine/extract/orgkey"
 )
 
 // Identifier kinds, as the label schema names them.
@@ -31,27 +33,27 @@ type Identifier struct {
 	Valid *bool
 	Line  Line // the line it starts on
 	// Code is the key of the institution a valid IFSC, BIC or IBAN names by
-	// its own characters ("Code keys"), or "".
-	Code  string
+	// its own characters ("Code keys"), or zero.
+	Code  orgkey.Key
 	proof proof // why its kind is what it is
 }
 
 // codeKey spells the key of the institution a valid identifier carries
 // inside it: an IFSC's first four letters, a BIC's first eight characters,
 // an IBAN's country and bank code.
-func codeKey(kind, value string, valid *bool, reg *IBANRegistry) string {
+func codeKey(kind, value string, valid *bool, reg *IBANRegistry) orgkey.Key {
 	if valid == nil || !*valid {
-		return ""
+		return orgkey.Key{}
 	}
 	switch kind {
 	case KindIFSC:
-		return "IFSC " + value[:4]
+		return orgkey.IFSC(value)
 	case KindBIC:
-		return "BIC " + value[:8]
+		return orgkey.BIC(value)
 	case KindIBAN:
 		return reg.codeKey(value)
 	}
-	return ""
+	return orgkey.Key{}
 }
 
 // kindProof is what a document alone proves about an identifier's kind: an

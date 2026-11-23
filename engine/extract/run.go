@@ -2,15 +2,16 @@ package extract
 
 import (
 	"sort"
-	"strings"
+
+	"github.com/sanket2904/sifs/engine/extract/orgkey"
 )
 
-// union groups strings that belong together.
-type union struct{ parent map[string]string }
+// union groups values that belong together.
+type union[T comparable] struct{ parent map[T]T }
 
-func newUnion() *union { return &union{parent: map[string]string{}} }
+func newUnion[T comparable]() *union[T] { return &union[T]{parent: map[T]T{}} }
 
-func (u *union) find(x string) string {
+func (u *union[T]) find(x T) T {
 	if _, ok := u.parent[x]; !ok {
 		u.parent[x] = x
 	}
@@ -21,7 +22,7 @@ func (u *union) find(x string) string {
 	return x
 }
 
-func (u *union) join(a, b string) { u.parent[u.find(b)] = u.find(a) }
+func (u *union[T]) join(a, b T) { u.parent[u.find(b)] = u.find(a) }
 
 // Output is the run file sample/FORMAT.md describes.
 type Output struct {
@@ -120,10 +121,11 @@ type HolderAnswer struct {
 	Document string `json:"document"`
 }
 
-// Run extracts every document. Each document keeps its own keys, spelt
-// from its text, so a key means the same in every document and nothing is
-// merged; with a directory, each document also gets what the directory
-// proves. Without one, the program knows no organisation names at all.
+// Run extracts every document. A printed name's key belongs to its
+// document, and nothing joins a name across documents; a code's key is the
+// same in every document. With a directory, each document also gets what
+// the directory proves. Without one, the program knows no organisation
+// names at all.
 func Run(docs []Document, dir *Directory, reg *IBANRegistry, ref Date) Output {
 	results := make([]DocResult, len(docs))
 	for i, d := range docs {
@@ -137,22 +139,22 @@ func Run(docs []Document, dir *Directory, reg *IBANRegistry, ref Date) Output {
 }
 
 func render(results []DocResult, dir *Directory) Output {
-	out := Output{Format: 2, Directory: "off", Organisations: map[string]Card{}, Documents: []DocOut{}, Answers: Answers{LatestStatement: []AccountAnswer{}, CurrentPassport: []HolderAnswer{}}}
+	out := Output{Format: 3, Directory: "off", Organisations: map[string]Card{}, Documents: []DocOut{}, Answers: Answers{LatestStatement: []AccountAnswer{}, CurrentPassport: []HolderAnswer{}}}
 	if dir != nil {
 		out.Directory = "on"
 	}
 	keep := carded(results, dir)
-	names := map[string]map[string]int{} // key -> texts the key is spelt from
-	cards := map[string]bool{}
+	names := map[orgkey.Key]map[string]int{} // key -> texts the key is spelt from
+	cards := map[orgkey.Key]bool{}
 	for _, r := range results {
 		d := DocOut{ID: r.ID, Orgs: []OrgOut{}, Identifiers: []IdentOut{}, Links: []LinkOut{}, SameOrg: []SameOrgOut{}}
-		used := map[string]bool{}
+		used := map[orgkey.Key]bool{}
 		for _, m := range r.Mentions {
 			o := OrgOut{Span: m.Span}
-			if m.Key != "" {
-				o.Org, o.SettledBy = ptr(m.Key), ptr(m.SettledBy)
+			if !m.Key.IsZero() {
+				o.Org, o.SettledBy = ptr(m.Key.String()), ptr(m.SettledBy)
 				used[m.Key] = true
-				if "name:"+matchKey(m.Text) == m.Key {
+				if k, _ := orgkey.Name(r.ID, m.Text); k == m.Key {
 					if names[m.Key] == nil {
 						names[m.Key] = map[string]int{}
 					}
@@ -164,17 +166,21 @@ func render(results []DocResult, dir *Directory) Output {
 		for _, id := range r.Identifiers {
 			d.Identifiers = append(d.Identifiers, IdentOut{Span: id.Span, ID: id.ID, Kind: id.Kind, Value: id.Value, Valid: id.Valid, Tier: tierOf(identClaim(id.Kind), id.proof)})
 		}
-		at := map[[2]string]int{}
+		type linkID struct {
+			ident string
+			key   orgkey.Key
+		}
+		at := map[linkID]int{}
 		for _, l := range r.Links {
 			if !keep(l.Key) {
 				continue
 			}
 			used[l.Key] = true
-			i, ok := at[[2]string{l.Ident, l.Key}]
+			i, ok := at[linkID{l.Ident, l.Key}]
 			if !ok {
 				i = len(d.Links)
-				at[[2]string{l.Ident, l.Key}] = i
-				d.Links = append(d.Links, LinkOut{Identifier: l.Ident, Org: l.Key, Tier: Likely})
+				at[linkID{l.Ident, l.Key}] = i
+				d.Links = append(d.Links, LinkOut{Identifier: l.Ident, Org: l.Key.String(), Tier: Likely})
 			}
 			if !contains(d.Links[i].Reasons, l.Reason) {
 				d.Links[i].Reasons = append(d.Links[i].Reasons, l.Reason)
@@ -188,7 +194,7 @@ func render(results []DocResult, dir *Directory) Output {
 		}
 		if s := r.Statement; s != nil {
 			used[s.Issuer.Key] = true
-			so := &StmtOut{From: s.From.String(), To: s.To.String(), Issuer: s.Issuer.Key, Tiers: map[string]Tier{
+			so := &StmtOut{From: s.From.String(), To: s.To.String(), Issuer: s.Issuer.Key.String(), Tiers: map[string]Tier{
 				"period": tierOf(stmtClaim("period"), read), "accounts": tierOf(stmtClaim("accounts"), read), "issuer": tierOf(stmtClaim("issuer"), read),
 			}}
 			for _, a := range s.Accounts {
@@ -233,13 +239,13 @@ func render(results []DocResult, dir *Directory) Output {
 		}
 	}
 	for k := range cards {
-		out.Organisations[k] = card(k, names[k], dir)
+		out.Organisations[k.String()] = card(k, names[k], dir)
 	}
-	out.Answers.LatestStatement = latestStatements(results, func(key string) string {
-		if c := out.Organisations[key]; c.Directory != nil {
-			return "dir:" + *c.Directory
+	out.Answers.LatestStatement = latestStatements(results, func(key orgkey.Key) string {
+		if c := out.Organisations[key.String()]; c.Directory != nil {
+			return *c.Directory
 		}
-		return key
+		return ""
 	})
 	out.Answers.CurrentPassport = currentPassports(results)
 	return out
@@ -248,7 +254,7 @@ func render(results []DocResult, dir *Directory) Output {
 // card says who a key is: with the directory, the entry its own spelling
 // looks up to; else the printed name it is spelt from most often. A code
 // key with no entry has no name.
-func card(key string, printed map[string]int, dir *Directory) Card {
+func card(key orgkey.Key, printed map[string]int, dir *Directory) Card {
 	if dir != nil {
 		if id, ok := dir.lookupKey(key); ok {
 			return Card{Name: ptr(dir.entries[id].Name), Directory: ptr(id)}
@@ -265,27 +271,27 @@ func card(key string, printed map[string]int, dir *Directory) Card {
 // about who holds it: it gets no card, and nothing links to it. With the
 // directory off nothing can tell an assigned code from an invented one, so
 // a code keeps its card, with no name.
-func carded(results []DocResult, dir *Directory) func(string) bool {
+func carded(results []DocResult, dir *Directory) func(orgkey.Key) bool {
 	if dir == nil {
-		return func(string) bool { return true }
+		return func(orgkey.Key) bool { return true }
 	}
-	ties := newUnion()
+	ties := newUnion[orgkey.Key]()
 	for _, r := range results {
 		for _, j := range r.Joins {
 			ties.join(j.A, j.B)
 		}
 	}
-	named := map[string]bool{}
+	named := map[orgkey.Key]bool{}
 	for _, r := range results {
 		for _, m := range r.Mentions {
-			if m.Key != "" {
+			if !m.Key.IsZero() {
 				named[ties.find(m.Key)] = true
 			}
 		}
 	}
-	return func(key string) bool {
+	return func(key orgkey.Key) bool {
 		_, held := dir.lookupKey(key)
-		return strings.HasPrefix(key, "name:") || held || named[ties.find(key)]
+		return key.IsName() || held || named[ties.find(key)]
 	}
 }
 
@@ -293,7 +299,7 @@ func carded(results []DocResult, dir *Directory) func(string) bool {
 // two keys and reason, in a fixed order. A join of two keys whose cards
 // give two directory entries is not written: the directory says they are
 // two.
-func sameOrgRows(joins []Join, used map[string]bool, dir *Directory) []SameOrgOut {
+func sameOrgRows(joins []Join, used map[orgkey.Key]bool, dir *Directory) []SameOrgOut {
 	rows := []SameOrgOut{}
 	seen := map[SameOrgOut]bool{}
 	for _, j := range joins {
@@ -307,7 +313,7 @@ func sameOrgRows(joins []Join, used map[string]bool, dir *Directory) []SameOrgOu
 				continue
 			}
 		}
-		keys := [2]string{j.A, j.B}
+		keys := [2]string{j.A.String(), j.B.String()}
 		if keys[1] < keys[0] {
 			keys[0], keys[1] = keys[1], keys[0]
 		}
@@ -349,26 +355,27 @@ func mostUsed(counts map[string]int) string {
 // latestStatements answers, for every account, which statement is its
 // latest by the statement's own period. Statements are one account when
 // they share any spelling of it. A tie between two documents is no answer,
-// and so is a later statement of the same issuer whose account was not
-// read: it may be this account's. org gives a token's organisation.
-func latestStatements(results []DocResult, org func(string) string) []AccountAnswer {
+// and so is a later statement whose account was not read and whose issuer
+// may be this one's: it may be this account's. A printed name's key is its
+// document's own, so only the directory, through entry gives a key's
+// directory entry or "", tells two issuers apart.
+func latestStatements(results []DocResult, entry func(orgkey.Key) string) []AccountAnswer {
 	type stmt struct {
 		doc       string
 		to        Date
-		issuer    string
+		issuer    string // the issuer's directory entry, or ""
 		spellings []string
 		iban      string
 	}
-	var all []stmt
-	unread := map[string][]Date{} // issuer -> periods' ends
+	var all, unread []stmt
 	for _, r := range results {
 		if r.Unread != nil {
-			unread[org(r.Unread.Issuer.Key)] = append(unread[org(r.Unread.Issuer.Key)], r.Unread.To)
+			unread = append(unread, stmt{to: r.Unread.To, issuer: entry(r.Unread.Issuer.Key)})
 		}
 		if r.Statement == nil {
 			continue
 		}
-		s := stmt{doc: r.ID, to: r.Statement.To, issuer: org(r.Statement.Issuer.Key)}
+		s := stmt{doc: r.ID, to: r.Statement.To, issuer: entry(r.Statement.Issuer.Key)}
 		for _, a := range r.Statement.Accounts {
 			s.spellings = append(s.spellings, a.Value)
 			if a.Kind == KindIBAN {
@@ -377,7 +384,7 @@ func latestStatements(results []DocResult, org func(string) string) []AccountAns
 		}
 		all = append(all, s)
 	}
-	u := newUnion()
+	u := newUnion[string]()
 	for _, s := range all {
 		for _, sp := range s.spellings {
 			u.join(s.spellings[0], sp)
@@ -396,7 +403,12 @@ func latestStatements(results []DocResult, org func(string) string) []AccountAns
 	for _, r := range order {
 		g := groups[r]
 		sort.SliceStable(g, func(i, j int) bool { return g[j].to.before(g[i].to) })
-		if len(g) > 1 && g[0].to == g[1].to && g[0].doc != g[1].doc || laterThan(unread[g[0].issuer], g[0].to) {
+		withheld := len(g) > 1 && g[0].to == g[1].to && g[0].doc != g[1].doc
+		for _, u := range unread {
+			apart := u.issuer != "" && g[0].issuer != "" && u.issuer != g[0].issuer
+			withheld = withheld || g[0].to.before(u.to) && !apart
+		}
+		if withheld {
 			continue
 		}
 		acct := g[0].spellings[0]
@@ -408,15 +420,6 @@ func latestStatements(results []DocResult, org func(string) string) []AccountAns
 		out = append(out, AccountAnswer{Account: acct, Document: g[0].doc})
 	}
 	return out
-}
-
-func laterThan(ds []Date, d Date) bool {
-	for _, e := range ds {
-		if d.before(e) {
-			return true
-		}
-	}
-	return false
 }
 
 // supersede applies renewal: of one holder's passports that are current

@@ -4,14 +4,16 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/sanket2904/sifs/engine/extract/orgkey"
 )
 
 // Mention is a name of an organisation in a document. Its span is the whole
 // name as the document writes it.
 type Mention struct {
 	Span
-	Key       string // the organisation's key; "" when nothing settles it
-	SettledBy string // name, mention, code, directory, or ""
+	Key       orgkey.Key // the organisation's key; zero when nothing settles it
+	SettledBy string     // name, mention, code, directory, or ""
 	words     []string
 	kind      nameKind
 	bank      bool // holds a word that says bank
@@ -53,7 +55,7 @@ var (
 func set(words ...string) map[string]bool {
 	m := map[string]bool{}
 	for _, w := range words {
-		m[fold(w)] = true
+		m[orgkey.Fold(w)] = true
 	}
 	return m
 }
@@ -64,7 +66,7 @@ type token struct {
 	gap    string // the text between the previous token and this one
 }
 
-func (t token) low() string { return strings.ToLower(fold(t.text)) }
+func (t token) low() string { return strings.ToLower(orgkey.Fold(t.text)) }
 
 // joined reports whether only spaces separate t from the token before it.
 func (t token) joined() bool { return t.gap != "" && strings.TrimSpace(t.gap) == "" }
@@ -421,7 +423,7 @@ func findFieldBanks(l Line, have []Mention) []Mention {
 func isBankLabel(prefix string) bool {
 	words := strings.Fields(prefix)
 	for i := len(words) - 1; i >= 0 && len(words)-i <= 5; i-- {
-		w := strings.ToLower(fold(strings.Trim(words[i], ".,;()")))
+		w := strings.ToLower(orgkey.Fold(strings.Trim(words[i], ".,;()")))
 		if strings.ContainsAny(w, "0123456789:") {
 			return false
 		}
@@ -526,7 +528,7 @@ func findShortCandidates(l Line, names []Mention, ids []Identifier) []shortForm 
 func initials(words []string) string {
 	var b strings.Builder
 	for _, w := range words {
-		l := strings.ToLower(fold(w))
+		l := strings.ToLower(orgkey.Fold(w))
 		if legalForms[l] || connectors[l] || w == "&" {
 			continue
 		}

@@ -3,8 +3,8 @@ package extract
 import (
 	"encoding/json"
 	"os"
-	"strings"
-	"unicode"
+
+	"github.com/sanket2904/sifs/engine/extract/orgkey"
 )
 
 // Directory is the optional bank directory: a hint that adds a public id to
@@ -12,8 +12,8 @@ import (
 // exactly one entry holds the key.
 type Directory struct {
 	entries map[string]DirEntry
-	byName  map[string][]string // match key -> entry ids
-	byCode  map[string][]string // code key -> entry ids
+	byName  map[string][]string     // match key -> entry ids
+	byCode  map[orgkey.Key][]string // code key -> entry ids
 }
 
 // DirEntry is one directory entry, reduced to what the extractor reads.
@@ -51,51 +51,54 @@ func LoadDirectory(path string) (*Directory, error) {
 
 // NewDirectory indexes entries by match key and by institution code.
 func NewDirectory(entries []DirEntry) *Directory {
-	d := &Directory{entries: map[string]DirEntry{}, byName: map[string][]string{}, byCode: map[string][]string{}}
-	add := func(m map[string][]string, k, id string) {
-		for _, have := range m[k] {
-			if have == id {
-				return
-			}
-		}
-		m[k] = append(m[k], id)
-	}
+	d := &Directory{entries: map[string]DirEntry{}, byName: map[string][]string{}, byCode: map[orgkey.Key][]string{}}
 	for _, e := range entries {
 		d.entries[e.ID] = e
 		for _, n := range e.Names {
-			add(d.byName, n.Key, e.ID)
+			addOnce(d.byName, n.Key, e.ID)
 		}
 		for _, b := range e.Codes.BIC {
 			if len(b) >= 8 {
-				add(d.byCode, "BIC "+b[:8], e.ID)
+				addOnce(d.byCode, orgkey.BIC(b), e.ID)
 			}
 		}
 		for _, p := range e.Codes.IFSCPrefix {
-			add(d.byCode, "IFSC "+p, e.ID)
+			if len(p) == 4 {
+				addOnce(d.byCode, orgkey.IFSC(p), e.ID)
+			}
 		}
 		for _, c := range e.Codes.IBANBankCode {
-			add(d.byCode, "IBAN "+c.Country+" "+c.Code, e.ID)
+			addOnce(d.byCode, orgkey.IBAN(c.Country, c.Code), e.ID)
 		}
 	}
 	return d
 }
 
+func addOnce[K comparable](m map[K][]string, k K, id string) {
+	for _, have := range m[k] {
+		if have == id {
+			return
+		}
+	}
+	m[k] = append(m[k], id)
+}
+
 // lookupName gives the one entry whose names hold the key, if exactly one does.
 func (d *Directory) lookupName(text string) (string, bool) {
-	return only(d.byName[matchKey(text)])
+	return only(d.byName[orgkey.MatchKey(text)])
 }
 
 // lookupCode gives the one entry holding an institution code, if exactly one does.
-func (d *Directory) lookupCode(code string) (string, bool) { return only(d.byCode[code]) }
+func (d *Directory) lookupCode(code orgkey.Key) (string, bool) { return only(d.byCode[code]) }
 
 // holdsCode reports whether any entry holds an institution code exactly.
-func (d *Directory) holdsCode(code string) bool { return len(d.byCode[code]) > 0 }
+func (d *Directory) holdsCode(code orgkey.Key) bool { return len(d.byCode[code]) > 0 }
 
 // lookupKey gives the one entry a key's own spelling looks up to: a code
-// key's code, or a name key's match key.
-func (d *Directory) lookupKey(key string) (string, bool) {
-	if k, ok := strings.CutPrefix(key, "name:"); ok {
-		return only(d.byName[k])
+// key's code, or a document key's name part.
+func (d *Directory) lookupKey(key orgkey.Key) (string, bool) {
+	if key.IsName() {
+		return only(d.byName[key.Part()])
 	}
 	return d.lookupCode(key)
 }
@@ -107,32 +110,34 @@ func (d *Directory) lookupKey(key string) (string, bool) {
 func (d *Directory) settle(r *DocResult) {
 	for i := range r.Mentions {
 		m := &r.Mentions[i]
-		if m.Key == "" && m.kind == acronymName {
+		if m.Key.IsZero() && m.kind == acronymName {
 			if _, ok := d.lookupName(m.Text); ok {
-				m.Key, m.SettledBy = "name:"+matchKey(m.Text), "directory"
+				if k, ok := orgkey.Name(r.ID, m.Text); ok {
+					m.Key, m.SettledBy = k, "directory"
+				}
 			}
 		}
 	}
 	for i := range r.Identifiers {
-		if id := &r.Identifiers[i]; id.isCode() && id.Code != "" && d.holdsCode(id.Code) {
+		if id := &r.Identifiers[i]; id.isCode() && !id.Code.IsZero() && d.holdsCode(id.Code) {
 			id.proof = directoryCode
 		}
 	}
 	for i := range r.Links {
 		l := &r.Links[i]
-		if (l.Reason == ReasonIFSCPrefix || l.Reason == ReasonBICInstitution) && l.Key != "" {
+		if (l.Reason == ReasonIFSCPrefix || l.Reason == ReasonBICInstitution) && !l.Key.IsZero() {
 			if _, ok := d.lookupCode(l.Key); ok {
 				l.proof = directoryCode
 			}
 		}
 	}
-	names := map[string][]string{} // name key -> texts of its mentions here
+	names := map[orgkey.Key][]string{} // document key -> texts of its mentions
 	for _, m := range r.Mentions {
-		if strings.HasPrefix(m.Key, "name:") {
+		if m.Key.IsName() {
 			names[m.Key] = append(names[m.Key], m.Text)
 		}
 	}
-	codes := map[string]bool{} // code keys linked here by their own code
+	codes := map[orgkey.Key]bool{} // code keys linked here by their own code
 	for _, l := range r.Links {
 		if l.Reason == ReasonIFSCPrefix || l.Reason == ReasonBICInstitution || l.Reason == ReasonIBANBankCode {
 			codes[l.Key] = true
@@ -160,44 +165,4 @@ func only(ids []string) (string, bool) {
 		return ids[0], true
 	}
 	return "", false
-}
-
-var keyStopWords = map[string]bool{"the": true, "ltd": true, "limited": true, "plc": true, "inc": true, "ag": true, "sa": true, "nv": true}
-
-// matchKey is the directory's match key: compatibility-folded, lower case,
-// 株式会社 removed, split on everything that is not a letter, mark or digit,
-// the legal-form words dropped, and the rest joined.
-func matchKey(s string) string {
-	s = strings.ReplaceAll(strings.ToLower(fold(s)), "株式会社", "")
-	var b strings.Builder
-	for _, w := range strings.FieldsFunc(s, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsMark(r) && !unicode.IsDigit(r)
-	}) {
-		if !keyStopWords[w] {
-			b.WriteString(w)
-		}
-	}
-	return b.String()
-}
-
-// fold is the part of Unicode compatibility folding (NFKC) the sample's
-// scripts need. Go's standard library has no normaliser: full-width ASCII
-// becomes ASCII, the ideographic space a space, and the Devanagari letters
-// that NFKC decomposes (क़ .. य़) become letter plus nukta.
-func fold(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r >= 0xFF01 && r <= 0xFF5E:
-			b.WriteRune(r - 0xFEE0)
-		case r == 0x3000:
-			b.WriteRune(' ')
-		case r >= 0x0958 && r <= 0x095F:
-			b.WriteRune([]rune("कखगजडढफय")[r-0x0958])
-			b.WriteRune(0x093C)
-		default:
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }

@@ -225,8 +225,8 @@ func TestCodeTies(t *testing.T) {
 		"ZETA0BR0002 -> IFSC ZETA: ifsc-prefix",
 	})
 	eq(t, "same_org", joinsOf(e), []string{
-		"IFSC ACME = name:acmebank: spells-code likely",
-		"IFSC ZETA = name:zetabank: spells-code likely",
+		"IFSC ACME = name:d:acmebank: spells-code likely",
+		"IFSC ZETA = name:d:zetabank: spells-code likely",
 	})
 	if e.Orgs[0].Text != "ACME" || *e.Orgs[0].SettledBy != "code" && *e.Orgs[0].SettledBy != "mention" {
 		t.Errorf("ACME in the heading is settled by the code beside it: %+v", e.Orgs[0])
@@ -603,9 +603,22 @@ func TestLatestWithheldWhenALaterStatementIsUnread(t *testing.T) {
 	if o := Run([]Document{sep, aug}, nil, registry, ref); len(o.Answers.LatestStatement) != 1 {
 		t.Errorf("an unread earlier statement does not change the latest: %+v", o.Answers.LatestStatement)
 	}
+	// a printed name is its document's own: with the directory off, another
+	// name may still be the same bank, and only the directory tells two apart
 	other := doc("other", "Zeta Bank", "Account statement", "Account: 12-34-56-78-90", "Period: 01 Oct 2026 to 31 Oct 2026")
-	if o := Run([]Document{sep, other}, nil, registry, ref); len(o.Answers.LatestStatement) != 1 {
-		t.Errorf("another issuer's unread statement does not change the latest: %+v", o.Answers.LatestStatement)
+	if o := Run([]Document{sep, other}, nil, registry, ref); len(o.Answers.LatestStatement) != 0 {
+		t.Errorf("with the directory off, an unread later statement under another name may be this account's: %+v", o.Answers.LatestStatement)
+	}
+	two := NewDirectory([]DirEntry{entry("Q1", "Riverside Bank", "riversidebank", ""), entry("Q2", "Zeta Bank", "zetabank", "")})
+	if o := Run([]Document{sep, other}, two, registry, ref); len(o.Answers.LatestStatement) != 1 {
+		t.Errorf("the directory says the unread statement's issuer is another bank: %+v", o.Answers.LatestStatement)
+	}
+	if o := Run([]Document{sep, oct}, two, registry, ref); len(o.Answers.LatestStatement) != 0 {
+		t.Errorf("the directory says the unread statement's issuer is this bank: %+v", o.Answers.LatestStatement)
+	}
+	one := NewDirectory([]DirEntry{entry("Q1", "Riverside Bank", "riversidebank", "")})
+	if o := Run([]Document{sep, other}, one, registry, ref); len(o.Answers.LatestStatement) != 0 {
+		t.Errorf("the directory knows one issuer only, so it cannot tell them apart: %+v", o.Answers.LatestStatement)
 	}
 }
 
@@ -623,7 +636,7 @@ func TestDirectory(t *testing.T) {
 	if e.Orgs[1].Org != nil {
 		t.Errorf("a clash in the directory settles nothing: %+v", e.Orgs[1])
 	}
-	eq(t, "same_org", joinsOf(e), []string{"IFSC RIVR = name:riversidebank: directory certain"})
+	eq(t, "same_org", joinsOf(e), []string{"IFSC RIVR = name:d:riversidebank: directory certain"})
 	if c := o.Organisations["IFSC RIVR"]; c.Directory == nil || *c.Directory != "Q1" {
 		t.Errorf("the code's card is its entry: %+v", c)
 	}

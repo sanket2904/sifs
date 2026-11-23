@@ -3,6 +3,8 @@ package extract
 import (
 	"os"
 	"testing"
+
+	"github.com/sanket2904/sifs/engine/extract/orgkey"
 )
 
 func TestIBANValid(t *testing.T) {
@@ -89,22 +91,6 @@ func TestRIBKey(t *testing.T) {
 	}
 }
 
-func TestMatchKey(t *testing.T) {
-	for _, c := range []struct{ in, want string }{
-		{"Example Bank Ltd", "examplebank"},
-		{"EXAMPLE BANK", "examplebank"},
-		{"examplebank", "examplebank"},
-		{"The Bank of Example plc", "bankofexample"},
-		{"見本 ABC 銀行", "見本abc銀行"},
-		{"株式会社見本ＡＢＣ銀行", "見本abc銀行"},
-		{"Alpha & Beta Bank", "alphabetabank"},
-	} {
-		if got := matchKey(c.in); got != c.want {
-			t.Errorf("matchKey(%q) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
-
 // The directory stores each name's match key. Go has no NFKC in its
 // standard library, so this measures how far the partial fold goes.
 func TestMatchKeyAgreesWithDirectory(t *testing.T) {
@@ -119,9 +105,9 @@ func TestMatchKeyAgreesWithDirectory(t *testing.T) {
 	for _, e := range d.entries {
 		for _, n := range e.Names {
 			total++
-			if matchKey(n.Text) != n.Key {
+			if orgkey.MatchKey(n.Text) != n.Key {
 				differ++
-				t.Logf("%q: ours %q, directory %q", n.Text, matchKey(n.Text), n.Key)
+				t.Logf("%q: ours %q, directory %q", n.Text, orgkey.MatchKey(n.Text), n.Key)
 			}
 		}
 	}

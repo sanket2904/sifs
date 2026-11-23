@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sanket2904/sifs/engine/extract/orgkey"
 )
 
 // Date is a calendar date.
@@ -51,7 +53,7 @@ var months = func() map[string]int {
 		{"december", "dec", "dezember", "dez", "décembre", "decembre", "déc", "दिसंबर", "दिसम्बर"},
 	} {
 		for _, n := range names {
-			m[strings.ToLower(fold(n))] = i + 1
+			m[strings.ToLower(orgkey.Fold(n))] = i + 1
 		}
 	}
 	return m
@@ -77,10 +79,10 @@ var datePatterns = []datePattern{
 	{regexp.MustCompile(`([0-9]{4})年([0-9]{1,2})月([0-9]{1,2})日`), func(g []string) [2]*Date { return both(atoi(g[1]), atoi(g[2]), atoi(g[3])) }},
 	{regexp.MustCompile(`\b([0-9]{4})-([0-9]{2})-([0-9]{2})\b`), func(g []string) [2]*Date { return both(atoi(g[1]), atoi(g[2]), atoi(g[3])) }},
 	{regexp.MustCompile(`\b([0-9]{1,2})\.?\s+(\pL[\pL\pM]*)\.?,?\s+([0-9]{4})\b`), func(g []string) [2]*Date {
-		return both(atoi(g[3]), months[strings.ToLower(fold(g[2]))], atoi(g[1]))
+		return both(atoi(g[3]), months[strings.ToLower(orgkey.Fold(g[2]))], atoi(g[1]))
 	}},
 	{regexp.MustCompile(`\b(\pL+)\.?\s+([0-9]{1,2}),?\s+([0-9]{4})\b`), func(g []string) [2]*Date {
-		return both(atoi(g[3]), months[strings.ToLower(fold(g[1]))], atoi(g[2]))
+		return both(atoi(g[3]), months[strings.ToLower(orgkey.Fold(g[1]))], atoi(g[2]))
 	}},
 	{regexp.MustCompile(`\b([0-9]{1,2})[./-]([0-9]{1,2})[./-]([0-9]{4})\b`), func(g []string) [2]*Date {
 		a, b, y := atoi(g[1]), atoi(g[2]), atoi(g[3])
