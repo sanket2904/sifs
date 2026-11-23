@@ -1,0 +1,1327 @@
+{
+  "language-detected" : {
+    "sample_merchants" : [
+      {
+        "document" : "hdfc-card-statement",
+        "name" : "Sample Grocers",
+        "tagged_as_organisation" : true
+      },
+      {
+        "document" : "hdfc-card-statement",
+        "name" : "Example Books",
+        "tagged_as_organisation" : false
+      },
+      {
+        "document" : "natwest-statement",
+        "name" : "Example Cafe",
+        "tagged_as_organisation" : false
+      },
+      {
+        "document" : "neft-receipt-tied",
+        "name" : "Sample Traders",
+        "tagged_as_organisation" : false
+      },
+      {
+        "document" : "transfer-rows",
+        "name" : "Sample Traders",
+        "tagged_as_organisation" : false
+      }
+    ],
+    "sets" : {
+      "astra" : {
+        "by_language" : {
+          "de" : {
+            "mentions" : 1,
+            "missed" : 1,
+            "person_tags" : 0
+          },
+          "en" : {
+            "mention_tagged_as_person" : 2,
+            "mentions" : 9,
+            "missed" : 9,
+            "org_tag_not_an_organisation" : 10,
+            "org_tag_on_not_org" : 1,
+            "org_tags" : 11,
+            "person_tags" : 3
+          },
+          "fr" : {
+            "mentions" : 1,
+            "missed" : 1,
+            "person_tags" : 0
+          }
+        },
+        "not_orgs" : [
+          {
+            "document" : "ca-transfer",
+            "inside_a_mention" : false,
+            "tagged_as_organisation_on_its_own" : true,
+            "text" : "(redacted: outside set)",
+            "why" : "word-not-name"
+          },
+          {
+            "document" : "longer-name",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "(redacted: outside set)",
+            "why" : "inside-other-name"
+          }
+        ],
+        "org_tags_not_on_a_mention" : [
+          {
+            "document" : "ca-oct",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "ca-sep",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "ca-transfer",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "ca-transfer",
+            "on_not_org" : true,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "number-decoys",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "number-decoys",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "nz-summary",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "passport-new",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "passport-old",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "passport-uncertain",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "passport-void",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          }
+        ]
+      },
+      "sample" : {
+        "by_language" : {
+          "de" : {
+            "found" : 5,
+            "found_exact_span" : 5,
+            "mentions" : 6,
+            "missed" : 1,
+            "org_tag_not_an_organisation" : 1,
+            "org_tag_on_mention" : 5,
+            "org_tags" : 6,
+            "person_tags" : 3
+          },
+          "en" : {
+            "found" : 34,
+            "found_exact_span" : 25,
+            "mention_tagged_as_person" : 1,
+            "mentions" : 50,
+            "missed" : 16,
+            "org_tag_not_an_organisation" : 24,
+            "org_tag_on_mention" : 34,
+            "org_tags" : 58,
+            "person_tags" : 23
+          },
+          "fr" : {
+            "mentions" : 1,
+            "missed" : 1,
+            "org_tag_on_not_org" : 1,
+            "org_tags" : 1,
+            "person_tags" : 1
+          },
+          "hi" : {
+            "mentions" : 4,
+            "missed" : 4,
+            "person_tags" : 0
+          },
+          "ja" : {
+            "found" : 1,
+            "found_exact_span" : 1,
+            "mentions" : 5,
+            "missed" : 4,
+            "org_tag_on_mention" : 1,
+            "org_tags" : 1,
+            "person_tags" : 0
+          }
+        },
+        "not_orgs" : [
+          {
+            "document" : "commerzbank-kontoauszug",
+            "inside_a_mention" : false,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "BIC",
+            "why" : "word-not-name"
+          },
+          {
+            "document" : "email-fee-payment",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-branch-letter",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-branch-letter",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-card-statement",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-letter-hindi",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "एचडीएफसी",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-letter-hindi",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "एचडीएफसी",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-life-receipt",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-life-receipt",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-life-receipt",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-life-receipt",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-statement-aug",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-statement-jul",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-statement-sep",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "icici-lombard-notice",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "ICICI",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "mufg-remittance-ja",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "三菱UFJ",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "natwest-statement",
+            "inside_a_mention" : false,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "BIC",
+            "why" : "word-not-name"
+          },
+          {
+            "document" : "neft-receipt-tied",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "rib-fr",
+            "inside_a_mention" : false,
+            "tagged_as_organisation_on_its_own" : true,
+            "text" : "BIC",
+            "why" : "word-not-name"
+          },
+          {
+            "document" : "sbi-passbook-hindi",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "बैंक ऑफ़ इंडिया",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "school-fee-banks",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "Bank of India",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "school-fee-banks",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "Bank of India",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "school-fee-banks",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "Bank of India",
+            "why" : "inside-other-name"
+          }
+        ],
+        "org_tags_not_on_a_mention" : [
+          {
+            "document" : "axis-statement-scanned-annex",
+            "on_not_org" : false,
+            "text" : "Apr"
+          },
+          {
+            "document" : "axis-statement-scanned-annex",
+            "on_not_org" : false,
+            "text" : "Page"
+          },
+          {
+            "document" : "axis-statement-scanned-annex",
+            "on_not_org" : false,
+            "text" : "ROHAN"
+          },
+          {
+            "document" : "credit-union-statement",
+            "on_not_org" : false,
+            "text" : "GBP"
+          },
+          {
+            "document" : "credit-union-statement",
+            "on_not_org" : false,
+            "text" : "Balance"
+          },
+          {
+            "document" : "credit-union-statement",
+            "on_not_org" : false,
+            "text" : "GBP"
+          },
+          {
+            "document" : "deutsche-bank-brief",
+            "on_not_org" : false,
+            "text" : "Mit"
+          },
+          {
+            "document" : "hdfc-ltd-loan-2019",
+            "on_not_org" : false,
+            "text" : "Apr"
+          },
+          {
+            "document" : "hdfc-ltd-loan-2019",
+            "on_not_org" : false,
+            "text" : "EMI"
+          },
+          {
+            "document" : "invoice-lookalike-numbers",
+            "on_not_org" : false,
+            "text" : "London"
+          },
+          {
+            "document" : "invoice-lookalike-numbers",
+            "on_not_org" : false,
+            "text" : "Invoice"
+          },
+          {
+            "document" : "invoice-lookalike-numbers",
+            "on_not_org" : false,
+            "text" : "GBP"
+          },
+          {
+            "document" : "invoice-lookalike-numbers",
+            "on_not_org" : false,
+            "text" : "IBAN"
+          },
+          {
+            "document" : "kotak-statement",
+            "on_not_org" : false,
+            "text" : "Transfer"
+          },
+          {
+            "document" : "natwest-statement",
+            "on_not_org" : false,
+            "text" : "GBP"
+          },
+          {
+            "document" : "passport-asha-current",
+            "on_not_org" : false,
+            "text" : "ICAO"
+          },
+          {
+            "document" : "passport-asha-current",
+            "on_not_org" : false,
+            "text" : "APR"
+          },
+          {
+            "document" : "passport-asha-expired",
+            "on_not_org" : false,
+            "text" : "JUN"
+          },
+          {
+            "document" : "passport-bad-mrz",
+            "on_not_org" : false,
+            "text" : "ICAO"
+          },
+          {
+            "document" : "passport-bad-mrz",
+            "on_not_org" : false,
+            "text" : "APR"
+          },
+          {
+            "document" : "passport-bad-mrz",
+            "on_not_org" : false,
+            "text" : "APR"
+          },
+          {
+            "document" : "passport-rohan",
+            "on_not_org" : false,
+            "text" : "ICAO"
+          },
+          {
+            "document" : "rib-fr",
+            "on_not_org" : true,
+            "text" : "BIC"
+          },
+          {
+            "document" : "transfer-rows",
+            "on_not_org" : false,
+            "text" : "Pune"
+          },
+          {
+            "document" : "transfer-untied",
+            "on_not_org" : false,
+            "text" : "Yamada"
+          },
+          {
+            "document" : "visa-asha",
+            "on_not_org" : false,
+            "text" : "ICAO"
+          }
+        ]
+      },
+      "sol-diag" : {
+        "by_language" : {
+          "en" : {
+            "mentions" : 2,
+            "missed" : 2,
+            "org_tag_not_an_organisation" : 5,
+            "org_tags" : 5,
+            "person_tags" : 0
+          }
+        },
+        "not_orgs" : [
+
+        ],
+        "org_tags_not_on_a_mention" : [
+          {
+            "document" : "eligibility-audit",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "explicitly-not-statement",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "two-live-previous",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "two-live-previous",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "two-live-renewed",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          }
+        ]
+      },
+      "sol-localised" : {
+        "by_language" : {
+          "hi" : {
+            "person_tags" : 0
+          }
+        },
+        "not_orgs" : [
+
+        ],
+        "org_tags_not_on_a_mention" : [
+
+        ]
+      },
+      "sol-probe" : {
+        "by_language" : {
+          "de" : {
+            "mentions" : 1,
+            "missed" : 1,
+            "org_tag_on_not_org" : 1,
+            "org_tags" : 1,
+            "person_tags" : 0
+          },
+          "en" : {
+            "found" : 3,
+            "found_exact_span" : 2,
+            "mention_tagged_as_person" : 1,
+            "mentions" : 10,
+            "missed" : 7,
+            "org_tag_not_an_organisation" : 10,
+            "org_tag_on_mention" : 3,
+            "org_tags" : 13,
+            "person_tags" : 4
+          },
+          "fr" : {
+            "found" : 1,
+            "found_exact_span" : 1,
+            "mentions" : 1,
+            "org_tag_not_an_organisation" : 1,
+            "org_tag_on_mention" : 1,
+            "org_tags" : 2,
+            "person_tags" : 0
+          }
+        },
+        "not_orgs" : [
+          {
+            "document" : "ch-stitch-code",
+            "inside_a_mention" : false,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "(redacted: outside set)",
+            "why" : "word-not-name"
+          },
+          {
+            "document" : "ch-stitch-code",
+            "inside_a_mention" : false,
+            "tagged_as_organisation_on_its_own" : true,
+            "text" : "(redacted: outside set)",
+            "why" : "word-not-name"
+          },
+          {
+            "document" : "heritage-booking",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "(redacted: outside set)",
+            "why" : "inside-other-name"
+          }
+        ],
+        "org_tags_not_on_a_mention" : [
+          {
+            "document" : "alaska-forms",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "alaska-forms",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "anonymous-account",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "bare-watchword",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "canoe-snapshot",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "ch-stitch-code",
+            "on_not_org" : true,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "india-outbound",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "quebec-credit",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "salt-air-note",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "utopia-ambiguous-date",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "utopia-old",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "utopia-renewal",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          }
+        ]
+      }
+    }
+  },
+  "language-given" : {
+    "sample_merchants" : [
+      {
+        "document" : "hdfc-card-statement",
+        "name" : "Sample Grocers",
+        "tagged_as_organisation" : true
+      },
+      {
+        "document" : "hdfc-card-statement",
+        "name" : "Example Books",
+        "tagged_as_organisation" : false
+      },
+      {
+        "document" : "natwest-statement",
+        "name" : "Example Cafe",
+        "tagged_as_organisation" : false
+      },
+      {
+        "document" : "neft-receipt-tied",
+        "name" : "Sample Traders",
+        "tagged_as_organisation" : false
+      },
+      {
+        "document" : "transfer-rows",
+        "name" : "Sample Traders",
+        "tagged_as_organisation" : false
+      }
+    ],
+    "sets" : {
+      "astra" : {
+        "by_language" : {
+          "de" : {
+            "mentions" : 1,
+            "missed" : 1,
+            "person_tags" : 0
+          },
+          "en" : {
+            "mention_tagged_as_person" : 2,
+            "mentions" : 9,
+            "missed" : 9,
+            "org_tag_not_an_organisation" : 11,
+            "org_tag_on_not_org" : 1,
+            "org_tags" : 12,
+            "person_tags" : 3
+          },
+          "fr" : {
+            "mentions" : 1,
+            "missed" : 1,
+            "person_tags" : 0
+          }
+        },
+        "not_orgs" : [
+          {
+            "document" : "ca-transfer",
+            "inside_a_mention" : false,
+            "tagged_as_organisation_on_its_own" : true,
+            "text" : "(redacted: outside set)",
+            "why" : "word-not-name"
+          },
+          {
+            "document" : "longer-name",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "(redacted: outside set)",
+            "why" : "inside-other-name"
+          }
+        ],
+        "org_tags_not_on_a_mention" : [
+          {
+            "document" : "bad-checks",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "ca-oct",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "ca-sep",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "ca-transfer",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "ca-transfer",
+            "on_not_org" : true,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "number-decoys",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "number-decoys",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "nz-summary",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "passport-new",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "passport-old",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "passport-uncertain",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "passport-void",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          }
+        ]
+      },
+      "sample" : {
+        "by_language" : {
+          "de" : {
+            "found" : 5,
+            "found_exact_span" : 5,
+            "mentions" : 6,
+            "missed" : 1,
+            "org_tag_not_an_organisation" : 1,
+            "org_tag_on_mention" : 5,
+            "org_tag_on_not_org" : 1,
+            "org_tags" : 7,
+            "person_tags" : 5
+          },
+          "en" : {
+            "found" : 37,
+            "found_exact_span" : 27,
+            "mention_tagged_as_person" : 1,
+            "mentions" : 50,
+            "missed" : 13,
+            "org_tag_not_an_organisation" : 28,
+            "org_tag_on_mention" : 37,
+            "org_tag_on_not_org" : 1,
+            "org_tags" : 66,
+            "person_tags" : 26
+          },
+          "fr" : {
+            "mentions" : 1,
+            "missed" : 1,
+            "org_tag_on_not_org" : 1,
+            "org_tags" : 1,
+            "person_tags" : 2
+          },
+          "hi" : {
+            "mentions" : 4,
+            "missed" : 4,
+            "person_tags" : 0
+          },
+          "ja" : {
+            "mentions" : 5,
+            "missed" : 5,
+            "person_tags" : 0
+          }
+        },
+        "not_orgs" : [
+          {
+            "document" : "commerzbank-kontoauszug",
+            "inside_a_mention" : false,
+            "tagged_as_organisation_on_its_own" : true,
+            "text" : "BIC",
+            "why" : "word-not-name"
+          },
+          {
+            "document" : "email-fee-payment",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-branch-letter",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-branch-letter",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-card-statement",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-letter-hindi",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "एचडीएफसी",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-letter-hindi",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "एचडीएफसी",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-life-receipt",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-life-receipt",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-life-receipt",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-life-receipt",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-statement-aug",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-statement-jul",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "hdfc-statement-sep",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "icici-lombard-notice",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "ICICI",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "mufg-remittance-ja",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "三菱UFJ",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "natwest-statement",
+            "inside_a_mention" : false,
+            "tagged_as_organisation_on_its_own" : true,
+            "text" : "BIC",
+            "why" : "word-not-name"
+          },
+          {
+            "document" : "neft-receipt-tied",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "HDFC",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "rib-fr",
+            "inside_a_mention" : false,
+            "tagged_as_organisation_on_its_own" : true,
+            "text" : "BIC",
+            "why" : "word-not-name"
+          },
+          {
+            "document" : "sbi-passbook-hindi",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "बैंक ऑफ़ इंडिया",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "school-fee-banks",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "Bank of India",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "school-fee-banks",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "Bank of India",
+            "why" : "inside-other-name"
+          },
+          {
+            "document" : "school-fee-banks",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "Bank of India",
+            "why" : "inside-other-name"
+          }
+        ],
+        "org_tags_not_on_a_mention" : [
+          {
+            "document" : "abn-amro-statement",
+            "on_not_org" : false,
+            "text" : "IBAN"
+          },
+          {
+            "document" : "axis-statement-scanned-annex",
+            "on_not_org" : false,
+            "text" : "Apr"
+          },
+          {
+            "document" : "axis-statement-scanned-annex",
+            "on_not_org" : false,
+            "text" : "Page"
+          },
+          {
+            "document" : "axis-statement-scanned-annex",
+            "on_not_org" : false,
+            "text" : "ROHAN"
+          },
+          {
+            "document" : "commerzbank-kontoauszug",
+            "on_not_org" : true,
+            "text" : "BIC"
+          },
+          {
+            "document" : "credit-union-statement",
+            "on_not_org" : false,
+            "text" : "GBP"
+          },
+          {
+            "document" : "credit-union-statement",
+            "on_not_org" : false,
+            "text" : "Balance"
+          },
+          {
+            "document" : "credit-union-statement",
+            "on_not_org" : false,
+            "text" : "GBP"
+          },
+          {
+            "document" : "deutsche-bank-brief",
+            "on_not_org" : false,
+            "text" : "Mit"
+          },
+          {
+            "document" : "hdfc-ltd-loan-2019",
+            "on_not_org" : false,
+            "text" : "Apr"
+          },
+          {
+            "document" : "hdfc-ltd-loan-2019",
+            "on_not_org" : false,
+            "text" : "EMI"
+          },
+          {
+            "document" : "invoice-lookalike-numbers",
+            "on_not_org" : false,
+            "text" : "London"
+          },
+          {
+            "document" : "invoice-lookalike-numbers",
+            "on_not_org" : false,
+            "text" : "Invoice"
+          },
+          {
+            "document" : "invoice-lookalike-numbers",
+            "on_not_org" : false,
+            "text" : "Invoice"
+          },
+          {
+            "document" : "invoice-lookalike-numbers",
+            "on_not_org" : false,
+            "text" : "GBP"
+          },
+          {
+            "document" : "invoice-lookalike-numbers",
+            "on_not_org" : false,
+            "text" : "IBAN"
+          },
+          {
+            "document" : "kotak-statement",
+            "on_not_org" : false,
+            "text" : "Transfer"
+          },
+          {
+            "document" : "natwest-statement",
+            "on_not_org" : false,
+            "text" : "IBAN"
+          },
+          {
+            "document" : "natwest-statement",
+            "on_not_org" : true,
+            "text" : "BIC"
+          },
+          {
+            "document" : "natwest-statement",
+            "on_not_org" : false,
+            "text" : "GBP"
+          },
+          {
+            "document" : "passport-asha-current",
+            "on_not_org" : false,
+            "text" : "ICAO"
+          },
+          {
+            "document" : "passport-asha-current",
+            "on_not_org" : false,
+            "text" : "APR"
+          },
+          {
+            "document" : "passport-asha-expired",
+            "on_not_org" : false,
+            "text" : "JUN"
+          },
+          {
+            "document" : "passport-asha-expired",
+            "on_not_org" : false,
+            "text" : "JUN"
+          },
+          {
+            "document" : "passport-bad-mrz",
+            "on_not_org" : false,
+            "text" : "ICAO"
+          },
+          {
+            "document" : "passport-bad-mrz",
+            "on_not_org" : false,
+            "text" : "APR"
+          },
+          {
+            "document" : "passport-bad-mrz",
+            "on_not_org" : false,
+            "text" : "APR"
+          },
+          {
+            "document" : "passport-rohan",
+            "on_not_org" : false,
+            "text" : "ICAO"
+          },
+          {
+            "document" : "rib-fr",
+            "on_not_org" : true,
+            "text" : "BIC"
+          },
+          {
+            "document" : "transfer-rows",
+            "on_not_org" : false,
+            "text" : "Pune"
+          },
+          {
+            "document" : "transfer-untied",
+            "on_not_org" : false,
+            "text" : "Yamada"
+          },
+          {
+            "document" : "visa-asha",
+            "on_not_org" : false,
+            "text" : "ICAO"
+          }
+        ]
+      },
+      "sol-diag" : {
+        "by_language" : {
+          "en" : {
+            "mentions" : 2,
+            "missed" : 2,
+            "org_tag_not_an_organisation" : 5,
+            "org_tags" : 5,
+            "person_tags" : 0
+          }
+        },
+        "not_orgs" : [
+
+        ],
+        "org_tags_not_on_a_mention" : [
+          {
+            "document" : "eligibility-audit",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "explicitly-not-statement",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "two-live-previous",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "two-live-previous",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "two-live-renewed",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          }
+        ]
+      },
+      "sol-localised" : {
+        "by_language" : {
+          "hi" : {
+            "person_tags" : 0
+          }
+        },
+        "not_orgs" : [
+
+        ],
+        "org_tags_not_on_a_mention" : [
+
+        ]
+      },
+      "sol-probe" : {
+        "by_language" : {
+          "de" : {
+            "mentions" : 1,
+            "missed" : 1,
+            "org_tag_on_not_org" : 2,
+            "org_tags" : 2,
+            "person_tags" : 0
+          },
+          "en" : {
+            "found" : 3,
+            "found_exact_span" : 2,
+            "mention_tagged_as_person" : 1,
+            "mentions" : 10,
+            "missed" : 7,
+            "org_tag_not_an_organisation" : 12,
+            "org_tag_on_mention" : 3,
+            "org_tags" : 15,
+            "person_tags" : 5
+          },
+          "fr" : {
+            "found" : 1,
+            "found_exact_span" : 1,
+            "mentions" : 1,
+            "org_tag_not_an_organisation" : 1,
+            "org_tag_on_mention" : 1,
+            "org_tags" : 2,
+            "person_tags" : 0
+          }
+        },
+        "not_orgs" : [
+          {
+            "document" : "ch-stitch-code",
+            "inside_a_mention" : false,
+            "tagged_as_organisation_on_its_own" : true,
+            "text" : "(redacted: outside set)",
+            "why" : "word-not-name"
+          },
+          {
+            "document" : "ch-stitch-code",
+            "inside_a_mention" : false,
+            "tagged_as_organisation_on_its_own" : true,
+            "text" : "(redacted: outside set)",
+            "why" : "word-not-name"
+          },
+          {
+            "document" : "heritage-booking",
+            "inside_a_mention" : true,
+            "tagged_as_organisation_on_its_own" : false,
+            "text" : "(redacted: outside set)",
+            "why" : "inside-other-name"
+          }
+        ],
+        "org_tags_not_on_a_mention" : [
+          {
+            "document" : "alaska-forms",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "alaska-forms",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "anonymous-account",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "bare-watchword",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "canoe-snapshot",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "ch-stitch-code",
+            "on_not_org" : true,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "ch-stitch-code",
+            "on_not_org" : true,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "india-outbound",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "quebec-credit",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "salt-air-note",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "spain-sandbox",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "spain-sandbox",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "utopia-ambiguous-date",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "utopia-old",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          },
+          {
+            "document" : "utopia-renewal",
+            "on_not_org" : false,
+            "text" : "(redacted: outside set)"
+          }
+        ]
+      }
+    }
+  },
+  "note" : "found: an organizationName tag overlaps the labelled mention span. org_tag_on_not_org: the tag overlaps a labelled not_org and no mention. language-given passes the document's lang to NLTagger; language-detected lets it guess."
+}

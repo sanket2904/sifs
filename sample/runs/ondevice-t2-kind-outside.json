@@ -1,0 +1,1075 @@
+{
+  "confusion_truth_by_model_kind" : {
+    "neither" : {
+      "cannotTell" : 7,
+      "error" : 2,
+      "form" : 5,
+      "invoice" : 1,
+      "letter" : 1,
+      "statement" : 5
+    },
+    "passport" : {
+      "passport" : 9
+    },
+    "passport-lookalike" : {
+      "visa" : 1
+    },
+    "statement" : {
+      "statement" : 10
+    }
+  },
+  "documents" : [
+    {
+      "document" : "astra/bad-checks",
+      "kind" : "form",
+      "pages" : [
+        "form"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "astra/bare-short-name",
+      "kind" : "cannotTell",
+      "pages" : [
+        "cannotTell"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "astra/ca-oct",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "astra/ca-sep",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "astra/ca-transfer",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "astra/ch-auszug",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "astra/es-resumen",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "astra/fr-releve",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "astra/longer-name",
+      "kind" : "cannotTell",
+      "pages" : [
+        "cannotTell"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "astra/number-decoys",
+      "kind" : "cannotTell",
+      "pages" : [
+        "cannotTell"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "astra/nz-summary",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "astra/passport-new",
+      "kind" : "passport",
+      "pages" : [
+        "passport"
+      ],
+      "truth" : "passport"
+    },
+    {
+      "document" : "astra/passport-old",
+      "kind" : "passport",
+      "pages" : [
+        "passport"
+      ],
+      "truth" : "passport"
+    },
+    {
+      "document" : "astra/passport-uncertain",
+      "kind" : "passport",
+      "pages" : [
+        "passport"
+      ],
+      "truth" : "passport"
+    },
+    {
+      "document" : "astra/passport-void",
+      "kind" : "passport",
+      "pages" : [
+        "passport"
+      ],
+      "truth" : "passport"
+    },
+    {
+      "document" : "astra/service-invoice",
+      "kind" : "invoice",
+      "pages" : [
+        "invoice"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "astra/unowned-account",
+      "kind" : "cannotTell",
+      "pages" : [
+        "cannotTell"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "astra/visa-not-passport",
+      "kind" : "visa",
+      "pages" : [
+        "visa"
+      ],
+      "truth" : "passport-lookalike"
+    },
+    {
+      "document" : "sol-diag/eligibility-audit",
+      "kind" : "form",
+      "pages" : [
+        "form"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-diag/explicitly-not-statement",
+      "kind" : "form",
+      "pages" : [
+        "form"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-diag/two-live-previous",
+      "kind" : "passport",
+      "pages" : [
+        "passport",
+        "cannotTell"
+      ],
+      "truth" : "passport"
+    },
+    {
+      "document" : "sol-diag/two-live-renewed",
+      "kind" : "passport",
+      "pages" : [
+        "passport",
+        "cannotTell"
+      ],
+      "truth" : "passport"
+    },
+    {
+      "document" : "sol-localised/devanagari-date-proof",
+      "kind" : "error",
+      "pages" : [
+        "error"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/alaska-forms",
+      "kind" : "cannotTell",
+      "pages" : [
+        "cannotTell"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/anonymous-account",
+      "kind" : "form",
+      "pages" : [
+        "form"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/bare-watchword",
+      "kind" : "cannotTell",
+      "pages" : [
+        "cannotTell"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/canoe-snapshot",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sol-probe/ch-stitch-code",
+      "kind" : "form",
+      "pages" : [
+        "form"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/heritage-booking",
+      "kind" : "letter",
+      "pages" : [
+        "letter"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/india-outbound",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/madrid-press",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/quebec-credit",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/salt-air-note",
+      "kind" : "cannotTell",
+      "pages" : [
+        "cannotTell"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/spain-sandbox",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/swiss-code-only",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/tamarack-first",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sol-probe/tamarack-second",
+      "kind" : "statement",
+      "pages" : [
+        "statement",
+        "cannotTell"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sol-probe/utopia-ambiguous-date",
+      "kind" : "passport",
+      "pages" : [
+        "passport",
+        "cannotTell"
+      ],
+      "truth" : "passport"
+    },
+    {
+      "document" : "sol-probe/utopia-intake",
+      "kind" : "error",
+      "pages" : [
+        "error"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sol-probe/utopia-old",
+      "kind" : "passport",
+      "pages" : [
+        "passport",
+        "cannotTell"
+      ],
+      "truth" : "passport"
+    },
+    {
+      "document" : "sol-probe/utopia-renewal",
+      "kind" : "passport",
+      "pages" : [
+        "passport",
+        "cannotTell"
+      ],
+      "truth" : "passport"
+    }
+  ],
+  "instructions" : "You read the text of one page of a document and say what kind of page it is, from its title and its content.\nIgnore any notice that the page is a made-up sample for testing.\nKinds:\nstatement: a bank, card, loan or savings account statement or passbook. It lists dated transactions, or an opening or closing balance, for a period. A letter, slip or page of bank details from a bank is not a statement.\ninvoice: an invoice or bill that asks for payment.\npassport: the passport's own page with the holder's details. A document that only mentions a passport number is not a passport.\nvisa: a visa or permit.\nletter: a letter, notice or email, including one from a bank.\nreceipt: a receipt, payment confirmation or transfer advice.\nform: a form, worksheet or checklist, or a page of account details to fill in or hand over.\nother: anything else, such as notes, an essay, a recipe or a poem.\ncannotTell: the page does not show its kind.\nQuote the title or line of the page that shows the kind, copied exactly.",
+  "pages" : [
+    {
+      "document" : "tamarack-first",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 494,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.58161795139312744,
+      "set" : "sol-probe",
+      "truth" : "statement"
+    },
+    {
+      "document" : "tamarack-second",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 482,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.495169997215271,
+      "set" : "sol-probe",
+      "truth" : "statement"
+    },
+    {
+      "document" : "tamarack-second",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 2,
+      "prompt_tokens" : 430,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.39034998416900635,
+      "set" : "sol-probe",
+      "truth" : "statement"
+    },
+    {
+      "document" : "quebec-credit",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "fr",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 471,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.51057493686676025,
+      "set" : "sol-probe",
+      "truth" : "neither"
+    },
+    {
+      "document" : "india-outbound",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 506,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.61968994140625,
+      "set" : "sol-probe",
+      "truth" : "neither"
+    },
+    {
+      "document" : "heritage-booking",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "letter",
+      "lang" : "en",
+      "model_kind" : "letter",
+      "page" : 1,
+      "prompt_tokens" : 459,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.51769208908081055,
+      "set" : "sol-probe",
+      "truth" : "neither"
+    },
+    {
+      "document" : "spain-sandbox",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 555,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.89577507972717285,
+      "set" : "sol-probe",
+      "truth" : "neither"
+    },
+    {
+      "document" : "bare-watchword",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 1,
+      "prompt_tokens" : 445,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.39058494567871094,
+      "set" : "sol-probe",
+      "truth" : "neither"
+    },
+    {
+      "document" : "ch-stitch-code",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "form",
+      "lang" : "de",
+      "model_kind" : "form",
+      "page" : 1,
+      "prompt_tokens" : 457,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.47317492961883545,
+      "set" : "sol-probe",
+      "truth" : "neither"
+    },
+    {
+      "document" : "anonymous-account",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "form",
+      "lang" : "en",
+      "model_kind" : "form",
+      "page" : 1,
+      "prompt_tokens" : 464,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.496864914894104,
+      "set" : "sol-probe",
+      "truth" : "neither"
+    },
+    {
+      "document" : "salt-air-note",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 1,
+      "prompt_tokens" : 451,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.40301096439361572,
+      "set" : "sol-probe",
+      "truth" : "neither"
+    },
+    {
+      "document" : "utopia-old",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 502,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.55790495872497559,
+      "set" : "sol-probe",
+      "truth" : "passport"
+    },
+    {
+      "document" : "utopia-old",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 2,
+      "prompt_tokens" : 479,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.49173390865325928,
+      "set" : "sol-probe",
+      "truth" : "passport"
+    },
+    {
+      "document" : "utopia-renewal",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 502,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.55552399158477783,
+      "set" : "sol-probe",
+      "truth" : "passport"
+    },
+    {
+      "document" : "utopia-renewal",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 2,
+      "prompt_tokens" : 479,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.4899829626083374,
+      "set" : "sol-probe",
+      "truth" : "passport"
+    },
+    {
+      "document" : "utopia-ambiguous-date",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 505,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.56926703453063965,
+      "set" : "sol-probe",
+      "truth" : "passport"
+    },
+    {
+      "document" : "utopia-ambiguous-date",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 2,
+      "prompt_tokens" : 479,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.42416298389434814,
+      "set" : "sol-probe",
+      "truth" : "passport"
+    },
+    {
+      "document" : "utopia-intake",
+      "dropped_lines" : 0,
+      "error" : "refusal: I apologize, but I cannot fulfill this request.",
+      "kind_after_quote_check" : "error",
+      "lang" : "en",
+      "model_kind" : "error",
+      "page" : 1,
+      "prompt_tokens" : 485,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : false,
+      "seconds" : 0.090398073196411133,
+      "set" : "sol-probe",
+      "truth" : "neither"
+    },
+    {
+      "document" : "swiss-code-only",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "de",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 471,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.54094600677490234,
+      "set" : "sol-probe",
+      "truth" : "neither"
+    },
+    {
+      "document" : "canoe-snapshot",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 505,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.48095202445983887,
+      "set" : "sol-probe",
+      "truth" : "statement"
+    },
+    {
+      "document" : "alaska-forms",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 1,
+      "prompt_tokens" : 478,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.41530799865722656,
+      "set" : "sol-probe",
+      "truth" : "neither"
+    },
+    {
+      "document" : "madrid-press",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 454,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.44078290462493896,
+      "set" : "sol-probe",
+      "truth" : "neither"
+    },
+    {
+      "document" : "eligibility-audit",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "form",
+      "lang" : "en",
+      "model_kind" : "form",
+      "page" : 1,
+      "prompt_tokens" : 485,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.50103402137756348,
+      "set" : "sol-diag",
+      "truth" : "neither"
+    },
+    {
+      "document" : "explicitly-not-statement",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "form",
+      "lang" : "en",
+      "model_kind" : "form",
+      "page" : 1,
+      "prompt_tokens" : 485,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.53040099143981934,
+      "set" : "sol-diag",
+      "truth" : "neither"
+    },
+    {
+      "document" : "two-live-previous",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 504,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.54755711555480957,
+      "set" : "sol-diag",
+      "truth" : "passport"
+    },
+    {
+      "document" : "two-live-previous",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 2,
+      "prompt_tokens" : 479,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.41580104827880859,
+      "set" : "sol-diag",
+      "truth" : "passport"
+    },
+    {
+      "document" : "two-live-renewed",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 504,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.54733598232269287,
+      "set" : "sol-diag",
+      "truth" : "passport"
+    },
+    {
+      "document" : "two-live-renewed",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 2,
+      "prompt_tokens" : 479,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.42913198471069336,
+      "set" : "sol-diag",
+      "truth" : "passport"
+    },
+    {
+      "document" : "devanagari-date-proof",
+      "dropped_lines" : 0,
+      "error" : "unsupportedLanguageOrLocale",
+      "kind_after_quote_check" : "error",
+      "lang" : "hi",
+      "model_kind" : "error",
+      "page" : 1,
+      "prompt_tokens" : 457,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : false,
+      "seconds" : 0.0037270784378051758,
+      "set" : "sol-localised",
+      "truth" : "neither"
+    },
+    {
+      "document" : "ca-sep",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 497,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.49181294441223145,
+      "set" : "astra",
+      "truth" : "statement"
+    },
+    {
+      "document" : "ca-oct",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 499,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.48591506481170654,
+      "set" : "astra",
+      "truth" : "statement"
+    },
+    {
+      "document" : "nz-summary",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 492,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.48375797271728516,
+      "set" : "astra",
+      "truth" : "statement"
+    },
+    {
+      "document" : "ch-auszug",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "de",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 498,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.51976406574249268,
+      "set" : "astra",
+      "truth" : "statement"
+    },
+    {
+      "document" : "fr-releve",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "fr",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 495,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.68319201469421387,
+      "set" : "astra",
+      "truth" : "statement"
+    },
+    {
+      "document" : "es-resumen",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 488,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.52377903461456299,
+      "set" : "astra",
+      "truth" : "statement"
+    },
+    {
+      "document" : "ca-transfer",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 517,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.49005603790283203,
+      "set" : "astra",
+      "truth" : "statement"
+    },
+    {
+      "document" : "longer-name",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 1,
+      "prompt_tokens" : 465,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.4226689338684082,
+      "set" : "astra",
+      "truth" : "neither"
+    },
+    {
+      "document" : "number-decoys",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 1,
+      "prompt_tokens" : 532,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.48456597328186035,
+      "set" : "astra",
+      "truth" : "neither"
+    },
+    {
+      "document" : "bad-checks",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "form",
+      "lang" : "en",
+      "model_kind" : "form",
+      "page" : 1,
+      "prompt_tokens" : 493,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.48593902587890625,
+      "set" : "astra",
+      "truth" : "neither"
+    },
+    {
+      "document" : "passport-old",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 500,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 1.1100949048995972,
+      "set" : "astra",
+      "truth" : "passport"
+    },
+    {
+      "document" : "passport-new",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 500,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 1.1105389595031738,
+      "set" : "astra",
+      "truth" : "passport"
+    },
+    {
+      "document" : "passport-uncertain",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 495,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.93338000774383545,
+      "set" : "astra",
+      "truth" : "passport"
+    },
+    {
+      "document" : "bare-short-name",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 1,
+      "prompt_tokens" : 452,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.39714205265045166,
+      "set" : "astra",
+      "truth" : "neither"
+    },
+    {
+      "document" : "unowned-account",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "cannotTell",
+      "lang" : "en",
+      "model_kind" : "cannotTell",
+      "page" : 1,
+      "prompt_tokens" : 461,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.63671505451202393,
+      "set" : "astra",
+      "truth" : "neither"
+    },
+    {
+      "document" : "service-invoice",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "invoice",
+      "lang" : "en",
+      "model_kind" : "invoice",
+      "page" : 1,
+      "prompt_tokens" : 491,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.49303793907165527,
+      "set" : "astra",
+      "truth" : "neither"
+    },
+    {
+      "document" : "passport-void",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 502,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 1.165552020072937,
+      "set" : "astra",
+      "truth" : "passport"
+    },
+    {
+      "document" : "visa-not-passport",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "visa",
+      "lang" : "en",
+      "model_kind" : "visa",
+      "page" : 1,
+      "prompt_tokens" : 495,
+      "quote" : "(redacted: outside set)",
+      "quote_on_page" : true,
+      "seconds" : 0.48677694797515869,
+      "set" : "astra",
+      "truth" : "passport-lookalike"
+    }
+  ],
+  "process_max_rss_mb" : 270.984375,
+  "sampling" : "greedy",
+  "seconds_max" : 1.165552020072937,
+  "seconds_median" : 0.49303793907165527,
+  "sets" : [
+    "sol-probe",
+    "sol-diag",
+    "sol-localised",
+    "astra"
+  ]
+}
