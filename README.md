@@ -38,6 +38,32 @@ cd src-tauri && cargo run --release --no-default-features --bin sifs-bench -- /t
 
 With `--contents` before the index file, it also reads inside the files and reports time per 1,000 files by reader, index growth by table, peak memory and how long writes held the index.
 
+## CI
+
+`.github/workflows/ci.yml` runs on every pull request and every push to main, on GitHub's hosted macOS runners (`macos-26`, Apple silicon). The `ci` job passes only when every other job succeeded:
+
+- **Rust tests:** `cargo test --no-default-features --lib`. The job fails if fewer tests pass than `TEST_FLOOR`. The summary shows the counts.
+- **Clippy:** `cargo clippy --all-targets -- -D warnings`, once with default features and once with `--no-default-features`.
+- **Svelte check:** `npm run check` may report at most `SVELTE_ERROR_CEILING` errors.
+- **Sample tools:** the four `node sample/tools/...` commands below.
+
+To run the same gates by hand:
+
+```bash
+cd src-tauri
+cargo test --no-default-features --lib
+mkdir -p ../build && cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets --no-default-features -- -D warnings
+cd ..
+npm ci && npm run check
+node --test sample/tools/score.test.mjs
+node sample/tools/score-mutants.mjs
+node sample/tools/text.mjs --check
+node sample/tools/check.mjs
+```
+
+Tests a hosted runner cannot run, for a reason of the runner and not the code, are listed by name in `RUNNER_LIMITED` in the workflow, each with its reason and issue. They run in a separate step that may fail, and its result is shown in the job summary. The list is empty today.
+
 ## Layout
 
 ```text
