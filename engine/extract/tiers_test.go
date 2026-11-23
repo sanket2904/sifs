@@ -159,6 +159,53 @@ func TestNoTwoOrganisationsShareAKey(t *testing.T) {
 	eq(t, "same_org", joinsOf(e), []string{"BIC COBADE33 = name:cobabank: spells-code likely", "BIC COBADEFF = name:cobabank: spells-code likely"})
 }
 
+// A payment order names two banks: the payer's and the payee's. Whatever
+// order the lines come in and however many BICs it prints, no key carries
+// identifiers of both, and no same_org row joins them.
+func TestPayerAndPayeeStayApart(t *testing.T) {
+	const (
+		payerIBAN = "DE25 1002 0030 0123 4567 89"
+		payeeIBAN = "DE56 5007 0080 9876 5432 10"
+	)
+	owner := map[string]string{
+		"DE25100200300123456789": "payer", "IBAN DE 10020030": "payer", "PAYRDEFFXXX": "payer", "BIC PAYRDEFF": "payer",
+		"DE56500700809876543210": "payee", "IBAN DE 50070080": "payee", "PAYEDEFFXXX": "payee", "BIC PAYEDEFF": "payee",
+	}
+	for name, lines := range map[string][]string{
+		"one BIC, payer first": {"Payment order", "Ordering customer IBAN: " + payerIBAN, "Beneficiary BIC: PAYEDEFFXXX", "Beneficiary IBAN: " + payeeIBAN},
+		"one BIC, payee first": {"Payment order", "Beneficiary IBAN: " + payeeIBAN, "Beneficiary BIC: PAYEDEFFXXX", "Ordering customer IBAN: " + payerIBAN},
+		"two BICs, payer first": {"Payment order", "Ordering customer IBAN: " + payerIBAN, "Beneficiary BIC: PAYEDEFFXXX", "Beneficiary IBAN: " + payeeIBAN, "Ordering BIC: PAYRDEFFXXX"},
+		"two BICs, payee first": {"Payment order", "Beneficiary IBAN: " + payeeIBAN, "Ordering BIC: PAYRDEFFXXX", "Ordering customer IBAN: " + payerIBAN, "Beneficiary BIC: PAYEDEFFXXX"},
+	} {
+		_, e := runOne(t, doc("d", lines...), nil)
+		val := map[string]string{}
+		for _, i := range e.Identifiers {
+			val[i.ID] = i.Value
+		}
+		for _, l := range e.Links {
+			if a, b := owner[val[l.Identifier]], owner[l.Org]; a == "" || a != b {
+				t.Errorf("%s: %s (%s) linked to %s (%s)", name, val[l.Identifier], a, l.Org, b)
+			}
+		}
+		for _, j := range e.SameOrg {
+			if a, b := owner[j.Keys[0]], owner[j.Keys[1]]; a == "" || a != b {
+				t.Errorf("%s: same_org %s (%s) = %s (%s)", name, j.Keys[0], a, j.Keys[1], b)
+			}
+		}
+	}
+}
+
+// Where an IBAN's bank identifier is the letters a BIC begins with, that
+// pair is the only reading: the other IBAN is joined to no BIC.
+func TestLettersPickTheOnlyReading(t *testing.T) {
+	_, e := runOne(t, doc("d",
+		"Payment order",
+		"Ordering customer IBAN: GB71 ALFA 2004 1531 9268 19",
+		"Beneficiary BIC: BETAGB2LXXX",
+		"Beneficiary IBAN: GB22 BETA 4005 1655 7799 11"), nil)
+	eq(t, "same_org", joinsOf(e), []string{"BIC BETAGB2L = IBAN GB BETA: printed-together likely"})
+}
+
 func TestShortFormSettledByACodeKeepsItsOwnKey(t *testing.T) {
 	o, e := runOne(t, doc("d", "Bank: EXMB", "Account: 4720195386 IFSC: EXMB0123456"), nil)
 	if len(e.Orgs) != 1 || e.Orgs[0].Org == nil || *e.Orgs[0].Org != "name:exmb" || *e.Orgs[0].SettledBy != "code" {
