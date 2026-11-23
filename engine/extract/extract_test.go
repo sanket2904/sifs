@@ -330,7 +330,6 @@ func TestIBANParts(t *testing.T) {
 		"0500013M026 -> IBAN FR 20041: same-account",
 		"20041 -> IBAN FR 20041: inside-iban",
 		"EXMPFRPPXXX -> BIC EXMPFRPP: bic-institution",
-		"FR1420041010050500013M02606 -> BIC EXMPFRPP: paired-code",
 		"FR1420041010050500013M02606 -> IBAN FR 20041: iban-bank-code",
 	})
 	eq(t, "same_org", joinsOf(e), []string{"BIC EXMPFRPP = IBAN FR 20041: printed-together likely"})

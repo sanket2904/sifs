@@ -92,7 +92,7 @@ func Extract(doc Document, reg *IBANRegistry, ref Date) DocResult {
 		r.Unread = st
 	case st != nil:
 		r.Statement = st
-		r.Links = append(r.Links, headerLinks(*st, r.Links, r.Joins)...)
+		r.Links = append(r.Links, headerLinks(*st, r.Identifiers, r.Joins)...)
 	}
 	r.Passport = findPassport(lines, r.Identifiers, ref)
 	return r
@@ -109,20 +109,14 @@ func joined(joins []Join) *union {
 	return u
 }
 
-// headerLinks ties the statement's account to its issuer. An account a code
-// ties to an organisation the document does not tie to the issuer may be
-// held elsewhere, so the header alone does not tie it.
-func headerLinks(st Statement, links []Link, joins []Join) []Link {
+// headerLinks ties the statement's account to its issuer. An account paired
+// with a code of an organisation the document does not tie to the issuer
+// may be held elsewhere, so the header alone does not tie it.
+func headerLinks(st Statement, ids []Identifier, joins []Join) []Link {
 	same := joined(joins)
 	var out []Link
 	for _, a := range st.Accounts {
-		ok := true
-		for _, l := range links {
-			if l.Ident == a.ID && l.Reason == ReasonPairedCode && same.find(l.Key) != same.find(st.Issuer.Key) {
-				ok = false
-			}
-		}
-		if ok {
+		if c := pairedCode(a, ids); c == nil || same.find(c.Code) == same.find(st.Issuer.Key) {
 			out = append(out, Link{Ident: a.ID, Key: st.Issuer.Key, Reason: ReasonStatementHeader})
 		}
 	}
@@ -138,8 +132,8 @@ func sortSpans[T any](xs []T, span func(T) Span) {
 //   - a bank name whose first word is the institution code of an IFSC or BIC
 //     in the document (ABCD Bank beside ABCD0…), when only one name fits:
 //     the name spells the code;
-//   - an IBAN and the BIC paired with it, of the same country: the two
-//     codes are printed together.
+//   - an IBAN and the BIC paired with it, of the same country, when that is
+//     the only reading: the two codes are printed together.
 func codeJoins(names []Mention, ids []Identifier) []Join {
 	var joins []Join
 	for _, c := range ids {
@@ -158,15 +152,44 @@ func codeJoins(names []Mention, ids []Identifier) []Join {
 			}
 		}
 	}
+	ibans, bics := map[string]map[string]bool{}, map[string]map[string]bool{} // country -> code keys
+	for _, id := range ids {
+		switch {
+		case id.Code == "":
+		case id.Kind == KindIBAN:
+			addKey(ibans, id.Value[:2], id.Code)
+		case id.Kind == KindBIC:
+			addKey(bics, id.Value[4:6], id.Code)
+		}
+	}
 	for _, a := range ids {
 		if a.Kind != KindIBAN || a.Code == "" {
 			continue
 		}
-		if c := pairedCode(a, ids); c != nil && c.Kind == KindBIC && c.Value[4:6] == a.Value[:2] {
+		c := pairedCode(a, ids)
+		if c == nil || c.Kind != KindBIC || c.Value[4:6] != a.Value[:2] {
+			continue
+		}
+		if spellsBIC(a, *c) || len(ibans[a.Value[:2]]) == 1 && len(bics[a.Value[:2]]) == 1 {
 			joins = append(joins, Join{A: a.Code, B: c.Code, Reason: JoinPrintedTogether})
 		}
 	}
 	return joins
+}
+
+func addKey(m map[string]map[string]bool, country, key string) {
+	if m[country] == nil {
+		m[country] = map[string]bool{}
+	}
+	m[country][key] = true
+}
+
+// spellsBIC: the IBAN's bank identifier is the four letters the BIC begins
+// with, so the IBAN's own characters name the BIC's institution. With two
+// IBANs or two BICs of one country in a document, only such a pair is the
+// one reading of which code goes with which.
+func spellsBIC(iban, bic Identifier) bool {
+	return strings.Fields(iban.Code)[2] == bic.Value[:4]
 }
 
 // pairedCode is the IFSC or BIC an account or IBAN sits with: the only code
@@ -218,7 +241,9 @@ var codeReasons = map[string]string{KindIFSC: ReasonIFSCPrefix, KindBIC: ReasonB
 // codeLinks gives the links whose reason is a code: an identifier that
 // carries its institution, an account paired with a code, and the parts
 // and account number of an IBAN. A link by the identifier's own code goes
-// to its code key, and an IBAN's is proven as the IBAN is.
+// to its code key, and an IBAN's is proven as the IBAN is. An identifier
+// with a code key of its own is linked to no other code's key: what its
+// nearness to another code suggests is a same_org row between the two.
 func codeLinks(ids []Identifier) []Link {
 	var out []Link
 	for _, id := range ids {
@@ -231,7 +256,7 @@ func codeLinks(ids []Identifier) []Link {
 		}
 	}
 	for _, id := range ids {
-		if !id.isAccount() || id.Valid != nil && !*id.Valid {
+		if !id.isAccount() || id.Code != "" || id.Valid != nil && !*id.Valid {
 			continue
 		}
 		if c := pairedCode(id, ids); c != nil {

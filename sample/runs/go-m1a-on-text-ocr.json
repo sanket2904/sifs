@@ -721,15 +721,6 @@
      "tier": "certain"
     },
     {
-     "identifier": "i3",
-     "org": "BIC NWBKGB2L",
-     "reasons": [
-      "paired-code"
-     ],
-     "via": "i4",
-     "tier": "likely"
-    },
-    {
      "identifier": "i1",
      "org": "IBAN GB NWBK",
      "reasons": [
@@ -914,15 +905,6 @@
       "bic-institution"
      ],
      "tier": "certain"
-    },
-    {
-     "identifier": "i1",
-     "org": "BIC COBADEFF",
-     "reasons": [
-      "paired-code"
-     ],
-     "via": "i2",
-     "tier": "likely"
     }
    ],
    "statement": {
@@ -2028,15 +2010,6 @@
       "bic-institution"
      ],
      "tier": "certain"
-    },
-    {
-     "identifier": "i1",
-     "org": "BIC PSSTFRPP",
-     "reasons": [
-      "paired-code"
-     ],
-     "via": "i2",
-     "tier": "likely"
     },
     {
      "identifier": "i3",
