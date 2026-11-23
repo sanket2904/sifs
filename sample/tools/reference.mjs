@@ -3,17 +3,29 @@
 //   node sample/tools/reference.mjs <on|off> <text|text-ocr> <output.json>
 // On the OCR text set, whatever the OCR text does not hold is left out, since
 // no extractor could find it there.
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { SAMPLE } from './generate.mjs';
 import { locate, readsBack } from './lib/find.mjs';
 import { readLabels } from './lib/labels.mjs';
 import { isMain } from './lib/main.mjs';
+import {
+	CODE_REASONS,
+	codeKey,
+	mayBeCertainIdentifier,
+	mayBeCertainJoin,
+	mayBeCertainLink,
+	mayBeCertainPassport
+} from './lib/tiers.mjs';
 import { readTextSet, TEXT_SETS } from './text.mjs';
 
-// Keys of its own, so a pass proves the scorer maps keys, not label ids.
+// Keys of its own, so a pass proves the scorer maps keys, not label ids. A
+// printed name's organisation has the key ref:<local id>; an institution code
+// has its own canonical key, such as IFSC HDFC, and same_org rows join the two.
 const keyOf = (target) => `ref:${target}`;
+const squash = (v) => v.normalize('NFKC').toUpperCase().replace(/\s/gu, '');
 
-export function reference(labels, textSet, directory) {
+export function reference(labels, textSet, directory, banks) {
+	const entries = new Map(banks.entries.map((e) => [e.id, e]));
 	const organisations = {};
 	const declare = (target, name) => {
 		const key = keyOf(target);
@@ -26,6 +38,17 @@ export function reference(labels, textSet, directory) {
 				directory: directory === 'on' ? org.directory : null
 			};
 		}
+		return key;
+	};
+	// The key of an institution code. With the directory on, its card is the
+	// directory entry that holds the code; a code is never a printed name.
+	const codeKeyOf = new Map();
+	const declareCode = (key, target) => {
+		organisations[key] ??= {
+			name: null,
+			directory: directory === 'on' ? labels.organisations[target].directory : null
+		};
+		codeKeyOf.set(key, target);
 		return key;
 	};
 	const dirToLocal = new Map(
@@ -65,48 +88,143 @@ export function reference(labels, textSet, directory) {
 			const at = find(i, i.value);
 			if (!at) continue;
 			kept.add(i.id);
-			identifiers.push({ id: i.id, ...at, kind: i.kind, value: i.value, valid: i.valid });
+			const tier = mayBeCertainIdentifier(i, directory, entries) ? 'certain' : 'likely';
+			identifiers.push({ id: i.id, ...at, kind: i.kind, value: i.value, valid: i.valid, tier });
 		}
+		const byId = new Map(identifiers.map((i) => [i.id, i]));
+		// A code's own reason puts the link on the code's key, and paired-code
+		// on its via's key. Every other link is held at the printed name.
+		const keyFor = (l, reasons) => {
+			const ident = byId.get(l.identifier);
+			if (reasons.some((r) => CODE_REASONS.get(r) === ident.kind))
+				return declareCode(codeKey(ident), l.org);
+			if (reasons.includes('paired-code')) return declareCode(codeKey(byId.get(l.via)), l.org);
+			return declare(l.org);
+		};
 		const links = label.links
 			.filter((l) => kept.has(l.identifier))
-			.map((l) => {
-				const reasons = l.reasons.filter((r) => r !== 'paired-code' || kept.has(l.via));
+			.map((l) => ({ l, reasons: l.reasons.filter((r) => r !== 'paired-code' || kept.has(l.via)) }))
+			.filter(({ reasons }) => reasons.length)
+			.map(({ l, reasons }) => {
+				const org = keyFor(l, reasons);
+				const test = { identifier: byId.get(l.identifier), reasons, card: organisations[org] };
 				return {
 					identifier: l.identifier,
-					org: declare(l.org),
+					org,
 					reasons,
-					...(reasons.includes('paired-code') ? { via: l.via } : {})
+					...(reasons.includes('paired-code') ? { via: l.via } : {}),
+					tier: mayBeCertainLink(test, directory, entries) ? 'certain' : 'likely'
 				};
-			})
-			.filter((l) => l.reasons.length);
+			});
 		const doc = { id: label.id, orgs, identifiers, links };
 		if (label.statement) {
 			const s = label.statement;
+			const accounts = s.accounts.filter((a) => kept.has(a));
+			const issuer = mentionTarget.get(s.issuer) ?? null;
 			doc.statement = {
 				from: s.from,
 				to: s.to,
-				accounts: s.accounts.filter((a) => kept.has(a)),
-				issuer: mentionTarget.get(s.issuer) ?? null
+				accounts,
+				issuer,
+				tiers: {
+					period: 'likely',
+					...(accounts.length ? { accounts: 'likely' } : {}),
+					...(issuer ? { issuer: 'likely' } : {})
+				}
 			};
 		}
 		if (label.passport) {
 			const p = label.passport;
 			const seen = find(p.expiry_at);
+			const mrz = kept.has(p.mrz) ? p.mrz : null;
 			doc.passport = {
 				holder: p.holder,
 				number: kept.has(p.number) ? p.number : null,
-				mrz: kept.has(p.mrz) ? p.mrz : null,
+				mrz,
 				issued: p.issued,
 				expiry: seen ? p.expiry : null,
 				...(p.expiry_candidates ? { expiry_candidates: p.expiry_candidates } : {}),
 				expiry_at: seen,
 				current: seen ? p.current : null
 			};
+			const zone = {
+				mrz: byId.get(mrz),
+				number: byId.get(doc.passport.number),
+				holder: doc.passport.holder,
+				expiry: doc.passport.expiry
+			};
+			doc.passport.tiers = Object.fromEntries(
+				['holder', 'number', 'expiry', 'current']
+					.filter((f) => doc.passport[f] !== null)
+					.map((f) => [f, mayBeCertainPassport(f, zone) ? 'certain' : 'likely'])
+			);
 		}
+		doc.same_org = sameOrg(label, doc);
 		documents.push(doc);
 	}
+	// Joins each organisation's code keys in a document to its printed name's
+	// key there, or to each other when the document prints no name of it.
+	function sameOrg(label, doc) {
+		const used = new Set([
+			...doc.orgs.map((m) => m.org),
+			...doc.links.map((l) => l.org),
+			doc.statement?.issuer
+		]);
+		const rows = [];
+		for (const target of new Set(doc.links.map((l) => codeKeyOf.get(l.org)).filter(Boolean))) {
+			const codes = [...used].filter((k) => codeKeyOf.get(k) === target).sort();
+			const name = used.has(keyOf(target)) ? keyOf(target) : null;
+			const [first, ...rest] = name ? [name, ...codes] : codes;
+			for (const other of rest) {
+				const row = joinRow(label, doc, target, first, other);
+				if (row) rows.push(row);
+			}
+		}
+		return rows;
+	}
+	// The row joining keys a and b of one organisation, or null when nothing
+	// in the document or the directory joins them.
+	function joinRow(label, doc, target, a, b) {
+		const mentions = label.orgs.filter((m) => m.resolved_by_document?.org === target);
+		const join = {
+			reason: 'directory',
+			names: doc.orgs.filter((m) => m.org === a).map((m) => m.text),
+			codes: doc.links
+				.map((l) => ({ l, ident: byIdOf(doc, l.identifier) }))
+				.filter(
+					({ l, ident }) => l.org === b && l.reasons.some((r) => CODE_REASONS.get(r) === ident.kind)
+				)
+				.map(({ ident }) => ident)
+		};
+		if (mayBeCertainJoin(join, directory, entries))
+			return { keys: [a, b], reason: 'directory', tier: 'certain' };
+		const codes = doc.links
+			.filter((l) => [a, b].includes(l.org))
+			.map((l) => byIdOf(doc, l.identifier));
+		const letters = codes
+			.filter((i) => ['ifsc', 'bic'].includes(i.kind))
+			.map((i) => i.value.slice(0, 4));
+		const line = (s) => lineOf(doc.id, s);
+		const reason = mentions.some((m) => letters.some((c) => squash(m.text).startsWith(c)))
+			? 'spells-code'
+			: label.statement && mentions.some((m) => m.id === label.statement.issuer)
+				? 'statement-header'
+				: mentions.some((m) =>
+							codes.some((i) => i.page === m.page && Math.abs(line(i) - line(m)) <= 1)
+					  )
+					? 'printed-together'
+					: null;
+		return reason && { keys: [a, b], reason, tier: 'likely' };
+	}
+	function byIdOf(doc, id) {
+		return doc.identifiers.find((i) => i.id === id);
+	}
+	function lineOf(docId, s) {
+		const text = textSet.docs.get(docId).pages[s.page - 1].text;
+		return [...text].slice(0, s.start).filter((c) => c === '\n').length;
+	}
 	return {
-		format: 1,
+		format: 2,
 		extractor: 'reference (labels.json)',
 		directory,
 		text_set: textSet.index.text_set,
@@ -131,6 +249,11 @@ if (isMain(import.meta.url)) {
 		console.error('usage: node sample/tools/reference.mjs <on|off> <text|text-ocr> <output.json>');
 		process.exit(2);
 	}
-	const output = reference(readLabels(new URL('labels.json', SAMPLE)), readTextSet(set), directory);
+	const output = reference(
+		readLabels(new URL('labels.json', SAMPLE)),
+		readTextSet(set),
+		directory,
+		JSON.parse(readFileSync(new URL('directory/banks.json', SAMPLE), 'utf8'))
+	);
 	writeFileSync(path, JSON.stringify(output, null, '\t') + '\n');
 }
