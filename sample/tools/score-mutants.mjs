@@ -33,8 +33,183 @@ const MUTANTS = [
 	[
 		'tools/score.mjs',
 		'a key over two organisations is a merge',
-		'.filter((k) => targetsOf(k).size > 1)',
-		'.filter(() => false)'
+		"...(organisations.length > 1 ? [{ key: k, why: 'organisations', organisations }] : []),",
+		''
+	],
+	[
+		'tools/score.mjs',
+		'a key holding two institution codes is a merge',
+		"...(codes.length > 1 ? [{ key: k, why: 'codes', codes }] : []),",
+		''
+	],
+	[
+		'tools/score.mjs',
+		'a key holding a code and a printed name is a merge',
+		"...(codes.length && named.has(k) ? [{ key: k, why: 'name-and-code', codes }] : [])",
+		''
+	],
+	[
+		'tools/score.mjs',
+		"only a code's own reason gives a key its code",
+		'const own = l.reasons.some((r) => CODE_REASONS.get(r) === l.identifier.kind);',
+		'const own = true;'
+	],
+	[
+		'tools/score.mjs',
+		'only a merge of two organisations makes rows wrong',
+		"merges.filter((m) => m.why === 'organisations').map((m) => m.key)",
+		'merges.map((m) => m.key)'
+	],
+	['tools/score.mjs', 'a merge fails the run', 'merges.length > 0 ||', ''],
+	[
+		'tools/score.mjs',
+		'a wrong certain row fails the run',
+		"items.wrong.some((i) => i.tier === 'certain')",
+		'false'
+	],
+	[
+		'tools/score.mjs',
+		'a wrong likely row fails nothing',
+		"items.wrong.some((i) => i.tier === 'certain')",
+		'items.wrong.some((i) => i.tier !== null)'
+	],
+	[
+		'tools/score.mjs',
+		'one certain row makes a link certain',
+		"if (link.tier === 'certain') g.tier = 'certain';",
+		''
+	],
+	[
+		'tools/score.mjs',
+		'each measure counts right and wrong per tier',
+		'if (tier) (row.by_tier[tier] ??= { right: 0, wrong: 0 })[outcome]++;',
+		''
+	],
+	[
+		'tools/score.mjs',
+		'format 1 is refused with what to add',
+		'if (output.format === 1)',
+		'if (false)'
+	],
+	[
+		'tools/score.mjs',
+		'a tier is certain or likely',
+		'TIERS.has(v) ? v : fail(',
+		'true ? v : fail('
+	],
+	[
+		'tools/score.mjs',
+		'a statement and a passport give their tiers',
+		'if (!isObject(tiers))',
+		'if (false)'
+	],
+	[
+		'tools/score.mjs',
+		'a certain link needs a reason that passes its test',
+		"if (tier === 'certain' && !mayBeCertainLink(test, output.directory, entries))",
+		'if (false)'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		'iban-bank-code is certain only when the check digits pass',
+		'return KINDS.iban.valid(identifier.value);',
+		'return true;'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		'an IFSC or BIC is certain only with the directory on',
+		"return mode === 'on' && directoryHolds(",
+		'return directoryHolds('
+	],
+	[
+		'tools/lib/tiers.mjs',
+		"an IFSC or BIC is certain only when the card's entry holds it",
+		'if (!entry) return false;',
+		'return true;'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		'a BIC is certain only on its first eight characters',
+		'b.slice(0, 8) === value.slice(0, 8)',
+		'b.slice(0, 6) === value.slice(0, 6)'
+	],
+	[
+		'tools/score.mjs',
+		'no statement fact is certain',
+		'const tiers = factTiers(s.tiers, facts, w, () => false);',
+		'const tiers = factTiers(s.tiers, facts, w, () => true);'
+	],
+	[
+		'tools/score.mjs',
+		'passport current is never certain',
+		"(fact) => fact !== 'current' && zone",
+		'() => zone'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		'a passport fact is certain only through a passport zone whose check digits pass',
+		"return zone?.type === 'passport' && zone.failed.length === 0;",
+		'return zone !== null;'
+	],
+	[
+		'tools/score.mjs',
+		'a same_org row is right only when both keys are one organisation',
+		'if (ta !== null && ta === tb) {',
+		'if (ta !== null) {'
+	],
+	[
+		'tools/score.mjs',
+		'a missing join is left out',
+		'for (let n = 1; n < apart; n++)',
+		'for (let n = 1; n < 1; n++)'
+	],
+	[
+		'tools/score.mjs',
+		'joins chain through each other',
+		'if (root(a) !== root(b)) joinedTo.set(root(a), root(b));',
+		''
+	],
+	[
+		'tools/score.mjs',
+		'same_org rows with one id are one claim',
+		"const k = row.keys.join('\\0');",
+		"const k = row.keys.join('\\0') + row.reason;"
+	],
+	[
+		'tools/score.mjs',
+		'same_org claims are scored in one order',
+		'[...claims.keys()].sort()',
+		'[...claims.keys()]'
+	],
+	[
+		'tools/score.mjs',
+		'a same_org row joins keys its document uses',
+		'if (!used.has(k))',
+		'if (false)'
+	],
+	[
+		'tools/score.mjs',
+		'a same_org row joins two different keys',
+		'row.keys.length !== 2 || row.keys[0] === row.keys[1]',
+		'row.keys.length !== 2'
+	],
+	[
+		'tools/score.mjs',
+		'a same_org reason is known',
+		'if (!SAME_ORG_REASONS.has(row.reason))',
+		'if (false)'
+	],
+	[
+		'tools/score.mjs',
+		'only a directory row may be certain',
+		"if (tier === 'certain' && !(row.reason === 'directory' && oneEntry))",
+		'if (false)'
+	],
+	[
+		'tools/score.mjs',
+		'a certain directory row needs the directory on',
+		"const oneEntry = output.directory === 'on' && a !== null && a === b;",
+		'const oneEntry = a === b;'
 	],
 	[
 		'tools/score.mjs',
@@ -65,12 +240,6 @@ const MUTANTS = [
 		'an unlabelled identifier is wrong',
 		'for (const o of w.idents.unmatched) {',
 		'for (const o of []) {'
-	],
-	[
-		'tools/score.mjs',
-		'a wrong link fails the run',
-		"const FAILING = new Set(['links', ",
-		'const FAILING = new Set(['
 	],
 	[
 		'tools/score.mjs',
@@ -120,7 +289,6 @@ const MUTANTS = [
 		'!merged.has(key) && !wrongCard.has(key) ? single(key)',
 		'!merged.has(key) ? single(key)'
 	],
-	['tools/score.mjs', 'a wrong card fails the run', 'wrongCards.length > 0 ||', ''],
 	[
 		'tools/score.mjs',
 		'a key is a non-empty string',
@@ -225,7 +393,6 @@ const MUTANTS = [
 		'(n) => t === null || !enclosing(n).some((l) => target(l) === t)',
 		'(n) => [...targetsOf(o.org)].some((x) => n.entry === directoryIdOf(x))'
 	],
-	['tools/score.mjs', 'a wrong attachment fails the run', 'wrongAttachments.length > 0 ||', ''],
 	[
 		'tools/score.mjs',
 		'a card name ignores all whitespace',
@@ -256,7 +423,18 @@ const MUTANTS = [
 		'sha256: fileHash(file),',
 		"sha256: readFileSync(new URL('SHA256SUMS', FILES), 'utf8')\n\t\t\t\t.split('\\n')\n\t\t\t\t.find((line) => line.endsWith(`  ${file}`))\n\t\t\t\t.slice(0, 64),"
 	],
-	['FORMAT.md', 'the worked example must hold', '"value": "1234567890"', '"value": "4512369874"'],
+	[
+		'FORMAT.md',
+		'the worked example must hold',
+		'"value": "50100417263958"',
+		'"value": "4512369874"'
+	],
+	[
+		'FORMAT.md',
+		'the worked example joins its two keys',
+		'"same_org": [{"keys": ["name:hdfcbank", "ifsc HDFC"], "reason": "directory", "tier": "certain"}]',
+		'"same_org": []'
+	],
 	['FORMAT.md', 'the sort code example must hold', '"value": "601613"', '"value": "60-16-13"']
 ];
 
