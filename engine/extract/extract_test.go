@@ -223,6 +223,9 @@ func TestIdentifiers(t *testing.T) {
 		"Pay to IBAN: DE88 3704 0044 0532 0130 00",
 		"Card on file: 4111 1111 1111 1112",
 		"Invoice number: 50100987654321",
+		"Invoice number: 5555 5555 5555 4444",
+		"Order no. 3782 822463 10005",
+		"Paid by card: 4111 1111 1111 1111",
 		"Phone: +44 7700 900123",
 		"PAN: ABCPK1234F",
 		"TAN: ABCDK1234F",
@@ -230,14 +233,14 @@ func TestIdentifiers(t *testing.T) {
 	k := kinds(e)
 	for v, want := range map[string]string{
 		"GB29NWBK60161331926819": KindIBAN, "NWBKGB2L": KindBIC, "601613": KindSortCode, "31926819": KindAccount,
-		"DE88370400440532013000": KindIBAN, "4111111111111112": KindCard, "ABCPK1234F": KindPAN,
+		"DE88370400440532013000": KindIBAN, "4111111111111112": KindCard, "4111111111111111": KindCard, "ABCPK1234F": KindPAN,
 		"20041": KindFRBank, "01005": KindFRBranch, "0500013M026": KindAccount, "06": KindFRKey,
 	} {
 		if k[v] != want {
 			t.Errorf("%s: kind %q, want %q", v, k[v], want)
 		}
 	}
-	for _, v := range []string{"50100987654321", "900123", "ABCDK1234F"} {
+	for _, v := range []string{"50100987654321", "900123", "ABCDK1234F", "5555555555554444", "378282246310005"} {
 		if _, ok := k[v]; ok {
 			t.Errorf("%s is no identifier", v)
 		}

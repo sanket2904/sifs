@@ -202,11 +202,15 @@ var (
 )
 
 // findCard takes a grouped 15- or 16-digit number as a card when its line
-// says card, or when it passes Luhn.
+// says card, or when it passes Luhn. A number whose own field label names
+// something else ("Invoice number:") is that thing, whatever its shape.
 func findCard(l Line, _ []Identifier) []found {
 	labelled := reCardLabel.MatchString(l.Text)
 	var out []found
 	for _, m := range reCard.FindAllStringIndex(l.Text, -1) {
+		if label := fieldLabel(l.Text[:m[0]]); label != "" && !reCardLabel.MatchString(label) {
+			continue
+		}
 		v := digitsOnly(l.Text[m[0]:m[1]])
 		ok := luhn(v)
 		if labelled || ok {
