@@ -1,10 +1,11 @@
 // Removes one scoring rule at a time, from score.mjs or a file it depends
 // on, in a copy of sample/ and shows that score.test.mjs fails without it.
-// Exits 1 if any removal goes unnoticed.
+// The unchanged suite must pass first. Copies run in parallel, one per core.
+// Exits 1 if the suite fails or any removal goes unnoticed.
 //   node sample/tools/score-mutants.mjs
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -678,32 +679,68 @@ const MUTANTS = [
 	]
 ];
 
-let missed = 0;
-for (const [file, rule, from, to] of MUTANTS) {
+for (const [file, rule, from] of MUTANTS)
+	if (readFileSync(join(sample, file), 'utf8').split(from).length !== 2)
+		throw new Error(`"${rule}": its text is not in ${file} exactly once`);
+
+// The failing tests of score.test.mjs in a copy of sample/ with one change.
+async function runSuite(file, from, to) {
 	const dir = mkdtempSync(join(tmpdir(), 'score-mutant-'));
 	try {
 		cpSync(sample, dir, { recursive: true });
-		const path = join(dir, file);
-		const source = readFileSync(path, 'utf8');
-		if (source.split(from).length !== 2)
-			throw new Error(`"${rule}": its text is not in ${file} exactly once`);
-		writeFileSync(path, source.replace(from, to));
-		const run = spawnSync(
+		if (file) {
+			const path = join(dir, file);
+			writeFileSync(path, readFileSync(path, 'utf8').replace(from, to));
+		}
+		const child = spawn(
 			process.execPath,
 			['--test', '--test-reporter=tap', join(dir, 'tools', 'score.test.mjs')],
-			{
-				encoding: 'utf8'
-			}
+			{ stdio: ['ignore', 'pipe', 'inherit'] }
 		);
-		const failed = [...run.stdout.matchAll(/^not ok \d+ - (.*)$/gm)].map((m) => m[1]);
-		if (run.status === 0) {
-			missed++;
-			console.log(`MISSED  ${rule}`);
-		} else console.log(`caught  ${rule}\n        by: ${failed.join('; ')}`);
+		let stdout = '';
+		child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk));
+		const status = await new Promise((done) => child.on('close', done));
+		return { status, failed: [...stdout.matchAll(/^not ok \d+ - (.*)$/gm)].map((m) => m[1]) };
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
 }
+
+// Runs the jobs, as many at once as there are cores, and gives their
+// results in the jobs' order.
+async function pool(jobs) {
+	const results = new Array(jobs.length);
+	let next = 0;
+	const worker = async () => {
+		while (next < jobs.length) {
+			const i = next++;
+			results[i] = await jobs[i]();
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(availableParallelism(), jobs.length) }, worker));
+	return results;
+}
+
+const [unchanged, ...results] = await pool([
+	() => runSuite(null),
+	...MUTANTS.map(
+		([file, , from, to]) =>
+			() =>
+				runSuite(file, from, to)
+	)
+]);
+if (unchanged.status !== 0) {
+	console.log(`the unchanged suite fails: ${unchanged.failed.join('; ')}`);
+	process.exit(1);
+}
+let missed = 0;
+MUTANTS.forEach(([, rule], i) => {
+	const { status, failed } = results[i];
+	if (status === 0) {
+		missed++;
+		console.log(`MISSED  ${rule}`);
+	} else console.log(`caught  ${rule}\n        by: ${failed.join('; ')}`);
+});
 console.log(
 	missed
 		? `\n${missed} of ${MUTANTS.length} removals went unnoticed`

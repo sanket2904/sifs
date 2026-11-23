@@ -71,10 +71,10 @@ function holdsCode(entry, { kind, value }) {
 // The directory entries a code's exact lookup gives, and a printed name's.
 const codeLookup = (entries, identifier) =>
 	[...entries.values()].filter((e) => holdsCode(e, identifier)).map((e) => e.id);
-const nameLookup = (entries, text) =>
-	[...entries.values()]
-		.filter((e) => e.names.some((n) => n.key === matchKey(text)))
-		.map((e) => e.id);
+const nameLookup = (entries, text) => {
+	const key = matchKey(text);
+	return [...entries.values()].filter((e) => e.names.some((n) => n.key === key)).map((e) => e.id);
+};
 
 // An identifier's kind may be certain when its own strong check proves it: an
 // IBAN's check digits, a machine-readable zone's check digits, or an IFSC or
