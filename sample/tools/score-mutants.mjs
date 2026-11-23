@@ -38,21 +38,63 @@ const MUTANTS = [
 	],
 	[
 		'tools/score.mjs',
-		'a key holding two institution codes is a merge',
-		"...(codes.length > 1 ? [{ key: k, why: 'codes', codes }] : []),",
-		''
+		"a link by its code's own reason goes to the code's key",
+		'if (own && canonical !== null && link.org !== canonical)',
+		'if (false)'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		"a BIC's institution is its first eight characters",
+		'return `BIC ${v.slice(0, 8)}`;',
+		'return `BIC ${v.slice(0, 6)}`;'
 	],
 	[
 		'tools/score.mjs',
 		'a key holding a code and a printed name is a merge',
-		"...(codes.length && named.has(k) ? [{ key: k, why: 'name-and-code', codes }] : [])",
+		"...(codeKeys.has(k) && named.has(k) ? [{ key: k, why: 'name-and-code' }] : [])",
 		''
 	],
 	[
 		'tools/score.mjs',
 		"only a code's own reason gives a key its code",
-		'const own = l.reasons.some((r) => CODE_REASONS.get(r) === l.identifier.kind);',
-		'const own = true;'
+		'if (l.reasons.some((r) => CODE_REASONS.get(r) === l.identifier.kind) && codeKey(l.identifier))',
+		'if (codeKey(l.identifier))'
+	],
+	[
+		'tools/score.mjs',
+		'an IBAN whose check digits pass is held at its code, whatever the label lists',
+		'ownIban(r) ||',
+		''
+	],
+	[
+		'tools/score.mjs',
+		'an identifier is certain only where its kind may be',
+		"if (tier === 'certain' && !mayBeCertainIdentifier(identifier, output.directory, entries))",
+		'if (false)'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		'a card number is never certain',
+		'\treturn false;\n}\n\n// A link may be',
+		"\treturn kind === 'card' && KINDS.card.valid(value);\n}\n\n// A link may be"
+	],
+	[
+		'tools/score.mjs',
+		'an identifier is counted in its tier',
+		': what,\n\t\t\t\t\to.tier\n',
+		': what\n'
+	],
+	[
+		'tools/score.mjs',
+		'a certain join stands a card up',
+		"for (const r of d.sameOrg) if (r.tier === 'certain') r.keys.forEach((k) => certainKeys.add(k));",
+		''
+	],
+	[
+		'tools/score.mjs',
+		'cards on likely rows only are listed',
+		'likely_only_cards: keys.filter((k) => !certainKeys.has(k)).sort(),',
+		'likely_only_cards: [],'
 	],
 	[
 		'tools/score.mjs',
@@ -111,15 +153,15 @@ const MUTANTS = [
 	],
 	[
 		'tools/lib/tiers.mjs',
-		'iban-bank-code is certain only when the check digits pass',
-		'return KINDS.iban.valid(identifier.value);',
-		'return true;'
+		'an IBAN or a zone is certain only when its check digits pass',
+		"if (kind === 'iban' || kind === 'mrz') return KINDS[kind].valid(value) === true;",
+		"if (kind === 'iban' || kind === 'mrz') return true;"
 	],
 	[
 		'tools/lib/tiers.mjs',
 		'an IFSC or BIC is certain only with the directory on',
-		"return mode === 'on' && directoryHolds(",
-		'return directoryHolds('
+		"return mode === 'on' && KINDS[kind].valid(value) && codeLookup(entries, identifier).length > 0;",
+		'return KINDS[kind].valid(value) && codeLookup(entries, identifier).length > 0;'
 	],
 	[
 		'tools/lib/tiers.mjs',
@@ -130,8 +172,8 @@ const MUTANTS = [
 	[
 		'tools/lib/tiers.mjs',
 		'a BIC is certain only on its first eight characters',
-		'b.slice(0, 8) === value.slice(0, 8)',
-		'b.slice(0, 6) === value.slice(0, 6)'
+		'b.slice(0, 8) === v.slice(0, 8)',
+		'b.slice(0, 6) === v.slice(0, 6)'
 	],
 	[
 		'tools/score.mjs',
@@ -140,16 +182,22 @@ const MUTANTS = [
 		'const tiers = factTiers(s.tiers, facts, w, () => true);'
 	],
 	[
-		'tools/score.mjs',
+		'tools/lib/tiers.mjs',
 		'passport current is never certain',
-		"(fact) => fact !== 'current' && zone",
-		'() => zone'
+		"if (fact === 'current') return false;",
+		''
 	],
 	[
 		'tools/lib/tiers.mjs',
 		'a passport fact is certain only through a passport zone whose check digits pass',
-		"return zone?.type === 'passport' && zone.failed.length === 0;",
-		'return zone !== null;'
+		"if (zone?.type !== 'passport' || zone.failed.length) return false;",
+		'if (zone === null) return false;'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		"a certain passport number is the zone's number",
+		"return fact !== 'number' || number?.value === zone.number;",
+		'return true;'
 	],
 	[
 		'tools/score.mjs',
@@ -172,8 +220,14 @@ const MUTANTS = [
 	[
 		'tools/score.mjs',
 		'same_org rows with one id are one claim',
-		"const k = row.keys.join('\\0');",
-		"const k = row.keys.join('\\0') + row.reason;"
+		'const k = JSON.stringify(row.keys);',
+		'const k = JSON.stringify([...row.keys, row.reason]);'
+	],
+	[
+		'tools/score.mjs',
+		'two same_org claims never share an id',
+		'const k = JSON.stringify(row.keys);',
+		"const k = row.keys.join('\\0');"
 	],
 	[
 		'tools/score.mjs',
@@ -202,14 +256,26 @@ const MUTANTS = [
 	[
 		'tools/score.mjs',
 		'only a directory row may be certain',
-		"if (tier === 'certain' && !(row.reason === 'directory' && oneEntry))",
+		"if (tier === 'certain' && !join(keys[0], keys[1]) && !join(keys[1], keys[0]))",
 		'if (false)'
 	],
 	[
 		'tools/score.mjs',
+		'a certain join reads the directory, never the ids the cards give',
+		'!join(keys[0], keys[1]) && !join(keys[1], keys[0])',
+		'cards.get(keys[0]).directory !== cards.get(keys[1]).directory'
+	],
+	[
+		'tools/lib/tiers.mjs',
 		'a certain directory row needs the directory on',
-		"const oneEntry = output.directory === 'on' && a !== null && a === b;",
-		'const oneEntry = a === b;'
+		"if (reason !== 'directory' || mode !== 'on' ||",
+		"if (reason !== 'directory' ||"
+	],
+	[
+		'tools/lib/tiers.mjs',
+		'a certain join needs exactly one entry for the name and for the code',
+		'ids.length === 1 && ids[0] === found[0][0]',
+		'ids.includes(found[0][0])'
 	],
 	[
 		'tools/score.mjs',
@@ -432,7 +498,7 @@ const MUTANTS = [
 	[
 		'FORMAT.md',
 		'the worked example joins its two keys',
-		'"same_org": [{"keys": ["name:hdfcbank", "ifsc HDFC"], "reason": "directory", "tier": "certain"}]',
+		'"same_org": [{"keys": ["name:hdfcbank", "IFSC HDFC"], "reason": "directory", "tier": "certain"}]',
 		'"same_org": []'
 	],
 	['FORMAT.md', 'the sort code example must hold', '"value": "601613"', '"value": "60-16-13"']

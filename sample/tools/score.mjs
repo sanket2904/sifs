@@ -12,7 +12,9 @@ import { readLabels } from './lib/labels.mjs';
 import { isMain } from './lib/main.mjs';
 import {
 	CODE_REASONS,
-	institution,
+	codeKey,
+	mayBeCertainIdentifier,
+	mayBeCertainJoin,
 	mayBeCertainLink,
 	mayBeCertainPassport,
 	TIERS
@@ -63,7 +65,7 @@ const isDate = (v) => {
 	const day = new Date(Date.UTC(y, m - 1, d));
 	return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d;
 };
-const spanKey = (s) => `${s.page}:${s.start}:${s.end}`;
+const spanKey = (s) => JSON.stringify([s.page, s.start, s.end]);
 
 // Checks everything FORMAT.md says a well-formed output is, and returns it
 // with every reference resolved: keys to cards, identifier ids to entries.
@@ -177,7 +179,18 @@ function parseOutput(output, textSet, entries) {
 			if (!Object.hasOwn(KINDS, id.kind)) fail(w, `kind ${JSON.stringify(id.kind)} is not known`);
 			if (typeof id.value !== 'string') fail(w, 'value must be text');
 			if (![true, false, null].includes(id.valid)) fail(w, 'valid must be true, false or null');
-			identifiers.set(id.id, { id: id.id, ...at, kind: id.kind, value: id.value, valid: id.valid });
+			const tier = tierOf(id.tier, `${w}.tier`);
+			const identifier = {
+				id: id.id,
+				...at,
+				kind: id.kind,
+				value: id.value,
+				valid: id.valid,
+				tier
+			};
+			if (tier === 'certain' && !mayBeCertainIdentifier(identifier, output.directory, entries))
+				fail(`${w}.tier`, `kind ${id.kind} cannot be certain here (${TIERS_HELP})`);
+			identifiers.set(id.id, identifier);
 		});
 		oneRowPerSpan([...identifiers.values()], `${where}.identifiers`);
 		const ident = (id, w) => {
@@ -196,6 +209,13 @@ function parseOutput(output, textSet, entries) {
 				if (!REASONS.has(r)) fail(w, `reason ${JSON.stringify(r)} is not known`);
 			if (link.reasons.includes('paired-code') && (link.via === undefined || link.via === null))
 				fail(w, 'paired-code needs a via');
+			const canonical = codeKey(identifier);
+			const own = link.reasons.find((r) => CODE_REASONS.get(r) === identifier.kind);
+			if (own && canonical !== null && link.org !== canonical)
+				fail(
+					w,
+					`a link by ${own} goes to its code's key, ${JSON.stringify(canonical)} (FORMAT.md, "Code keys")`
+				);
 			const tier = tierOf(link.tier, `${w}.tier`);
 			const test = { identifier, reasons: link.reasons, card: cards.get(org) };
 			if (tier === 'certain' && !mayBeCertainLink(test, output.directory, entries))
@@ -247,9 +267,10 @@ function parseOutput(output, textSet, entries) {
 			const current = p.current ?? null;
 			if (![true, false, null].includes(current)) fail(w, 'current must be true, false or null');
 			const given = { holder, number, expiry, current };
-			const zone = mayBeCertainPassport(mrz);
 			const facts = Object.keys(given).filter((f) => given[f] !== null);
-			const tiers = factTiers(p.tiers, facts, w, (fact) => fact !== 'current' && zone);
+			const tiers = factTiers(p.tiers, facts, w, (fact) =>
+				mayBeCertainPassport(fact, { mrz, number })
+			);
 			passport = {
 				holder,
 				number,
@@ -277,12 +298,25 @@ function parseOutput(output, textSet, entries) {
 			if (!SAME_ORG_REASONS.has(row.reason))
 				fail(w, `reason must be one of ${[...SAME_ORG_REASONS].join(', ')}`);
 			const tier = tierOf(row.tier, `${w}.tier`);
-			const [a, b] = keys.map((k) => cards.get(k).directory);
-			const oneEntry = output.directory === 'on' && a !== null && a === b;
-			if (tier === 'certain' && !(row.reason === 'directory' && oneEntry))
+			// The directory decides, from the printed names on one key and the
+			// codes on the other, never from the ids the cards give.
+			const names = (k) => mentions.filter((m) => m.org === k).map((m) => m.text);
+			const codes = (k) =>
+				links
+					.filter(
+						(l) => l.org === k && l.reasons.some((r) => CODE_REASONS.get(r) === l.identifier.kind)
+					)
+					.map((l) => l.identifier);
+			const join = (n, c) =>
+				mayBeCertainJoin(
+					{ reason: row.reason, names: names(n), codes: codes(c) },
+					output.directory,
+					entries
+				);
+			if (tier === 'certain' && !join(keys[0], keys[1]) && !join(keys[1], keys[0]))
 				fail(
 					`${w}.tier`,
-					`only a directory row whose cards give one directory id is certain (${TIERS_HELP})`
+					`only a directory row whose printed name and code each look up to one entry, the same one, is certain (${TIERS_HELP})`
 				);
 			return { keys, reason: row.reason, tier };
 		});
@@ -453,9 +487,10 @@ export function score(labels, textSet, rawOutput, directory) {
 			label.identifiers.filter((i) => !possible(id, i, i.value)).map((i) => i.id)
 		);
 		const impossibleMention = new Set(label.orgs.filter((m) => !possible(id, m)).map((m) => m.id));
-		const mentionKey = (m) => (ocrRead(id, m.page) ? `${m.page}:${m.text}` : spanKey(m));
-		const identKey = (i) => (ocrRead(id, i.page) ? `${i.page}:${squash(i.value)}` : spanKey(i));
-		const decoyKey = (n) => (ocrRead(id, n.page) ? `${n.page}:${squash(n.text)}` : spanKey(n));
+		const onPage = (page, text) => JSON.stringify([page, text]);
+		const mentionKey = (m) => (ocrRead(id, m.page) ? onPage(m.page, m.text) : spanKey(m));
+		const identKey = (i) => (ocrRead(id, i.page) ? onPage(i.page, squash(i.value)) : spanKey(i));
+		const decoyKey = (n) => (ocrRead(id, n.page) ? onPage(n.page, squash(n.text)) : spanKey(n));
 		const idents = pair(label.identifiers, output.identifiers, identKey);
 		// The labelled identifier an output identifier is: the one it pairs
 		// with, when the kind and value agree.
@@ -500,26 +535,22 @@ export function score(labels, textSet, rawOutput, directory) {
 		}
 	const targetsOf = (key) => byMention.get(key) ?? byCode.get(key) ?? new Set();
 	const keys = [...out.cards.keys()];
-	// The no-merge rule, read from the output alone: a key holds the
-	// institution code of every IFSC, BIC or IBAN linked to it by that code's
-	// own reason, and a key that holds one is that code and no printed name.
-	const codesOf = new Map();
+	// The no-merge rule, read from the output alone. A code's key is spelt
+	// from its code, which the format checks, so one key never holds two
+	// codes. A key that holds a code is that code and no printed name.
+	const codeKeys = new Set();
 	const named = new Set();
 	for (const d of out.docs.values()) {
 		for (const m of d.orgs) if (m.org) named.add(m.org);
-		for (const l of d.links) {
-			const own = l.reasons.some((r) => CODE_REASONS.get(r) === l.identifier.kind);
-			const code = own && institution(l.identifier);
-			if (code) note(codesOf, l.org, code);
-		}
+		for (const l of d.links)
+			if (l.reasons.some((r) => CODE_REASONS.get(r) === l.identifier.kind) && codeKey(l.identifier))
+				codeKeys.add(l.org);
 	}
 	const merges = keys.flatMap((k) => {
-		const codes = [...(codesOf.get(k) ?? [])].sort();
 		const organisations = [...targetsOf(k)].sort();
 		return [
 			...(organisations.length > 1 ? [{ key: k, why: 'organisations', organisations }] : []),
-			...(codes.length > 1 ? [{ key: k, why: 'codes', codes }] : []),
-			...(codes.length && named.has(k) ? [{ key: k, why: 'name-and-code', codes }] : [])
+			...(codeKeys.has(k) && named.has(k) ? [{ key: k, why: 'name-and-code' }] : [])
 		];
 	});
 	// Only papers of two organisations make a key's rows wrong. The other
@@ -662,7 +693,8 @@ export function score(labels, textSet, rawOutput, directory) {
 					lang,
 					diff.length ? 'wrong' : 'right',
 					id,
-					diff.length ? `${what}: given ${diff.map((f) => `${f} ${o[f]}`).join(', ')}` : what
+					diff.length ? `${what}: given ${diff.map((f) => `${f} ${o[f]}`).join(', ')}` : what,
+					o.tier
 				);
 			}
 		}
@@ -673,7 +705,8 @@ export function score(labels, textSet, rawOutput, directory) {
 				lang,
 				'wrong',
 				id,
-				`${o.kind} ${o.value}: ${decoy ? `a decoy (${decoy.why})` : 'not a labelled identifier'}`
+				`${o.kind} ${o.value}: ${decoy ? `a decoy (${decoy.why})` : 'not a labelled identifier'}`,
+				o.tier
 			);
 		}
 
@@ -695,12 +728,13 @@ export function score(labels, textSet, rawOutput, directory) {
 			const ident = w.labelOf.get(link.identifier) ?? null;
 			const t = mapped(link.org);
 			const shown = ident ?? link.identifier;
-			const k = [
-				ident ? 'labelled' : 'unlabelled',
+			const k = JSON.stringify([
+				ident !== null,
 				shown.kind,
 				shown.value,
-				t ?? `key:${link.org}`
-			].join('\0');
+				t,
+				t === null ? link.org : null
+			]);
 			if (!groups.has(k))
 				groups.set(k, {
 					ident,
@@ -741,10 +775,15 @@ export function score(labels, textSet, rawOutput, directory) {
 			const right = labelLinks.find((l) => l.org === g.t && same(l.ident, g.ident));
 			if (right) {
 				const via = right.via && w.identById.get(right.via);
+				// An IBAN whose check digits pass is held at the institution with
+				// its bank code, whatever reasons the label lists for the link.
+				const ownIban = (r) =>
+					r === 'iban-bank-code' && g.ident.kind === 'iban' && KINDS.iban.valid(g.ident.value);
 				const holds = reasons.filter(
 					(r) =>
-						right.reasons.includes(r) &&
-						(r !== 'paired-code' || (via && g.vias.some((v) => same(v, via))))
+						ownIban(r) ||
+						(right.reasons.includes(r) &&
+							(r !== 'paired-code' || (via && g.vias.some((v) => same(v, via)))))
 				);
 				right.found ||= holds.length > 0;
 				add(
@@ -785,7 +824,7 @@ export function score(labels, textSet, rawOutput, directory) {
 		// the document that no right rows join are left out.
 		const claims = new Map();
 		for (const row of output.sameOrg) {
-			const k = row.keys.join('\0');
+			const k = JSON.stringify(row.keys);
 			if (!claims.has(k)) claims.set(k, { keys: row.keys, tier: 'likely' });
 			if (row.tier === 'certain') claims.get(k).tier = 'certain';
 		}
@@ -1025,6 +1064,13 @@ export function score(labels, textSet, rawOutput, directory) {
 	const measures = Object.fromEntries(
 		[...rows].sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b))
 	);
+	// A card that no certain link or certain same_org row stands on is a
+	// proposal: nothing on it is shown as confirmed (FORMAT.md, "Cards on likely rows only").
+	const certainKeys = new Set();
+	for (const d of out.docs.values()) {
+		for (const l of d.links) if (l.tier === 'certain') certainKeys.add(l.org);
+		for (const r of d.sameOrg) if (r.tier === 'certain') r.keys.forEach((k) => certainKeys.add(k));
+	}
 	const failed = merges.length > 0 || items.wrong.some((i) => i.tier === 'certain');
 	return {
 		extractor: out.extractor,
@@ -1036,6 +1082,7 @@ export function score(labels, textSet, rawOutput, directory) {
 		wrong_cards: wrongCards,
 		wrong_attachments: wrongAttachments,
 		splits,
+		likely_only_cards: keys.filter((k) => !certainKeys.has(k)).sort(),
 		...items
 	};
 }
@@ -1073,6 +1120,11 @@ export function table(result) {
 	body.push(count('wrong cards', result.wrong_cards.length));
 	body.push(count('wrong attachments', result.wrong_attachments.length));
 	body.push(['splits', String(result.splits.length), ...head.slice(2).map(() => '')]);
+	body.push([
+		'cards on likely rows only',
+		String(result.likely_only_cards.length),
+		...head.slice(2).map(() => '')
+	]);
 	const widths = head.map((h, i) => Math.max(h.length, ...body.map((row) => row[i].length)));
 	const line = (row) =>
 		row.map((c, i) => (i ? c.padStart(widths[i]) : c.padEnd(widths[i]))).join('  ');
@@ -1083,8 +1135,7 @@ export function table(result) {
 	];
 	const merge = {
 		organisations: (m) => `covers ${m.organisations.join(', ')}`,
-		codes: (m) => `holds the codes ${m.codes.join(', ')}`,
-		'name-and-code': (m) => `holds a printed name and the code ${m.codes.join(', ')}`
+		'name-and-code': () => 'is an institution code and holds a printed name'
 	};
 	for (const m of result.merges) out.push(`MERGE: key ${m.key} ${merge[m.why](m)}`);
 	for (const c of result.wrong_cards)

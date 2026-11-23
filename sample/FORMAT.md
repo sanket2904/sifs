@@ -43,7 +43,7 @@ One JSON file per run.
 | `documents` | One entry per document the extractor read. A document left out of the list has nothing found. |
 | `answers` | `latest_statement`, a list of `{"account", "document"}`, and `current_passport`, a list of `{"holder", "document"}`. |
 
-A key is any non-empty string. It is the extractor's identity for an organisation across all documents, as a local id is in the labels. The extractor never sees the labels' local ids.
+A key is a non-empty string. It is the extractor's identity for an organisation across all documents, as a local id is in the labels. The extractor never sees the labels' local ids. "Code keys" says how a key is spelt.
 
 A span is `page` (from 1), `start`, `end` (Unicode scalar values, end exclusive) and `text`, counted in the page text of the run's text set. Every span must lie inside its page (`0 <= start <= end <=` the page's length) and read back its `text`, or the scorer rejects the file. One occurrence in the text is one row: two mentions, or two identifiers, with the same span in one document make the scorer reject the file.
 
@@ -53,7 +53,7 @@ A document entry holds:
 | --- | --- |
 | `id` | The document id. |
 | `orgs` | An organisation mention: a span, `org` (a key, or `null` for a name that is no organisation the extractor can settle), and `settled_by`: `name`, `mention` or `code` when the document settles it (the README's evidence kinds), `directory` when only a directory lookup does, or `null`. |
-| `identifiers` | A span, `id` (the extractor's own, unique in the document), `kind` (a README identifier kind), `value` (as "Values" below gives it), and `valid` (`true`, `false`, or `null` for a kind with no check). |
+| `identifiers` | A span, `id` (the extractor's own, unique in the document), `kind` (a README identifier kind), `value` (as "Values" below gives it), `valid` (`true`, `false`, or `null` for a kind with no check), and `tier`, the tier of the kind ("Identifier tiers"). |
 | `links` | Identifier held at organisation: `identifier` (an identifier `id`), `org` (a key), `reasons` (README link reasons), `via` (an identifier `id`), which a link with `paired-code` must give, and `tier`. |
 | `statement` | `from`, `to` (`YYYY-MM-DD`), `accounts` (identifier ids that spell the statement's own account), `issuer` (a key, or `null`), and `tiers`: a tier for `period`, for `accounts` when it is not empty, and for `issuer` when it is not `null`. Absent when the document is not a statement. |
 | `passport` | `holder` (`surname`, `given`), `number` and `mrz` (identifier ids of the document, or `null`), `issued` (a date, or `null`), `expiry` (a date, `cannot-tell`, or `null`), `expiry_at` (a span, or `null`), `current`, and `tiers`: a tier for each of `holder`, `number`, `expiry` and `current` that is not `null`. Absent when the document is not a passport. |
@@ -81,31 +81,31 @@ A run with the directory on writes, among the other documents:
   "format": 2, "extractor": "go-m1a", "directory": "on", "text_set": "text",
   "organisations": {
     "name:hdfcbank": {"name": "HDFC Bank Ltd", "directory": "Q631047"},
-    "ifsc HDFC": {"name": null, "directory": "Q631047"}
+    "IFSC HDFC": {"name": null, "directory": "Q631047"}
   },
   "documents": [{
     "id": "hdfc-statement-sep",
     "orgs": [{"page": 1, "start": 60, "end": 73, "text": "HDFC Bank Ltd", "org": "name:hdfcbank", "settled_by": "name"}],
     "identifiers": [
-      {"id": "i1", "page": 1, "start": 193, "end": 207, "text": "50100417263958", "kind": "account", "value": "50100417263958", "valid": null},
-      {"id": "i2", "page": 1, "start": 214, "end": 225, "text": "HDFC0SAMPL1", "kind": "ifsc", "value": "HDFC0SAMPL1", "valid": true}
+      {"id": "i1", "page": 1, "start": 193, "end": 207, "text": "50100417263958", "kind": "account", "value": "50100417263958", "valid": null, "tier": "likely"},
+      {"id": "i2", "page": 1, "start": 214, "end": 225, "text": "HDFC0SAMPL1", "kind": "ifsc", "value": "HDFC0SAMPL1", "valid": true, "tier": "certain"}
     ],
     "links": [
-      {"identifier": "i2", "org": "ifsc HDFC", "reasons": ["ifsc-prefix"], "tier": "certain"},
-      {"identifier": "i1", "org": "ifsc HDFC", "reasons": ["paired-code"], "via": "i2", "tier": "likely"},
+      {"identifier": "i2", "org": "IFSC HDFC", "reasons": ["ifsc-prefix"], "tier": "certain"},
+      {"identifier": "i1", "org": "IFSC HDFC", "reasons": ["paired-code"], "via": "i2", "tier": "likely"},
       {"identifier": "i1", "org": "name:hdfcbank", "reasons": ["statement-header"], "tier": "likely"}
     ],
     "statement": {"from": "2026-09-01", "to": "2026-09-30", "accounts": ["i1"], "issuer": "name:hdfcbank",
                   "tiers": {"period": "likely", "accounts": "likely", "issuer": "likely"}},
-    "same_org": [{"keys": ["name:hdfcbank", "ifsc HDFC"], "reason": "directory", "tier": "certain"}]
+    "same_org": [{"keys": ["name:hdfcbank", "IFSC HDFC"], "reason": "directory", "tier": "certain"}]
   }],
   "answers": {"latest_statement": [{"account": "50100417263958", "document": "hdfc-statement-sep"}], "current_passport": []}
 }
 ```
 
-The printed name and the IFSC have one key each. The IFSC link is certain because the directory holds `HDFC` for the entry on its card. The account is held at both keys, and both links are likely: one is read from the line beside the code, the other from the header. The `same_org` row says the two keys are one bank, and it is certain because both cards give the directory id that the name and the code look up to. A person sees one HDFC Bank card.
+The printed name and the IFSC have one key each. The IFSC is certain to be an IFSC, and its link certain, because the directory holds `HDFC` for the entry on its card. The account number is likely: nothing in its digits says it is an account. The account is held at both keys, and both links are likely: one is read from the line beside the code, the other from the header. The `same_org` row says the two keys are one bank, and it is certain because the name `HDFC Bank Ltd` looks up to exactly one directory entry and the code `HDFC` to that same entry. A person sees one HDFC Bank card.
 
-With the directory off, both cards give `"directory": null`, the IFSC link is `likely`, and the `same_org` row is `likely` with the reason `spells-code`: the name begins with the code's four letters. A person then sees two cards and the row "may be the same organisation". A `…` in the input stands for lines left out here. `score.test.mjs` checks every JSON block in this file against the committed text and the scorer.
+With the directory off, both cards give `"directory": null`, the IFSC and its link are `likely`, and the `same_org` row is `likely` with the reason `spells-code`: the name begins with the code's four letters. A person then sees two cards and the row "may be the same organisation". A `…` in the input stands for lines left out here. `score.test.mjs` checks every JSON block in this file against the committed text and the scorer.
 
 ### Values
 
@@ -121,42 +121,78 @@ An identifier's `value` is written as the labels write it, whichever text set th
 On `text-ocr/` the value is still what the paper prints, so an extractor that repairs the OCR text gives the repaired value. The sort code in `natwest-statement`:
 
 ```json
-{"id": "natwest-statement", "identifiers": [{"id": "i4", "page": 1, "start": 148, "end": 156, "text": "60-16-13", "kind": "gb_sort_code", "value": "601613", "valid": true}]}
+{"id": "natwest-statement", "identifiers": [{"id": "i4", "page": 1, "start": 148, "end": 156, "text": "60-16-13", "kind": "gb_sort_code", "value": "601613", "valid": true, "tier": "likely"}]}
 ```
 
 The machine-readable zone in `passport-rohan`:
 
 ```json
-{"id": "passport-rohan", "identifiers": [{"id": "i2", "page": 1, "start": 390, "end": 479, "text": "P<UTOKALPIT<<ROHAN<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0029356UTO1609307M2801049<<<<<<<<<<<<<<<8", "kind": "mrz", "value": "P<UTOKALPIT<<ROHAN<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0029356UTO1609307M2801049<<<<<<<<<<<<<<<8", "valid": true}]}
+{"id": "passport-rohan", "identifiers": [{"id": "i2", "page": 1, "start": 390, "end": 479, "text": "P<UTOKALPIT<<ROHAN<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0029356UTO1609307M2801049<<<<<<<<<<<<<<<8", "kind": "mrz", "value": "P<UTOKALPIT<<ROHAN<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0029356UTO1609307M2801049<<<<<<<<<<<<<<<8", "valid": true, "tier": "certain"}]}
 ```
 
 ## Tiers
 
-Every link, statement fact, passport fact and `same_org` row carries a tier, `certain` or `likely`. The app shows a certain claim as a fact. It shows a likely claim as "may be", with its reason, for a person to confirm or reject.
+Every identifier, link, statement fact, passport fact and `same_org` row carries a tier, `certain` or `likely`. The app shows a certain claim as a fact. It shows a likely claim as "may be", with its reason, for a person to confirm or reject.
 
 A claim is `certain` only when the characters of an identifier prove it, or when the directory holds the exact code. Nothing read from layout, headings, nearness or wording is certain, however strong it looks. Everything else the extractor wants to say is `likely`: a statement header's bank, a code beside an account, the issuer, the period, which passport is current, which statement is the latest, and which printed name goes with which code.
 
 | Claim | Certain when |
 | --- | --- |
 | Link with `iban-bank-code` | The identifier is an IBAN whose check digits pass. The scorer computes them again from `value`. An IBAN that passes is held at the institution that has its bank code in its country, so the link goes to that code's key. The directory is not needed. |
-| Link with `ifsc-prefix` | The directory is on, and the directory entry that the key's card gives lists the IFSC's first four letters. An IFSC has no check digit, so with the directory off the link is likely. |
-| Link with `bic-institution` | The directory is on, and the directory entry that the key's card gives lists a BIC with the same first eight characters (bank, country and location). A BIC has no check digit, so with the directory off the link is likely. |
+| Link with `ifsc-prefix` | The IFSC may be certain ("Identifier tiers"), and the directory entry that the key's card gives lists its first four letters. An IFSC has no check digit, so with the directory off the link is likely. |
+| Link with `bic-institution` | The BIC may be certain ("Identifier tiers"), and the directory entry that the key's card gives lists a BIC with the same first eight characters, the institution ("Code keys"). A BIC has no check digit, so with the directory off the link is likely. |
 | Link with `paired-code`, `same-account`, `inside-iban` or `statement-header` alone | Never. These reasons are read from the page's layout. |
 | Statement `period`, `accounts`, `issuer` | Never. |
-| Passport `holder`, `number`, `expiry` | The passport's `mrz` is a passport machine-readable zone (it starts with `P`) whose check digits all pass. A visa's zone makes no passport fact certain. |
+| Passport `holder`, `number`, `expiry` | The passport's `mrz` is a passport machine-readable zone (it starts with `P`) whose check digits all pass. A visa's zone makes no passport fact certain. `number` is certain only when its identifier's value is the zone's document number. |
 | Passport `current` | Never. It depends on other documents and on the reference date. |
-| `same_org` row | Its reason is `directory`, the directory is on, and both cards give the same directory id. |
+| `same_org` row | Its reason is `directory` ("Same organisation" gives the test). |
 
-A link with several reasons is certain when one of them passes its test. An output that calls a claim certain where this table does not allow it breaks the format. Mentions, identifiers and cards carry no tier: they are what the extractor read, and the claims above are built on them. An identifier's `valid` already says whether its check digits pass. The answers carry no tier and are always likely, because "latest" and "current" are judgements over many documents.
+A link with several reasons is certain when one of them passes its test. An output that calls a claim certain where a table here does not allow it breaks the format. Mentions and cards carry no tier: they are what the extractor read, and the claims above are built on them. The answers carry no tier and are always likely, because "latest" and "current" are judgements over many documents.
+
+A claim is never certain when the identifier it rests on is only likely, except where the claim's own test proves the identifier. These are the exceptions, and the only ones. `iban-bank-code`, `ifsc-prefix` and `bic-institution` each include the identifier's own test, so a certain link's identifier always passes it, whatever tier the output gives the identifier. A passport's `holder`, `number` and `expiry` rest on the machine-readable zone, not on the printed number, whose kind has no check: the zone's check digits prove them, and `number` must be the zone's number. No statement fact is certain.
+
+### Identifier tiers
+
+An identifier's tier is the tier of its kind: "this text is an IBAN", "this number is an account". The kind is certain only when the identifier's own check proves it, and the check is strong.
+
+| Kind | Certain when |
+| --- | --- |
+| `iban` | Its check digits pass (mod 97). The scorer computes them again from `value`. |
+| `mrz` | It is a passport or visa zone whose check digits all pass. |
+| `ifsc`, `bic` | It has the code's shape, the directory is on, and a directory entry holds its institution code exactly ("Code keys"). Neither code has a check digit. |
+| `card` | Never. One string of digits in ten passes the Luhn check digit, so a pass proves little. |
+| `account`, `gb_sort_code`, `in_pan`, `fr_bank_code`, `fr_branch_code`, `fr_rib_key`, `passport_number` | Never. These kinds have no check, or one only a shape or the digits beside them can pass. The word printed beside a number is wording. |
+
+A wrong certain identifier fails the run. A wrong likely one is counted. `valid` still says whether the kind's check passes, as the labels give it.
+
+### Cards on likely rows only
+
+A card that no certain link and no certain `same_org` row stands on is built only from likely rows. Such a card, and any document attached to it, does not fail a run. In the app, nothing on it may be shown as confirmed: the card itself is a proposal until a certain row or a person's confirmation supports it. The scorer's table prints how many cards rest on likely rows only.
 
 ### No merging
 
 An extractor never merges two organisations into one key. A key is one of these:
 
-- An institution code. The key is that code: two different codes are two keys, always. The institution code of an IFSC is its first four letters. The institution code of a BIC is its first six characters (bank and country). The institution code of an IBAN is its country and bank code. The scorer knows where the bank code sits for CH, DE, ES, FR, GB, IE and NL; for an IBAN of another country it reads no code, and only the labels can find a merge.
+- An institution code. The key is that code, spelt as "Code keys" says: two different codes are two keys, always.
 - A printed name. The key stands for that name, and the extractor may use it in every document that prints the name.
 
-A key holds the institution code of every IFSC, BIC or IBAN linked to it with that code's own reason (`ifsc-prefix`, `bic-institution` or `iban-bank-code`). A key is a MERGE when it holds two institution codes, when it holds an institution code and a mention is keyed to it, or when its papers land on two labelled organisations ("Organisation keys"). Any merge fails the run.
+A key holds the institution code of every IFSC, BIC or IBAN linked to it with that code's own reason (`ifsc-prefix`, `bic-institution` or `iban-bank-code`). A key is a MERGE when it holds an institution code and a mention is keyed to it, or when its papers land on two labelled organisations ("Organisation keys"). Any merge fails the run. A key cannot hold two codes: the link of the second would not go to its own code's key, which breaks the format.
+
+### Code keys
+
+A key that stands for an institution code is spelt one way, the same in every document, every run and every extractor: the kind, the country where the kind needs one, and the code, separated by single spaces, in upper case.
+
+| Kind | Institution code | Key |
+| --- | --- | --- |
+| IFSC | Its first four letters, the bank. | `IFSC HDFC` |
+| BIC | Its first eight characters: the institution's four letters, its country and its two-character suffix. The three characters after them name a branch. | `BIC COBADEFF` |
+| IBAN | Its country and its bank code. | `IBAN DE 37040044` |
+
+A BIC's institution is its first eight characters because in ISO 9362 those eight (the party prefix, the country and the party suffix) identify one business party, and the last three a branch of it. The two characters after the country belong to the party's identifier, not to a place inside it, so two parties can share the first six. Eight characters never put two institutions on one key; at worst one bank with two such codes has two keys, a split, which `same_org` rows join.
+
+A link by an identifier's own code reason (`ifsc-prefix` for an IFSC, `bic-institution` for a BIC, `iban-bank-code` for an IBAN) goes to that identifier's code key, or the output breaks the format. The scorer knows where the bank code sits in an IBAN for CH, DE, ES, FR, GB, IE and NL, the countries whose IBAN it can check; for an IBAN of another country it reads no code, checks no key, and only the labels can find a merge.
+
+A key that stands for a printed name is free-form, but it is spelt from the name's text, such as `name:hdfcbank`, never from a counter or a position in the file. A claim's id is made from its keys ("Ids"), and a person's confirmation is kept by that id, so a key must come out the same when the extractor runs again over the same files.
 
 "This name is that code's bank" and "these two keys are one organisation" are claims of their own, written as `same_org` rows. A code's key may still have a card name, such as the directory entry's name with the directory on.
 
@@ -166,14 +202,14 @@ A `same_org` row sits in the document that shows the join. Both keys must be use
 
 | Reason | The document or the directory shows |
 | --- | --- |
-| `directory` | Both cards give the same directory id: the name's exact lookup and the code's entry are one entry. Only this reason can be certain, and only with the directory on. |
+| `directory` | The directory says the name is the code's institution. The row is certain only when the directory is on, one key is a printed name with mentions in the document, the other key holds a code linked to it in the document by the code's own reason, every one of those mentions' exact directory lookups (README, "Mentions, with the directory on and off": one entry holds its match key) gives exactly one entry, and the code's exact lookup gives exactly that entry. The scorer makes both lookups itself and never reads the ids the cards give. Only this reason can be certain. A name settled by wording, nearness, another mention or a code, such as a bare `HDFC` that two entries hold, keeps the row likely. |
 | `spells-code` | The name begins with the code's letters, as `HDFC Bank Ltd` begins with the `HDFC` of `HDFC0SAMPL1`. |
 | `statement-header` | The name heads the statement and the code is on the statement's account. |
 | `printed-together` | The name and the code are on one line, or on lines next to each other. |
 
 ### Ids
 
-Each claim can be named without its position in the file, so that a person's confirmation can be kept outside this format. A link's id is its document, its identifier's kind and value, and its key. A `same_org` row's id is its document and its two keys in sorted order. Rows with the same id are one claim. The claim holds the union of the rows' reasons, and it is certain when one of its rows is certain. Row order never changes a score. A key spelt from its code or name, such as `ifsc HDFC`, keeps ids the same from one run to the next; a counter does not.
+Each claim can be named without its position in the file, so that a person's confirmation can be kept outside this format. A link's id is its document, its identifier's kind and value, and its key. A `same_org` row's id is its document and its two keys in sorted order. Rows with the same id are one claim. The claim holds the union of the rows' reasons, and it is certain when one of its rows is certain. Row order never changes a score. Because keys are spelt from codes and names ("Code keys"), ids stay the same from one run to the next.
 
 ### What the tiers settle
 
@@ -193,7 +229,7 @@ Each claim can be named without its position in the file, so that a person's con
 **Organisation keys.** Each key maps to the set of labelled organisations its matched mentions land on, across all documents. A key that no mention lands on, such as a bank known only by the IFSC beside an account, maps through its links from identifiers that carry their institution inside them: an IFSC, a BIC or an IBAN. It maps to the organisations the labels link those identifiers to. An account linked to the key never says who the key is, whatever the reason given. Then:
 
 - A key whose set holds one organisation is that organisation.
-- A key whose set holds two or more is a MERGE: two organisations' papers on one card. Every mention, link, issuer and `same_org` row that uses it is wrong, and the run fails. The other two merges of "No merging", two codes or a code and a name on one key, fail the run as well, but the rows on the key are scored as the organisation the labels give it.
+- A key whose set holds two or more is a MERGE: two organisations' papers on one card. Every mention, link, issuer and `same_org` row that uses it is wrong, and the run fails. The other merge of "No merging", a code and a printed name on one key, fails the run as well, but the rows on the key are scored as the organisation the labels give it.
 - A labelled organisation that two or more keys land on is a SPLIT. Splits are listed and counted. They are not wrong.
 - A key whose set is empty is no labelled organisation. A link to it is wrong.
 
@@ -201,9 +237,9 @@ Each claim can be named without its position in the file, so that a person's con
 
 `org_directory` scores each mapped key's `directory`. With the directory on it must be the organisation's directory id, and `null` counts as left out. With it off it must be `null`.
 
-**Identifiers.** A matched identifier is right when its `kind` and `value` equal the label's, and its `valid` too unless the label's `valid` is `null`. The label gives `null` for a kind with no check, and for the PAN `ABCPK0000F`, which a shape check accepts and a strict check rejects; there either answer is right. An output identifier that matches no label is wrong. When it sits on a `not_identifiers` entry it is reported as a decoy.
+**Identifiers.** A matched identifier is right when its `kind` and `value` equal the label's, and its `valid` too unless the label's `valid` is `null`. The label gives `null` for a kind with no check, and for the PAN `ABCPK0000F`, which a shape check accepts and a strict check rejects; there either answer is right. An output identifier that matches no label is wrong. When it sits on a `not_identifiers` entry it is reported as a decoy. Each identifier is counted under the tier the output gives it.
 
-**Links.** A link is its identifier's kind and value and the organisation its key maps to. A link's identifier counts only when it matched a labelled identifier with the same kind and value. Rows in one document for the same link are one link: it holds the union of their reasons and `via` codes and is scored once, whatever order the rows are in. That includes rows at two keys of one organisation, such as an account held at a bank's name and at its code. The link is certain when one of its rows is certain. A link is right when the labels have that link and at least one of its reasons is among the label's reasons. `paired-code` holds only when a `via` is an output identifier that matched the labelled `via` code. Every other link is wrong, with the first cause that applies: a merged, wrong-card or unmapped key, no such identifier in the labels, a labelled link with no reason that holds, a `not_links` entry, an identifier the labels mark invalid, an organisation the document does not settle, or nothing that ties them. A labelled link with no right output link is left out.
+**Links.** A link is its identifier's kind and value and the organisation its key maps to. A link's identifier counts only when it matched a labelled identifier with the same kind and value. Rows in one document for the same link are one link: it holds the union of their reasons and `via` codes and is scored once, whatever order the rows are in. That includes rows at two keys of one organisation, such as an account held at a bank's name and at its code. The link is certain when one of its rows is certain. A link is right when the labels have that link and at least one of its reasons holds: it is among the label's reasons, or it is `iban-bank-code` on an IBAN whose check digits pass. Such an IBAN is held at the institution with its bank code, whatever reasons the label lists, so its link to its code key is right exactly when that key is the organisation the labels link the IBAN to. `paired-code` holds only when a `via` is an output identifier that matched the labelled `via` code. Every other link is wrong, with the first cause that applies: a merged, wrong-card or unmapped key, no such identifier in the labels, a labelled link with no reason that holds, a `not_links` entry, an identifier the labels mark invalid, an organisation the document does not settle, or nothing that ties them. A labelled link with no right output link is left out.
 
 **Same organisation.** A `same_org` claim is right when both keys map to one labelled organisation. It is wrong when they map to two, or when either key maps to none, merges two organisations or has a wrong card. The labels have no `same_org` rows: they are scored against the labels' organisations. In each document, the keys that the document uses and that map to one labelled organisation must be joined by right claims, directly or through each other. Each join that is missing is left out. With the directory off, some of these joins only the directory could make, such as Commerzbank and the IBAN in `transfer-untied`, where three banks are named in one line; leaving them out is the right answer.
 
@@ -211,11 +247,11 @@ Each claim can be named without its position in the file, so that a person's con
 
 **Answers.** A labelled answer is right when every output answer for that account or holder names the labelled document, wrong when one names another, and left out when none is given. An output answer for an account or holder the labels do not list is wrong. Every answer is likely.
 
-**Tiers.** Each measure counts right and wrong per tier, from the tier the output gives. Left out and impossible have no tier. The table prints them with the precision of the likely rows, right divided by right and wrong. Each wrong row is listed with its tier, a certain one as `WRONG CERTAIN`.
+**Tiers.** Each measure counts right and wrong per tier, from the tier the output gives. Left out and impossible have no tier. The table prints them with the precision of the likely rows, right divided by right and wrong. Each wrong row is listed with its tier, a certain one as `WRONG CERTAIN`. The table also prints how many cards rest on likely rows only, and the JSON lists their keys ("Cards on likely rows only").
 
 **What OCR made impossible.** On `text-ocr/`, a labelled item whose text or value the page does not hold, with any spacing, is counted as impossible instead of left out. A link is impossible when its identifier is, or when its only reason is `paired-code` through an impossible code. An extractor that repairs the OCR text and finds the value anyway scores it as right.
 
-**Exit status.** 0 when no certain row is wrong and no key merges. 1 when one is wrong or one merges. 2 when the output breaks this format, including a root that is not an object, a format 1 output and a missing tier. A likely row and a left-out row never fail a run.
+**Exit status.** 0 when no certain row is wrong and no key merges. 1 when one is wrong or one merges. 2 when the output breaks this format, including a root that is not an object, a format 1 output, a missing tier, a certain claim the tables do not allow, and a code link to a key that is not the code's key. A likely row and a left-out row never fail a run.
 
 ## How to score an extractor
 
@@ -265,3 +301,14 @@ Each claim can be named without its position in the file, so that a person's con
 - A key is one institution code or one printed name. Two codes on one key, or a code and a name, is a merge, and any merge fails the run.
 - `same_org` rows say that two keys are one organisation. They are scored against the labels' organisations.
 - A run fails when a certain row is wrong or a key merges. A wrong likely link, a wrong answer, a wrong card and a wrong attachment are counted and listed, and do not fail the run by themselves.
+
+## Changes in round 5
+
+- An identifier carries a tier. Its kind is certain only for an IBAN or a machine-readable zone whose check digits pass, or an IFSC or BIC the directory holds exactly. A card number, an account number and every other kind are likely. A wrong certain identifier fails the run.
+- A key that stands for an institution code is spelt one way, such as `IFSC HDFC`, `BIC COBADEFF` or `IBAN DE 37040044`. A link by a code's own reason to any other key breaks the format, so no key can hold two codes. A printed name's key is spelt from the name, never from a counter.
+- A BIC's institution is its first eight characters, in this file, `README.md` and the scorer.
+- A link by `iban-bank-code` on an IBAN whose check digits pass holds at the organisation the labels link the IBAN to, whatever reasons the label lists.
+- A certain `same_org` row needs the printed name's exact directory lookup and the code's to give one entry each, the same one. The scorer makes both lookups and reads no card's directory id.
+- A certain passport `number` must be the zone's document number.
+- The scorer keys every pair it groups by in a form no two different pairs share.
+- The table prints how many cards rest on likely rows only.

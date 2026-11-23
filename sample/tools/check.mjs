@@ -85,7 +85,7 @@ const ibanPart = (iban, kind) => {
 	const [from, to] = IBAN_PARTS[iban.slice(0, 2)]?.[kind] ?? [];
 	return from === undefined ? null : iban.slice(from, to);
 };
-const bicMatches = (entry, bic) => entry.codes.bic.some((b) => b.slice(0, 6) === bic.slice(0, 6));
+const bicMatches = (entry, bic) => entry.codes.bic.some((b) => b.slice(0, 8) === bic.slice(0, 8));
 
 const errors = [];
 const fail = (where, message) => errors.push(`${where}: ${message}`);
@@ -98,6 +98,8 @@ const isDate = (s) =>
 	/^\d{4}-\d\d-\d\d$/.test(s) &&
 	new Date(s + 'T00:00:00Z').toISOString().startsWith(s);
 const holderKey = (h) => `${h.surname}, ${h.given}`;
+// One key for a pair of strings, which no two different pairs share.
+const pairKey = (a, b) => JSON.stringify([a, b]);
 const word = (c) =>
 	c !== undefined &&
 	/[\p{L}\p{M}\p{N}]/u.test(c) &&
@@ -406,7 +408,7 @@ for (const doc of labels.documents) {
 			if (lookup.candidates) fail(at, 'only a clash has candidates');
 		} else if (lookup.lookup === 'clash') {
 			const candidates = [...(lookup.candidates ?? [])].sort();
-			if (held.length < 2 || candidates.join() !== held.join())
+			if (held.length < 2 || JSON.stringify(candidates) !== JSON.stringify(held))
 				fail(
 					at,
 					`directory candidates ${candidates.join(', ')}, the directory gives ${held.join(', ') || 'nothing'}`
@@ -633,7 +635,7 @@ for (const doc of labels.documents) {
 		if (!id || !organisations.has(link.org)) continue;
 		usedOrganisations.add(link.org);
 		if (id.valid === false) fail(at, 'links an identifier that fails its check');
-		const key = `${id.value} ${link.org}`;
+		const key = pairKey(id.value, link.org);
 		if (linked.has(key)) fail(at, 'linked twice');
 		linked.set(key, link);
 		if (
@@ -669,7 +671,7 @@ for (const doc of labels.documents) {
 					)) ||
 				(i.kind === 'bic' && bicMatches(entry, i.value)) ||
 				(i.kind === 'ifsc' && entry.codes.ifsc_prefix.includes(i.value.slice(0, 4)));
-			if (names && !linked.has(`${i.value} ${byEntry.get(entry.id)}`))
+			if (names && !linked.has(pairKey(i.value, byEntry.get(entry.id))))
 				fail(
 					`${where} identifier ${i.id}`,
 					`its code names ${entry.id}, but there is no link to it`
@@ -678,7 +680,7 @@ for (const doc of labels.documents) {
 	}
 	const linkedTo = new Map();
 	for (const key of linked.keys()) {
-		const [value, org] = key.split(' ');
+		const [value, org] = JSON.parse(key);
 		if (linkedTo.has(value) && linkedTo.get(value) !== org)
 			fail(where, `${value} is linked to both ${linkedTo.get(value)} and ${org}`);
 		linkedTo.set(value, org);
@@ -696,9 +698,9 @@ for (const doc of labels.documents) {
 		usedOrganisations.add(n.org);
 		if (!named.has(n.org) && n.why !== 'invalid-identifier')
 			fail(at, `the document does not name ${n.org}`);
-		if (excluded.has(`${n.identifier} ${n.org}`)) fail(at, 'listed twice');
-		excluded.add(`${n.identifier} ${n.org}`);
-		if (linked.has(`${id.value} ${n.org}`)) fail(at, 'the same pair is also a link');
+		if (excluded.has(pairKey(n.identifier, n.org))) fail(at, 'listed twice');
+		excluded.add(pairKey(n.identifier, n.org));
+		if (linked.has(pairKey(id.value, n.org))) fail(at, 'the same pair is also a link');
 		const holds = holdingReasons(id, n.org);
 		if (holds.length) fail(at, `${holds.join(', ')} holds, so the pair is a link`);
 		const other = linkedTo.get(id.value);
@@ -726,7 +728,7 @@ for (const doc of labels.documents) {
 	for (const i of doc.identifiers) {
 		if (!HELD.has(i.kind)) continue;
 		for (const org of named) {
-			if (!linked.has(`${i.value} ${org}`) && !excluded.has(`${i.id} ${org}`))
+			if (!linked.has(pairKey(i.value, org)) && !excluded.has(pairKey(i.id, org)))
 				fail(`${where} identifier ${i.id}`, `has neither a link nor a not_link to ${org}`);
 		}
 	}
@@ -887,13 +889,11 @@ for (const { account, list } of accounts) {
 	if (list.length < 2) continue;
 	const byPeriod = [...list]
 		.sort((a, b) => a.to.localeCompare(b.to))
-		.map((s) => s.doc)
-		.join();
+		.map((s) => s.doc);
 	const byFileDate = [...list]
 		.sort((a, b) => a.created.localeCompare(b.created))
-		.map((s) => s.doc)
-		.join();
-	if (byPeriod === byFileDate)
+		.map((s) => s.doc);
+	if (JSON.stringify(byPeriod) === JSON.stringify(byFileDate))
 		fail(`statements of ${account}`, 'file dates agree with the periods; they must not');
 }
 

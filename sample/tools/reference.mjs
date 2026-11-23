@@ -8,12 +8,19 @@ import { SAMPLE } from './generate.mjs';
 import { locate, readsBack } from './lib/find.mjs';
 import { readLabels } from './lib/labels.mjs';
 import { isMain } from './lib/main.mjs';
-import { CODE_REASONS, institution, mayBeCertainLink, mayBeCertainPassport } from './lib/tiers.mjs';
+import {
+	CODE_REASONS,
+	codeKey,
+	mayBeCertainIdentifier,
+	mayBeCertainJoin,
+	mayBeCertainLink,
+	mayBeCertainPassport
+} from './lib/tiers.mjs';
 import { readTextSet, TEXT_SETS } from './text.mjs';
 
 // Keys of its own, so a pass proves the scorer maps keys, not label ids. A
 // printed name's organisation has the key ref:<local id>; an institution code
-// has its own key, ref:<code>, and same_org rows join the two.
+// has its own canonical key, such as IFSC HDFC, and same_org rows join the two.
 const keyOf = (target) => `ref:${target}`;
 const squash = (v) => v.normalize('NFKC').toUpperCase().replace(/\s/gu, '');
 
@@ -36,8 +43,7 @@ export function reference(labels, textSet, directory, banks) {
 	// The key of an institution code. With the directory on, its card is the
 	// directory entry that holds the code; a code is never a printed name.
 	const codeKeyOf = new Map();
-	const declareCode = (code, target) => {
-		const key = keyOf(code);
+	const declareCode = (key, target) => {
 		organisations[key] ??= {
 			name: null,
 			directory: directory === 'on' ? labels.organisations[target].directory : null
@@ -82,7 +88,8 @@ export function reference(labels, textSet, directory, banks) {
 			const at = find(i, i.value);
 			if (!at) continue;
 			kept.add(i.id);
-			identifiers.push({ id: i.id, ...at, kind: i.kind, value: i.value, valid: i.valid });
+			const tier = mayBeCertainIdentifier(i, directory, entries) ? 'certain' : 'likely';
+			identifiers.push({ id: i.id, ...at, kind: i.kind, value: i.value, valid: i.valid, tier });
 		}
 		const byId = new Map(identifiers.map((i) => [i.id, i]));
 		// A code's own reason puts the link on the code's key, and paired-code
@@ -90,8 +97,8 @@ export function reference(labels, textSet, directory, banks) {
 		const keyFor = (l, reasons) => {
 			const ident = byId.get(l.identifier);
 			if (reasons.some((r) => CODE_REASONS.get(r) === ident.kind))
-				return declareCode(institution(ident), l.org);
-			if (reasons.includes('paired-code')) return declareCode(institution(byId.get(l.via)), l.org);
+				return declareCode(codeKey(ident), l.org);
+			if (reasons.includes('paired-code')) return declareCode(codeKey(byId.get(l.via)), l.org);
 			return declare(l.org);
 		};
 		const links = label.links
@@ -130,7 +137,6 @@ export function reference(labels, textSet, directory, banks) {
 			const p = label.passport;
 			const seen = find(p.expiry_at);
 			const mrz = kept.has(p.mrz) ? p.mrz : null;
-			const zone = mayBeCertainPassport(byId.get(mrz)) ? 'certain' : 'likely';
 			doc.passport = {
 				holder: p.holder,
 				number: kept.has(p.number) ? p.number : null,
@@ -141,10 +147,11 @@ export function reference(labels, textSet, directory, banks) {
 				expiry_at: seen,
 				current: seen ? p.current : null
 			};
+			const zone = { mrz: byId.get(mrz), number: byId.get(doc.passport.number) };
 			doc.passport.tiers = Object.fromEntries(
 				['holder', 'number', 'expiry', 'current']
 					.filter((f) => doc.passport[f] !== null)
-					.map((f) => [f, f === 'current' ? 'likely' : zone])
+					.map((f) => [f, mayBeCertainPassport(f, zone) ? 'certain' : 'likely'])
 			);
 		}
 		doc.same_org = sameOrg(label, doc);
@@ -174,11 +181,17 @@ export function reference(labels, textSet, directory, banks) {
 	// in the document or the directory joins them.
 	function joinRow(label, doc, target, a, b) {
 		const mentions = label.orgs.filter((m) => m.resolved_by_document?.org === target);
-		const exact = mentions.some(
-			(m) =>
-				m.directory.lookup === 'exact' && m.directory.id === labels.organisations[target].directory
-		);
-		if (directory === 'on' && exact && organisations[a].directory === organisations[b].directory)
+		const join = {
+			reason: 'directory',
+			names: doc.orgs.filter((m) => m.org === a).map((m) => m.text),
+			codes: doc.links
+				.map((l) => ({ l, ident: byIdOf(doc, l.identifier) }))
+				.filter(
+					({ l, ident }) => l.org === b && l.reasons.some((r) => CODE_REASONS.get(r) === ident.kind)
+				)
+				.map(({ ident }) => ident)
+		};
+		if (mayBeCertainJoin(join, directory, entries))
 			return { keys: [a, b], reason: 'directory', tier: 'certain' };
 		const codes = doc.links
 			.filter((l) => [a, b].includes(l.org))

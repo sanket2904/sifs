@@ -101,8 +101,8 @@ Identifier kinds are `iban`, `bic`, `card` (Luhn), `ifsc` (shape), `in_pan` (sha
 
 | Reason | Holds when | Highest tier in an output |
 | --- | --- | --- |
-| `iban-bank-code` | The IBAN's bank code is one of the bank's `iban_bank_code` entries. | `certain` when the IBAN's check digits pass, with the directory on or off. |
-| `bic-institution` | The BIC's first six characters match one of the bank's BICs. | `certain` only with the directory on, when the card's directory entry lists the BIC's first eight characters. Otherwise `likely`. |
+| `iban-bank-code` | The IBAN's bank code is one of the bank's `iban_bank_code` entries. | `certain` when the IBAN's check digits pass, with the directory on or off. The scorer also holds it for any such IBAN at the organisation the labels link the IBAN to, whatever reasons the label lists. |
+| `bic-institution` | The BIC's first eight characters, its institution (`FORMAT.md`, "Code keys"), match one of the bank's BICs. | `certain` only with the directory on, when the card's directory entry lists the BIC's first eight characters. Otherwise `likely`. |
 | `ifsc-prefix` | The IFSC's first four letters are the bank's prefix. | `certain` only with the directory on, when the card's directory entry lists the prefix. Otherwise `likely`. |
 | `paired-code` | An account or IBAN sits on the same line as an IFSC or BIC that is itself linked to the bank, or on the next or previous line when neither line holds a code or an account of its own. `via` names that code. | `likely` |
 | `inside-iban` | A sort code, French bank code or French branch code is that part of an IBAN in the document that is linked to the bank. | `likely` |
