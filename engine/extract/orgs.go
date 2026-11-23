@@ -241,9 +241,17 @@ func devaName(toks []token, a int) (l, r int, ok bool) {
 }
 
 // followedByColon reports whether a field separator follows byte b in s.
-func followedByColon(s string, b int) bool {
-	rest := strings.TrimLeft(s[b:], " ")
-	return strings.HasPrefix(rest, ":") || strings.HasPrefix(rest, "：")
+func followedByColon(s string, b int) bool { return startsField(strings.TrimLeft(s[b:], " ")) }
+
+// startsField reports whether s starts with a field separator: one colon.
+// A run of colons, as in ":: Example Bank ::", is decoration.
+func startsField(s string) bool {
+	for _, c := range []string{":", "："} {
+		if rest, ok := strings.CutPrefix(s, c); ok {
+			return !strings.HasPrefix(rest, ":") && !strings.HasPrefix(rest, "：")
+		}
+	}
+	return false
 }
 
 // findNames finds the organisation names of one line written in words:
@@ -342,8 +350,7 @@ func findCJKNames(l Line) []Mention {
 		if s == i {
 			continue
 		}
-		rest := strings.TrimLeft(string(rs[end:]), " ")
-		if strings.HasPrefix(rest, ":") || strings.HasPrefix(rest, "：") {
+		if startsField(strings.TrimLeft(string(rs[end:]), " ")) {
 			continue // a field label such as 受取銀行:
 		}
 		text := string(rs[s:end])

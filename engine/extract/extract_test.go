@@ -103,6 +103,8 @@ func TestNamesAreWholeNames(t *testing.T) {
 		{"School office <office@example.org>", nil},
 		{"Sample Town Public School: term dates", []string{"Sample Town Public School"}},
 		{"East Bank of Testland", []string{"East Bank of Testland"}},
+		{":: Riverside Bank ::", []string{"Riverside Bank"}},
+		{"== 見本銀行 ::", []string{"見本銀行"}},
 		{"Gegründet von der Deutschen Musterbank in Köln", []string{"Deutschen Musterbank"}},
 	} {
 		_, e := runOne(t, doc("d", c.line), nil)
