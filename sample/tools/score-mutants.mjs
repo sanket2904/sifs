@@ -1,13 +1,15 @@
 // Removes one scoring rule at a time, from score.mjs or a file it depends
 // on, in a copy of sample/ and shows that score.test.mjs fails without it.
 // The unchanged suite must pass first. Copies run in parallel, one per core.
-// Exits 1 if the suite fails or any removal goes unnoticed.
+// A removal is caught only by a named failing test; a run that ends any other
+// way is a runner error (lib/suite.mjs). Exits 1 if the suite fails, any
+// removal goes unnoticed, or any run is a runner error.
 //   node sample/tools/score-mutants.mjs
-import { spawn } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { availableParallelism, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runTestFile } from './lib/suite.mjs';
 
 const sample = fileURLToPath(new URL('../', import.meta.url));
 
@@ -683,7 +685,7 @@ for (const [file, rule, from] of MUTANTS)
 	if (readFileSync(join(sample, file), 'utf8').split(from).length !== 2)
 		throw new Error(`"${rule}": its text is not in ${file} exactly once`);
 
-// The failing tests of score.test.mjs in a copy of sample/ with one change.
+// How score.test.mjs ends in a copy of sample/ with one change.
 async function runSuite(file, from, to) {
 	const dir = mkdtempSync(join(tmpdir(), 'score-mutant-'));
 	try {
@@ -692,15 +694,7 @@ async function runSuite(file, from, to) {
 			const path = join(dir, file);
 			writeFileSync(path, readFileSync(path, 'utf8').replace(from, to));
 		}
-		const child = spawn(
-			process.execPath,
-			['--test', '--test-reporter=tap', join(dir, 'tools', 'score.test.mjs')],
-			{ stdio: ['ignore', 'pipe', 'inherit'] }
-		);
-		let stdout = '';
-		child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk));
-		const status = await new Promise((done) => child.on('close', done));
-		return { status, failed: [...stdout.matchAll(/^not ok \d+ - (.*)$/gm)].map((m) => m[1]) };
+		return await runTestFile(join(dir, 'tools', 'score.test.mjs'));
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
@@ -729,21 +723,29 @@ const [unchanged, ...results] = await pool([
 				runSuite(file, from, to)
 	)
 ]);
-if (unchanged.status !== 0) {
+if (unchanged.kind === 'error') {
+	console.log(`RUNNER ERROR  the unchanged suite: ${unchanged.why}`);
+	process.exit(1);
+}
+if (unchanged.kind === 'failed') {
 	console.log(`the unchanged suite fails: ${unchanged.failed.join('; ')}`);
 	process.exit(1);
 }
 let missed = 0;
+let errors = 0;
 MUTANTS.forEach(([, rule], i) => {
-	const { status, failed } = results[i];
-	if (status === 0) {
+	const run = results[i];
+	if (run.kind === 'passed') {
 		missed++;
 		console.log(`MISSED  ${rule}`);
-	} else console.log(`caught  ${rule}\n        by: ${failed.join('; ')}`);
+	} else if (run.kind === 'error') {
+		errors++;
+		console.log(`RUNNER ERROR  ${rule}\n        ${run.why}`);
+	} else console.log(`caught  ${rule}\n        by: ${run.failed.join('; ')}`);
 });
 console.log(
-	missed
-		? `\n${missed} of ${MUTANTS.length} removals went unnoticed`
+	missed || errors
+		? `\n${missed} of ${MUTANTS.length} removals went unnoticed, ${errors} runs were runner errors`
 		: `\nall ${MUTANTS.length} removals caught`
 );
-process.exit(missed ? 1 : 0);
+process.exit(missed || errors ? 1 : 0);
