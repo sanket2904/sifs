@@ -454,6 +454,21 @@ func TestPassports(t *testing.T) {
 	}
 }
 
+func TestScannedLabelsAllowOneMisread(t *testing.T) {
+	text := "PASSPORT\nPASSPORT NO: AB1234567\nSURHAME: DOE\nGIVEN NAMESE JANE\nDATE OF ISSUE: 01 JAN 2020\nDATE 0F EXPIRY: 01 JAN 2030"
+	for _, scanned := range []bool{true, false} {
+		_, e := runOne(t, Document{ID: "p", Pages: []Page{{Text: text, Scanned: scanned}}}, nil)
+		got := e.Passport != nil && e.Passport.Holder == HolderOut{"DOE", "JANE"} && e.Passport.Expiry != nil && *e.Passport.Expiry == "2030-01-01"
+		if got != scanned {
+			t.Errorf("scanned %v: passport %+v", scanned, e.Passport)
+		}
+	}
+	_, e := runOne(t, Document{ID: "p", Pages: []Page{{Text: "PASSPORT\nPASSPORT NO: AB1234567\nSUBNAMES: DOE\nGIVEN NAMES: JANE", Scanned: true}}}, nil)
+	if e.Passport != nil {
+		t.Errorf("two misread characters are no label: %+v", e.Passport)
+	}
+}
+
 func TestRenewalSupersedes(t *testing.T) {
 	pp := func(id, issued, expiry string, extra ...string) Document {
 		lines := []string{"PASSPORT", "Passport No.: " + strings.ToUpper(id) + "0001", "Surname: DOE", "Given names: JANE"}

@@ -3,6 +3,8 @@ package extract
 import (
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Statement is a document's own statement period, its one account (in
@@ -171,13 +173,56 @@ type Passport struct {
 }
 
 var (
-	reSurname   = regexp.MustCompile(`(?i)^\s*(?:surname|nom|familienname)\s*:\s*(.+?)\s*$`)
-	reGiven     = regexp.MustCompile(`(?i)^\s*(?:given\s+names?|pr[ée]noms?|vornamen?)\s*:\s*(.+?)\s*$`)
-	reIssued    = regexp.MustCompile(`(?i)\b(?:date\s+of\s+issue|date\s+de\s+d[ée]livrance|ausstellungsdatum)\s*:\s*`)
-	reExpiry    = regexp.MustCompile(`(?i)\b(?:date\s+of\s+expiry|date\s+d'expiration|gültig\s+bis)\s*:\s*`)
 	rePassTitle = regexp.MustCompile(`^(?:PASSPORT|PASSEPORT|REISEPASS)$`)
 	rePassWord  = regexp.MustCompile(`(?i)\bpass(?:port|eport)\b|reisepass|旅券|पासपोर्ट`)
 )
+
+// field is a printed field of a passport page: re finds its label and
+// colon, and scanned holds the label spellings a scan may misread.
+type field struct {
+	re      *regexp.Regexp
+	scanned []string
+}
+
+var (
+	surnameField = field{regexp.MustCompile(`(?i)^\s*(?:surname|nom|familienname)\s*:\s*`), []string{"familienname", "surname"}}
+	givenField   = field{regexp.MustCompile(`(?i)^\s*(?:given\s+names?|pr[ée]noms?|vornamen?)\s*:\s*`), []string{"given names", "given name", "vornamen", "prénoms"}}
+	issuedField  = field{regexp.MustCompile(`(?i)\b(?:date\s+of\s+issue|date\s+de\s+d[ée]livrance|ausstellungsdatum)\s*:\s*`), []string{"date de délivrance", "ausstellungsdatum", "date of issue"}}
+	expiryField  = field{regexp.MustCompile(`(?i)\b(?:date\s+of\s+expiry|date\s+d'expiration|gültig\s+bis)\s*:\s*`), []string{"date d'expiration", "date of expiry", "gültig bis"}}
+)
+
+// valueAt gives the byte offset on the line where the field's value
+// starts, or -1. On a scanned page, a label at the start of the line may
+// have one character misread, its colon counted: OCR reads "SURNAME:" as
+// "SURHAME:" and "NAMES:" as "NAMESE".
+func (f field) valueAt(l Line) int {
+	if m := f.re.FindStringIndex(l.Text); m != nil {
+		return m[1]
+	}
+	if !l.Scanned {
+		return -1
+	}
+	lead := len(l.Text) - len(strings.TrimLeft(l.Text, " \t"))
+	for _, label := range f.scanned {
+		want := []rune(label + ":")
+		b, diff := lead, 0
+		for _, w := range want {
+			r, n := utf8.DecodeRuneInString(l.Text[b:])
+			if n == 0 {
+				diff = 2
+				break
+			}
+			if unicode.ToLower(r) != w {
+				diff++
+			}
+			b += n
+		}
+		if diff <= 1 {
+			return b + len(l.Text[b:]) - len(strings.TrimLeft(l.Text[b:], " "))
+		}
+	}
+	return -1
+}
 
 // findPassport reads a passport page: one with a passport zone (TD3), or,
 // with no zone at all, one titled passport that gives a passport number.
@@ -205,21 +250,21 @@ func findPassport(lines []Line, ids []Identifier, ref Date) *Passport {
 		t := strings.ToUpper(strings.TrimSpace(l.Text))
 		titled = titled || rePassTitle.MatchString(t)
 		cancelled = cancelled || hasCancelWord(l.Text)
-		if m := reSurname.FindStringSubmatch(l.Text); m != nil && p.Surname == "" {
-			p.Surname = m[1]
+		if v := surnameField.valueAt(l); v >= 0 && p.Surname == "" {
+			p.Surname = strings.TrimSpace(l.Text[v:])
 		}
-		if m := reGiven.FindStringSubmatch(l.Text); m != nil && p.Given == "" {
-			p.Given = m[1]
+		if v := givenField.valueAt(l); v >= 0 && p.Given == "" {
+			p.Given = strings.TrimSpace(l.Text[v:])
 		}
-		if m := reIssued.FindStringIndex(l.Text); m != nil && p.Issued == nil {
-			if d, _, _, ok := readDate(l.Text[m[1]:]); ok {
+		if v := issuedField.valueAt(l); v >= 0 && p.Issued == nil {
+			if d, _, _, ok := readDate(l.Text[v:]); ok {
 				p.Issued = &d
 			}
 		}
-		if m := reExpiry.FindStringIndex(l.Text); m != nil && p.ExpiryAt == nil {
-			if d, b0, b1, ok := readDate(l.Text[m[1]:]); ok {
+		if v := expiryField.valueAt(l); v >= 0 && p.ExpiryAt == nil {
+			if d, b0, b1, ok := readDate(l.Text[v:]); ok {
 				p.Expiry = &d
-				sp := l.span(m[1]+b0, m[1]+b1)
+				sp := l.span(v+b0, v+b1)
 				p.ExpiryAt = &sp
 			}
 		}
