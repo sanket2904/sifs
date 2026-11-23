@@ -38,6 +38,25 @@ cd src-tauri && cargo run --release --no-default-features --bin sifs-bench -- /t
 
 With `--contents` before the index file, it also reads inside the files and reports time per 1,000 files by reader, index growth by table, peak memory and how long writes held the index.
 
+Write the text an index has read as a text set, the input `sample/FORMAT.md` describes, so the extractor in `engine/` reads indexed text instead of the sample's own text set:
+
+```bash
+cd src-tauri && cargo run --release --no-default-features --bin sifs-bench -- --contents /tmp/try.db "$PWD/../sample/files"
+cargo run --release --no-default-features --bin sifs-textset -- --db /tmp/try.db --out /tmp/try-text --reference-date 2026-11-22
+```
+
+- `--db` is the index. It is opened read-only and never written, migrated or locked for writing. SQLite may leave an empty `-wal` file and a `-shm` file beside an index that had none. When you try it out, point it at a copy or at an index made for the purpose, as above, not at the app's own.
+- `--out` is the text set's folder. It must be absent or empty. Nothing in it is replaced.
+- `--reference-date` is written to `index.json`. The output holds no clock, so the same index gives the same bytes.
+
+Every file whose read ended `done` or `empty` is one document, in path order. Its id is the file name in `[a-z0-9-]` and a hash of the file's path, so a file keeps its id across rescans and rebuilt indexes. `created` is the file's time as the index holds it, `format` is its extension, and `lang` is empty. `sha256` is `null`, because the index holds no hash and the tool reads nothing but the index. The stored parts become pages in this way:
+
+- A PDF's parts are its pages with text, labelled `page N`. Each is a page with `scanned: false` and exactly the stored text. Every other page up to the PDF's page count had no text layer, and is `scanned: true` with empty text, because SIFS does not read scanned PDF pages yet. When the read was cut short, the pages after the last stored page are left out.
+- An image is one page with `scanned: true` and what Apple Vision read from it, or empty text.
+- Every other reader's parts are not pages: each part (a text file's text, a sheet, a slide, slide notes, a Word section) is one page with `scanned: false`.
+
+A file with no page (an empty text file, say) is left out, as are files that failed or were skipped.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on every pull request and every push to main, on GitHub's hosted macOS runners (`macos-26`, Apple silicon). The `ci` job passes only when every other job succeeded:

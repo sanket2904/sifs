@@ -11,6 +11,7 @@ pub mod find;
 pub mod platform;
 pub mod readers;
 pub mod store;
+pub mod textset;
 pub mod worker;
 
 #[cfg(test)]
