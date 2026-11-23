@@ -293,13 +293,13 @@ The sections below are a history. A passage marked "History" no longer holds as 
 - "Values" gives `value` for every kind: a sort code is `601613`, and a machine-readable zone keeps its line feed.
 - `valid` is not scored where the label's `valid` is `null`.
 - Passport `number`, `mrz`, `issued`, `expiry` and `expiry_at` are checked; `issued`, `mrz` and `expiry_at` are not scored. (History: since round 7 a certain expiry's `expiry_at` is scored, "Tiers".)
-- The worked example gives the Kotak account that the text holds, `1234567890`.
+- The worked example gives the Kotak account that the text holds, `1234567890`. (History: the worked example is now `hdfc-statement-sep`, "Output".)
 - The tools run when started through a symlinked path, such as one under `/tmp` on macOS.
 
 ## Changes in round 2
 
 - On `text-ocr/`, only a scanned page matches by page and text or value. Every other page matches by span, as on `text/`.
-- A keyed mention exactly on a `not_orgs` span is a wrong attachment, which fails the run, unless its key maps to the organisation of a labelled mention on the same page whose span contains that span.
+- A keyed mention exactly on a `not_orgs` span is a wrong attachment, which fails the run, unless its key maps to the organisation of a labelled mention on the same page whose span contains that span. (History: since round 4 a wrong attachment is counted and listed and does not fail the run by itself, "Attachments".)
 - A wrong attachment does not depend on directory ids. It holds with the directory on or off, and for a key that maps to no labelled organisation, such as a "Bank of India" card made from the text inside "State Bank of India".
 - A card name ignores all whitespace, not only repeated spaces, and folds nothing else.
 - A root that is not an object, and a `paired-code` link with no `via`, are format errors.
@@ -342,8 +342,8 @@ The sections below are a history. A passage marked "History" no longer holds as 
 - `credit-advice-smbk-ca`, `payroll-release-smbk-gb` and `passport-meera-1988` join the sample. They show the two faults.
 - A claim the output gives is always compared with the labels. "Impossible" counts only a labelled item the output does not give, so a wrong certain claim fails the run on `text-ocr/` as on `text/`, in every measure.
 - A certain expiry's `expiry_at` is the labelled printed date of expiry, and a certain expiry that cites any other span is a wrong certain row.
-- A code's key is used only in a document whose identifiers give the code, and only by links and `same_org` rows, never by a mention or an issuer. An IFSC's key holds four letters and a BIC's six letters and two letters or digits.
-- A document key's name part is the match key of a text the page prints, and a printed name's key is spelt from a mention on it.
+- A code's key is used only in a document whose identifiers give the code, and only by links and `same_org` rows, never by a mention or an issuer. An IFSC's key holds four letters and a BIC's six letters and two letters or digits. (History: "Code keys" and "No merging" give the rule as it holds.)
+- A document key's name part is the match key of a text the page prints, and a printed name's key is spelt from a mention on it. (History: a key with several printed names on it is spelt from the longest, below and "No merging".)
 - An IBAN of a country the table does not have goes to the document key spelt from the IBAN, which no mention uses.
 - A key with several printed names on it is spelt one way, from the longest of their match keys, ties by code-point order ("No merging"). Two keys of the four reference outputs change: `neft-receipt-tied` prints `HDFC` and `HDFC Bank` for one bank, so its key is `name:neft-receipt-tied:hdfcbank`, not `name:neft-receipt-tied:hdfc`, and `hdfc-ltd-loan-2019` prints `HDFC Ltd` and `Housing Development Finance Corporation Limited`, so its key is `name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation`, which no other document spells. The same-name report goes from 27 pairs, 25 one organisation and 2 two, to 32 pairs, 31 and 1. The two documents' `hdfc` keys, HDFC Bank and HDFC Ltd, were a pair of two organisations and are gone, and `neft-receipt-tied`'s key now pairs with the `hdfcbank` keys of the six other documents that print HDFC Bank, all one organisation. The four reference outputs still score no wrong row and no merge.
 - A document key in `organisations` is the key of a mention of its document, or of an IBAN of a country the table does not have that the document gives.
