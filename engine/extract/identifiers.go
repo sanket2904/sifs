@@ -30,28 +30,44 @@ type Identifier struct {
 	Value string
 	Valid *bool
 	Line  Line // the line it starts on
+	// Code is the key of the institution a valid IFSC, BIC or IBAN names by
+	// its own characters ("Code keys"), or "".
+	Code  string
+	proof proof // why its kind is what it is
 }
 
-// institution is the code of the institution an identifier carries inside
-// it: an IFSC's first four letters, a BIC's first six, an IBAN's bank code.
-// It is empty for identifiers that carry none, and for invalid ones.
-func (id Identifier) institution() string {
-	if id.Valid == nil || !*id.Valid {
+// codeKey spells the key of the institution a valid identifier carries
+// inside it: an IFSC's first four letters, a BIC's first eight characters,
+// an IBAN's country and bank code.
+func codeKey(kind, value string, valid *bool, reg *IBANRegistry) string {
+	if valid == nil || !*valid {
 		return ""
 	}
-	switch id.Kind {
+	switch kind {
 	case KindIFSC:
-		return "ifsc:" + id.Value[:4]
+		return "IFSC " + value[:4]
 	case KindBIC:
-		return "bic:" + id.Value[:6]
+		return "BIC " + value[:8]
 	case KindIBAN:
-		c := ibanCountries[id.Value[:2]]
-		if c.bank1 == 0 {
-			return ""
-		}
-		return "iban:" + id.Value[:2] + ":" + id.Value[c.bank0:c.bank1]
+		return reg.codeKey(value)
 	}
 	return ""
+}
+
+// kindProof is what a document alone proves about an identifier's kind: an
+// IBAN by the registry and its check digits, a zone by its check digits.
+// The directory's proof of an IFSC or BIC comes later, in Run.
+func kindProof(kind, value string, reg *IBANRegistry) proof {
+	switch {
+	case kind == KindIBAN && reg.proves(value):
+		return ibanRegistered
+	case kind == KindMRZ:
+		l1, l2, _ := strings.Cut(value, "\n")
+		if mrzValid(l1, l2) {
+			return zoneChecked
+		}
+	}
+	return read
 }
 
 func (id Identifier) isAccount() bool {
@@ -76,8 +92,8 @@ type scheme struct {
 	find func(l Line, prior []Identifier) []found
 }
 
+// schemes run after the IBAN scheme, which needs the registry.
 var schemes = []scheme{
-	{KindIBAN, findIBAN},
 	{KindBIC, findBIC},
 	{KindIFSC, findIFSC},
 	{KindCard, findCard},
@@ -122,12 +138,12 @@ var reIBANStart = regexp.MustCompile(`\b[A-Z]{2}[0-9]{2}[ ]?[A-Z0-9]`)
 
 // findIBAN reads the registry length of the country's IBAN, allowing single
 // spaces between characters, and requires the IBAN to end at a word end.
-func findIBAN(l Line, _ []Identifier) []found {
+func (reg *IBANRegistry) findIBAN(l Line, _ []Identifier) []found {
 	var out []found
 	t := l.Text
 	for _, m := range reIBANStart.FindAllStringIndex(t, -1) {
-		c, ok := ibanCountries[t[m[0]:m[0]+2]]
-		if !ok {
+		c := reg.countries[t[m[0]:m[0]+2]]
+		if !ibanSought[t[m[0]:m[0]+2]] {
 			continue
 		}
 		var b strings.Builder
@@ -145,7 +161,7 @@ func findIBAN(l Line, _ []Identifier) []found {
 			continue
 		}
 		v := b.String()
-		out = append(out, found{m[0], i, v, ptr(ibanValid(v))})
+		out = append(out, found{m[0], i, v, ptr(reg.proves(v))})
 	}
 	return out
 }
@@ -428,9 +444,9 @@ func findMRZ(lines []Line) []Identifier {
 
 // findIdentifiers runs every scheme over the document and numbers the
 // identifiers in reading order.
-func findIdentifiers(lines []Line) []Identifier {
+func findIdentifiers(lines []Line, reg *IBANRegistry) []Identifier {
 	ids := findMRZ(lines)
-	for _, s := range schemes {
+	for _, s := range append([]scheme{{KindIBAN, reg.findIBAN}}, schemes...) {
 		for _, l := range lines {
 			for _, f := range s.find(l, ids) {
 				sp := l.span(f.b0, f.b1)
@@ -444,6 +460,8 @@ func findIdentifiers(lines []Line) []Identifier {
 	sortSpans(ids, func(i Identifier) Span { return i.Span })
 	for i := range ids {
 		ids[i].ID = "i" + itoa(i+1)
+		ids[i].Code = codeKey(ids[i].Kind, ids[i].Value, ids[i].Valid, reg)
+		ids[i].proof = kindProof(ids[i].Kind, ids[i].Value, reg)
 	}
 	return ids
 }

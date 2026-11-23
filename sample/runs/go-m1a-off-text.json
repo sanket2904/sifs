@@ -1,191 +1,207 @@
 {
- "format": 1,
+ "format": 2,
  "extractor": "go-m1a",
  "directory": "off",
  "text_set": "text",
  "organisations": {
-  "org-1": {
-   "name": "HDFC Bank",
-   "directory": null
-  },
-  "org-10": {
+  "BIC BOTKJPJT": {
    "name": null,
    "directory": null
   },
-  "org-11": {
-   "name": "Deutsche Bank",
-   "directory": null
-  },
-  "org-12": {
-   "name": "Deutschen Bundesbank",
-   "directory": null
-  },
-  "org-13": {
-   "name": "Musterfirma Schreinerei GmbH",
-   "directory": null
-  },
-  "org-14": {
-   "name": "Sample Supplies Ltd",
-   "directory": null
-  },
-  "org-15": {
-   "name": "ICICI Bank",
-   "directory": null
-  },
-  "org-16": {
+  "BIC COBADEFF": {
    "name": null,
    "directory": null
   },
-  "org-17": {
-   "name": "BNP Paribas",
-   "directory": null
-  },
-  "org-18": {
-   "name": "Mizuho Bank",
-   "directory": null
-  },
-  "org-19": {
-   "name": "एचडीएफसी बैंक",
-   "directory": null
-  },
-  "org-2": {
-   "name": "Kotak Mahindra Bank",
-   "directory": null
-  },
-  "org-20": {
-   "name": "HDFC Life Insurance Company Limited",
-   "directory": null
-  },
-  "org-21": {
-   "name": "ICICI Lombard General Insurance Company Limited",
-   "directory": null
-  },
-  "org-22": {
-   "name": "Sample Public School",
-   "directory": null
-  },
-  "org-23": {
-   "name": "State Bank of India",
-   "directory": null
-  },
-  "org-24": {
-   "name": "Bank of India",
-   "directory": null
-  },
-  "org-25": {
-   "name": "Central Bank of India",
-   "directory": null
-  },
-  "org-26": {
-   "name": "Union Bank of India",
-   "directory": null
-  },
-  "org-27": {
-   "name": "BANK OF BARODA",
-   "directory": null
-  },
-  "org-28": {
-   "name": "PUNJAB NATIONAL BANK",
-   "directory": null
-  },
-  "org-29": {
-   "name": "Punjab \u0026 Sind Bank",
-   "directory": null
-  },
-  "org-3": {
-   "name": "Sample Nagar Sahakari Bank",
-   "directory": null
-  },
-  "org-30": {
-   "name": "स्टेट बैंक ऑफ़ इंडिया",
-   "directory": null
-  },
-  "org-31": {
+  "BIC NWBKGB2L": {
    "name": null,
    "directory": null
   },
-  "org-32": {
-   "name": "सैंपल टेक्नोलॉजीज़ प्राइवेट लिमिटेड",
+  "BIC PSSTFRPP": {
+   "name": null,
    "directory": null
   },
-  "org-33": {
-   "name": "みずほ銀行",
+  "IBAN DE 37040044": {
+   "name": null,
    "directory": null
   },
-  "org-34": {
-   "name": "三菱UFJ銀行",
+  "IBAN FR 20041": {
+   "name": null,
    "directory": null
   },
-  "org-35": {
+  "IBAN GB NWBK": {
+   "name": null,
+   "directory": null
+  },
+  "IBAN NL ABNA": {
+   "name": null,
+   "directory": null
+  },
+  "IFSC BARB": {
+   "name": null,
+   "directory": null
+  },
+  "IFSC HDFC": {
+   "name": null,
+   "directory": null
+  },
+  "IFSC ICIC": {
+   "name": null,
+   "directory": null
+  },
+  "IFSC PUNB": {
+   "name": null,
+   "directory": null
+  },
+  "IFSC SBIN": {
+   "name": null,
+   "directory": null
+  },
+  "IFSC UTIB": {
+   "name": null,
+   "directory": null
+  },
+  "name:abnamro": {
    "name": "ABN AMRO",
    "directory": null
   },
-  "org-36": {
-   "name": "三菱UFJ信託銀行",
-   "directory": null
-  },
-  "org-37": {
-   "name": null,
-   "directory": null
-  },
-  "org-38": {
-   "name": "La Banque Postale",
-   "directory": null
-  },
-  "org-39": {
-   "name": null,
-   "directory": null
-  },
-  "org-4": {
-   "name": "Sampleton Credit Union",
-   "directory": null
-  },
-  "org-40": {
-   "name": null,
-   "directory": null
-  },
-  "org-41": {
-   "name": null,
-   "directory": null
-  },
-  "org-42": {
-   "name": "AXIS BANK",
-   "directory": null
-  },
-  "org-43": {
-   "name": null,
-   "directory": null
-  },
-  "org-44": {
-   "name": "Sample Power Distribution Ltd",
-   "directory": null
-  },
-  "org-45": {
-   "name": "Housing Development Finance Corporation Limited",
-   "directory": null
-  },
-  "org-46": {
-   "name": "UTOPIA PASSPORT OFFICE",
-   "directory": null
-  },
-  "org-5": {
-   "name": "National Westminster Bank Plc",
-   "directory": null
-  },
-  "org-6": {
-   "name": null,
-   "directory": null
-  },
-  "org-7": {
+  "name:abnamrobanknv": {
    "name": "ABN AMRO Bank N.V.",
    "directory": null
   },
-  "org-8": {
-   "name": null,
+  "name:axisbank": {
+   "name": "AXIS BANK",
    "directory": null
   },
-  "org-9": {
+  "name:bankofbaroda": {
+   "name": "BANK OF BARODA",
+   "directory": null
+  },
+  "name:bankofindia": {
+   "name": "Bank of India",
+   "directory": null
+  },
+  "name:bnpparibas": {
+   "name": "BNP Paribas",
+   "directory": null
+  },
+  "name:centralbankofindia": {
+   "name": "Central Bank of India",
+   "directory": null
+  },
+  "name:commerzbank": {
    "name": "Commerzbank",
+   "directory": null
+  },
+  "name:deutschebank": {
+   "name": "Deutsche Bank",
+   "directory": null
+  },
+  "name:deutschenbundesbank": {
+   "name": "Deutschen Bundesbank",
+   "directory": null
+  },
+  "name:hdfcbank": {
+   "name": "HDFC Bank",
+   "directory": null
+  },
+  "name:hdfclifeinsurancecompany": {
+   "name": "HDFC Life Insurance Company Limited",
+   "directory": null
+  },
+  "name:housingdevelopmentfinancecorporation": {
+   "name": "Housing Development Finance Corporation Limited",
+   "directory": null
+  },
+  "name:icicibank": {
+   "name": "ICICI Bank",
+   "directory": null
+  },
+  "name:icicilombardgeneralinsurancecompany": {
+   "name": "ICICI Lombard General Insurance Company Limited",
+   "directory": null
+  },
+  "name:kotakmahindrabank": {
+   "name": "Kotak Mahindra Bank",
+   "directory": null
+  },
+  "name:labanquepostale": {
+   "name": "La Banque Postale",
+   "directory": null
+  },
+  "name:mizuhobank": {
+   "name": "Mizuho Bank",
+   "directory": null
+  },
+  "name:musterfirmaschreinereigmbh": {
+   "name": "Musterfirma Schreinerei GmbH",
+   "directory": null
+  },
+  "name:nationalwestminsterbank": {
+   "name": "National Westminster Bank Plc",
+   "directory": null
+  },
+  "name:punjabnationalbank": {
+   "name": "PUNJAB NATIONAL BANK",
+   "directory": null
+  },
+  "name:punjabsindbank": {
+   "name": "Punjab \u0026 Sind Bank",
+   "directory": null
+  },
+  "name:samplenagarsahakaribank": {
+   "name": "Sample Nagar Sahakari Bank",
+   "directory": null
+  },
+  "name:samplepowerdistribution": {
+   "name": "Sample Power Distribution Ltd",
+   "directory": null
+  },
+  "name:samplepublicschool": {
+   "name": "Sample Public School",
+   "directory": null
+  },
+  "name:samplesupplies": {
+   "name": "Sample Supplies Ltd",
+   "directory": null
+  },
+  "name:sampletoncreditunion": {
+   "name": "Sampleton Credit Union",
+   "directory": null
+  },
+  "name:statebankofindia": {
+   "name": "State Bank of India",
+   "directory": null
+  },
+  "name:unionbankofindia": {
+   "name": "Union Bank of India",
+   "directory": null
+  },
+  "name:utopiapassportoffice": {
+   "name": "UTOPIA PASSPORT OFFICE",
+   "directory": null
+  },
+  "name:एचडीएफसीबैंक": {
+   "name": "एचडीएफसी बैंक",
+   "directory": null
+  },
+  "name:सैंपलटेक्नोलॉजीज़प्राइवेटलिमिटेड": {
+   "name": "सैंपल टेक्नोलॉजीज़ प्राइवेट लिमिटेड",
+   "directory": null
+  },
+  "name:स्टेटबैंकऑफ़इंडिया": {
+   "name": "स्टेट बैंक ऑफ़ इंडिया",
+   "directory": null
+  },
+  "name:みずほ銀行": {
+   "name": "みずほ銀行",
+   "directory": null
+  },
+  "name:三菱ufj信託銀行": {
+   "name": "三菱UFJ信託銀行",
+   "directory": null
+  },
+  "name:三菱ufj銀行": {
+   "name": "三菱UFJ銀行",
    "directory": null
   }
  },
@@ -198,7 +214,7 @@
      "start": 60,
      "end": 73,
      "text": "HDFC Bank Ltd",
-     "org": "org-1",
+     "org": "name:hdfcbank",
      "settled_by": "name"
     }
    ],
@@ -211,7 +227,8 @@
      "id": "i1",
      "kind": "account",
      "value": "50100417263958",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -221,25 +238,35 @@
      "id": "i2",
      "kind": "ifsc",
      "value": "HDFC0SAMPL1",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i2",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i1",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
-      "paired-code",
+      "paired-code"
+     ],
+     "via": "i2",
+     "tier": "likely"
+    },
+    {
+     "identifier": "i1",
+     "org": "name:hdfcbank",
+     "reasons": [
       "statement-header"
      ],
-     "via": "i2"
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -248,8 +275,23 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-1"
-   }
+    "issuer": "name:hdfcbank",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": [
+    {
+     "keys": [
+      "IFSC HDFC",
+      "name:hdfcbank"
+     ],
+     "reason": "spells-code",
+     "tier": "likely"
+    }
+   ]
   },
   {
    "id": "hdfc-statement-jul",
@@ -259,7 +301,7 @@
      "start": 60,
      "end": 73,
      "text": "HDFC Bank Ltd",
-     "org": "org-1",
+     "org": "name:hdfcbank",
      "settled_by": "name"
     }
    ],
@@ -272,7 +314,8 @@
      "id": "i1",
      "kind": "account",
      "value": "50100417263958",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -282,25 +325,35 @@
      "id": "i2",
      "kind": "ifsc",
      "value": "HDFC0SAMPL1",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i2",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i1",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
-      "paired-code",
+      "paired-code"
+     ],
+     "via": "i2",
+     "tier": "likely"
+    },
+    {
+     "identifier": "i1",
+     "org": "name:hdfcbank",
+     "reasons": [
       "statement-header"
      ],
-     "via": "i2"
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -309,8 +362,23 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-1"
-   }
+    "issuer": "name:hdfcbank",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": [
+    {
+     "keys": [
+      "IFSC HDFC",
+      "name:hdfcbank"
+     ],
+     "reason": "spells-code",
+     "tier": "likely"
+    }
+   ]
   },
   {
    "id": "hdfc-statement-aug",
@@ -320,7 +388,7 @@
      "start": 60,
      "end": 73,
      "text": "HDFC Bank Ltd",
-     "org": "org-1",
+     "org": "name:hdfcbank",
      "settled_by": "name"
     }
    ],
@@ -333,7 +401,8 @@
      "id": "i1",
      "kind": "account",
      "value": "50100417263958",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -343,25 +412,35 @@
      "id": "i2",
      "kind": "ifsc",
      "value": "HDFC0SAMPL1",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i2",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i1",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
-      "paired-code",
+      "paired-code"
+     ],
+     "via": "i2",
+     "tier": "likely"
+    },
+    {
+     "identifier": "i1",
+     "org": "name:hdfcbank",
+     "reasons": [
       "statement-header"
      ],
-     "via": "i2"
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -370,8 +449,23 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-1"
-   }
+    "issuer": "name:hdfcbank",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": [
+    {
+     "keys": [
+      "IFSC HDFC",
+      "name:hdfcbank"
+     ],
+     "reason": "spells-code",
+     "tier": "likely"
+    }
+   ]
   },
   {
    "id": "kotak-statement",
@@ -381,7 +475,7 @@
      "start": 60,
      "end": 79,
      "text": "Kotak Mahindra Bank",
-     "org": "org-2",
+     "org": "name:kotakmahindrabank",
      "settled_by": "name"
     }
    ],
@@ -394,16 +488,18 @@
      "id": "i1",
      "kind": "account",
      "value": "1234567890",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "org-2",
+     "org": "name:kotakmahindrabank",
      "reasons": [
       "statement-header"
-     ]
+     ],
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -412,8 +508,14 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-2"
-   }
+    "issuer": "name:kotakmahindrabank",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": []
   },
   {
    "id": "sahakari-statement",
@@ -423,7 +525,7 @@
      "start": 60,
      "end": 90,
      "text": "Sample Nagar Sahakari Bank Ltd",
-     "org": "org-3",
+     "org": "name:samplenagarsahakaribank",
      "settled_by": "name"
     },
     {
@@ -431,7 +533,7 @@
      "start": 344,
      "end": 370,
      "text": "Sample Nagar Sahakari Bank",
-     "org": "org-3",
+     "org": "name:samplenagarsahakaribank",
      "settled_by": "name"
     }
    ],
@@ -444,16 +546,18 @@
      "id": "i1",
      "kind": "account",
      "value": "004512000789",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "org-3",
+     "org": "name:samplenagarsahakaribank",
      "reasons": [
       "statement-header"
-     ]
+     ],
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -462,8 +566,14 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-3"
-   }
+    "issuer": "name:samplenagarsahakaribank",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": []
   },
   {
    "id": "credit-union-statement",
@@ -473,7 +583,7 @@
      "start": 60,
      "end": 82,
      "text": "Sampleton Credit Union",
-     "org": "org-4",
+     "org": "name:sampletoncreditunion",
      "settled_by": "name"
     }
    ],
@@ -486,16 +596,18 @@
      "id": "i1",
      "kind": "account",
      "value": "88120457",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "org-4",
+     "org": "name:sampletoncreditunion",
      "reasons": [
       "statement-header"
-     ]
+     ],
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -504,8 +616,14 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-4"
-   }
+    "issuer": "name:sampletoncreditunion",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": []
   },
   {
    "id": "natwest-statement",
@@ -515,7 +633,7 @@
      "start": 60,
      "end": 89,
      "text": "National Westminster Bank Plc",
-     "org": "org-5",
+     "org": "name:nationalwestminsterbank",
      "settled_by": "name"
     }
    ],
@@ -528,7 +646,8 @@
      "id": "i1",
      "kind": "gb_sort_code",
      "value": "601613",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -538,7 +657,8 @@
      "id": "i2",
      "kind": "account",
      "value": "31926819",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -548,7 +668,8 @@
      "id": "i3",
      "kind": "iban",
      "value": "GB29NWBK60161331926819",
-     "valid": true
+     "valid": true,
+     "tier": "certain"
     },
     {
      "page": 1,
@@ -558,46 +679,59 @@
      "id": "i4",
      "kind": "bic",
      "value": "NWBKGB2L",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i3",
-     "org": "org-6",
+     "org": "IBAN GB NWBK",
      "reasons": [
-      "iban-bank-code",
-      "paired-code"
+      "iban-bank-code"
      ],
-     "via": "i4"
+     "tier": "certain"
     },
     {
      "identifier": "i4",
-     "org": "org-6",
+     "org": "BIC NWBKGB2L",
      "reasons": [
       "bic-institution"
-     ]
+     ],
+     "tier": "likely"
+    },
+    {
+     "identifier": "i3",
+     "org": "BIC NWBKGB2L",
+     "reasons": [
+      "paired-code"
+     ],
+     "via": "i4",
+     "tier": "likely"
     },
     {
      "identifier": "i1",
-     "org": "org-6",
+     "org": "IBAN GB NWBK",
      "reasons": [
       "inside-iban"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i2",
-     "org": "org-6",
+     "org": "IBAN GB NWBK",
      "reasons": [
       "same-account"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i2",
-     "org": "org-5",
+     "org": "name:nationalwestminsterbank",
      "reasons": [
       "statement-header"
-     ]
+     ],
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -607,8 +741,23 @@
      "i2",
      "i3"
     ],
-    "issuer": "org-5"
-   }
+    "issuer": "name:nationalwestminsterbank",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": [
+    {
+     "keys": [
+      "BIC NWBKGB2L",
+      "IBAN GB NWBK"
+     ],
+     "reason": "printed-together",
+     "tier": "likely"
+    }
+   ]
   },
   {
    "id": "abn-amro-statement",
@@ -618,7 +767,7 @@
      "start": 60,
      "end": 78,
      "text": "ABN AMRO Bank N.V.",
-     "org": "org-7",
+     "org": "name:abnamrobanknv",
      "settled_by": "name"
     }
    ],
@@ -631,23 +780,26 @@
      "id": "i1",
      "kind": "iban",
      "value": "NL91ABNA0417164300",
-     "valid": true
+     "valid": true,
+     "tier": "certain"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "org-8",
+     "org": "IBAN NL ABNA",
      "reasons": [
       "iban-bank-code"
-     ]
+     ],
+     "tier": "certain"
     },
     {
      "identifier": "i1",
-     "org": "org-7",
+     "org": "name:abnamrobanknv",
      "reasons": [
       "statement-header"
-     ]
+     ],
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -656,8 +808,14 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-7"
-   }
+    "issuer": "name:abnamrobanknv",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": []
   },
   {
    "id": "commerzbank-kontoauszug",
@@ -667,7 +825,7 @@
      "start": 99,
      "end": 113,
      "text": "Commerzbank AG",
-     "org": "org-9",
+     "org": "name:commerzbank",
      "settled_by": "name"
     }
    ],
@@ -680,7 +838,8 @@
      "id": "i1",
      "kind": "iban",
      "value": "DE89370400440532013000",
-     "valid": true
+     "valid": true,
+     "tier": "certain"
     },
     {
      "page": 1,
@@ -690,25 +849,35 @@
      "id": "i2",
      "kind": "bic",
      "value": "COBADEFFXXX",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "org-10",
+     "org": "IBAN DE 37040044",
      "reasons": [
-      "iban-bank-code",
-      "paired-code"
+      "iban-bank-code"
      ],
-     "via": "i2"
+     "tier": "certain"
     },
     {
      "identifier": "i2",
-     "org": "org-10",
+     "org": "BIC COBADEFF",
      "reasons": [
       "bic-institution"
-     ]
+     ],
+     "tier": "likely"
+    },
+    {
+     "identifier": "i1",
+     "org": "BIC COBADEFF",
+     "reasons": [
+      "paired-code"
+     ],
+     "via": "i2",
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -717,8 +886,23 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-9"
-   }
+    "issuer": "name:commerzbank",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": [
+    {
+     "keys": [
+      "BIC COBADEFF",
+      "IBAN DE 37040044"
+     ],
+     "reason": "printed-together",
+     "tier": "likely"
+    }
+   ]
   },
   {
    "id": "deutsche-bank-brief",
@@ -728,7 +912,7 @@
      "start": 93,
      "end": 106,
      "text": "Deutsche Bank",
-     "org": "org-11",
+     "org": "name:deutschebank",
      "settled_by": "name"
     },
     {
@@ -736,7 +920,7 @@
      "start": 204,
      "end": 224,
      "text": "Deutschen Bundesbank",
-     "org": "org-12",
+     "org": "name:deutschenbundesbank",
      "settled_by": "name"
     },
     {
@@ -744,12 +928,13 @@
      "start": 357,
      "end": 373,
      "text": "Deutsche Bank AG",
-     "org": "org-11",
+     "org": "name:deutschebank",
      "settled_by": "name"
     }
    ],
    "identifiers": [],
-   "links": []
+   "links": [],
+   "same_org": []
   },
   {
    "id": "rechnung-falsche-iban",
@@ -759,7 +944,7 @@
      "start": 96,
      "end": 124,
      "text": "Musterfirma Schreinerei GmbH",
-     "org": "org-13",
+     "org": "name:musterfirmaschreinereigmbh",
      "settled_by": "name"
     },
     {
@@ -767,7 +952,7 @@
      "start": 380,
      "end": 391,
      "text": "Commerzbank",
-     "org": "org-9",
+     "org": "name:commerzbank",
      "settled_by": "name"
     }
    ],
@@ -780,10 +965,12 @@
      "id": "i1",
      "kind": "iban",
      "value": "DE88370400440532013000",
-     "valid": false
+     "valid": false,
+     "tier": "likely"
     }
    ],
-   "links": []
+   "links": [],
+   "same_org": []
   },
   {
    "id": "invoice-lookalike-numbers",
@@ -793,7 +980,7 @@
      "start": 58,
      "end": 77,
      "text": "Sample Supplies Ltd",
-     "org": "org-14",
+     "org": "name:samplesupplies",
      "settled_by": "name"
     }
    ],
@@ -806,7 +993,8 @@
      "id": "i1",
      "kind": "iban",
      "value": "GB28NWBK60161331926819",
-     "valid": false
+     "valid": false,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -816,10 +1004,12 @@
      "id": "i2",
      "kind": "card",
      "value": "4111111111111112",
-     "valid": false
+     "valid": false,
+     "tier": "likely"
     }
    ],
-   "links": []
+   "links": [],
+   "same_org": []
   },
   {
    "id": "neft-receipt-tied",
@@ -829,7 +1019,7 @@
      "start": 58,
      "end": 62,
      "text": "HDFC",
-     "org": "org-1",
+     "org": "name:hdfcbank",
      "settled_by": "mention"
     },
     {
@@ -837,7 +1027,7 @@
      "start": 236,
      "end": 245,
      "text": "HDFC Bank",
-     "org": "org-1",
+     "org": "name:hdfcbank",
      "settled_by": "name"
     },
     {
@@ -845,7 +1035,7 @@
      "start": 318,
      "end": 328,
      "text": "ICICI Bank",
-     "org": "org-15",
+     "org": "name:icicibank",
      "settled_by": "name"
     }
    ],
@@ -858,7 +1048,8 @@
      "id": "i1",
      "kind": "account",
      "value": "50100417263958",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -868,7 +1059,8 @@
      "id": "i2",
      "kind": "ifsc",
      "value": "HDFC0SAMPL1",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -878,7 +1070,8 @@
      "id": "i3",
      "kind": "account",
      "value": "002101234567",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -888,39 +1081,54 @@
      "id": "i4",
      "kind": "ifsc",
      "value": "ICIC0SAMPL2",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i2",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i4",
-     "org": "org-16",
+     "org": "IFSC ICIC",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i1",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
       "paired-code"
      ],
-     "via": "i2"
+     "via": "i2",
+     "tier": "likely"
     },
     {
      "identifier": "i3",
-     "org": "org-16",
+     "org": "IFSC ICIC",
      "reasons": [
       "paired-code"
      ],
-     "via": "i4"
+     "via": "i4",
+     "tier": "likely"
+    }
+   ],
+   "same_org": [
+    {
+     "keys": [
+      "IFSC HDFC",
+      "name:hdfcbank"
+     ],
+     "reason": "spells-code",
+     "tier": "likely"
     }
    ]
   },
@@ -932,7 +1140,7 @@
      "start": 334,
      "end": 345,
      "text": "Commerzbank",
-     "org": "org-9",
+     "org": "name:commerzbank",
      "settled_by": "name"
     },
     {
@@ -940,7 +1148,7 @@
      "start": 347,
      "end": 358,
      "text": "BNP Paribas",
-     "org": "org-17",
+     "org": "name:bnpparibas",
      "settled_by": "name"
     },
     {
@@ -948,7 +1156,7 @@
      "start": 360,
      "end": 371,
      "text": "Mizuho Bank",
-     "org": "org-18",
+     "org": "name:mizuhobank",
      "settled_by": "name"
     }
    ],
@@ -961,7 +1169,8 @@
      "id": "i1",
      "kind": "iban",
      "value": "DE89370400440532013000",
-     "valid": true
+     "valid": true,
+     "tier": "certain"
     },
     {
      "page": 1,
@@ -971,18 +1180,21 @@
      "id": "i2",
      "kind": "account",
      "value": "7730194522",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "org-10",
+     "org": "IBAN DE 37040044",
      "reasons": [
       "iban-bank-code"
-     ]
+     ],
+     "tier": "certain"
     }
-   ]
+   ],
+   "same_org": []
   },
   {
    "id": "transfer-rows",
@@ -996,7 +1208,8 @@
      "id": "i1",
      "kind": "ifsc",
      "value": "HDFC0SAMPL1",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1006,7 +1219,8 @@
      "id": "i2",
      "kind": "account",
      "value": "50100417263958",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1016,7 +1230,8 @@
      "id": "i3",
      "kind": "ifsc",
      "value": "ICIC0SAMPL2",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1026,41 +1241,47 @@
      "id": "i4",
      "kind": "account",
      "value": "002101234567",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i3",
-     "org": "org-16",
+     "org": "IFSC ICIC",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i2",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
       "paired-code"
      ],
-     "via": "i1"
+     "via": "i1",
+     "tier": "likely"
     },
     {
      "identifier": "i4",
-     "org": "org-16",
+     "org": "IFSC ICIC",
      "reasons": [
       "paired-code"
      ],
-     "via": "i3"
+     "via": "i3",
+     "tier": "likely"
     }
-   ]
+   ],
+   "same_org": []
   },
   {
    "id": "hdfc-branch-letter",
@@ -1070,7 +1291,7 @@
      "start": 57,
      "end": 74,
      "text": "HDFC Bank Limited",
-     "org": "org-1",
+     "org": "name:hdfcbank",
      "settled_by": "name"
     },
     {
@@ -1078,12 +1299,13 @@
      "start": 280,
      "end": 289,
      "text": "HDFC Bank",
-     "org": "org-1",
+     "org": "name:hdfcbank",
      "settled_by": "name"
     }
    ],
    "identifiers": [],
-   "links": []
+   "links": [],
+   "same_org": []
   },
   {
    "id": "hdfc-letter-hindi",
@@ -1093,7 +1315,7 @@
      "start": 97,
      "end": 110,
      "text": "एचडीएफसी बैंक",
-     "org": "org-19",
+     "org": "name:एचडीएफसीबैंक",
      "settled_by": "name"
     },
     {
@@ -1101,12 +1323,13 @@
      "start": 291,
      "end": 304,
      "text": "एचडीएफसी बैंक",
-     "org": "org-19",
+     "org": "name:एचडीएफसीबैंक",
      "settled_by": "name"
     }
    ],
    "identifiers": [],
-   "links": []
+   "links": [],
+   "same_org": []
   },
   {
    "id": "rent-receipt",
@@ -1120,10 +1343,12 @@
      "id": "i1",
      "kind": "account",
      "value": "33445566778899",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     }
    ],
-   "links": []
+   "links": [],
+   "same_org": []
   },
   {
    "id": "email-fee-payment",
@@ -1133,7 +1358,7 @@
      "start": 234,
      "end": 242,
      "text": "hdfcbank",
-     "org": "org-1",
+     "org": "name:hdfcbank",
      "settled_by": "name"
     },
     {
@@ -1141,12 +1366,13 @@
      "start": 259,
      "end": 268,
      "text": "HDFC BANK",
-     "org": "org-1",
+     "org": "name:hdfcbank",
      "settled_by": "name"
     }
    ],
    "identifiers": [],
-   "links": []
+   "links": [],
+   "same_org": []
   },
   {
    "id": "hdfc-card-statement",
@@ -1156,7 +1382,7 @@
      "start": 60,
      "end": 69,
      "text": "HDFC Bank",
-     "org": "org-1",
+     "org": "name:hdfcbank",
      "settled_by": "name"
     }
    ],
@@ -1169,16 +1395,18 @@
      "id": "i1",
      "kind": "card",
      "value": "4242424242424242",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "org-1",
+     "org": "name:hdfcbank",
      "reasons": [
       "statement-header"
-     ]
+     ],
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -1187,8 +1415,14 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-1"
-   }
+    "issuer": "name:hdfcbank",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": []
   },
   {
    "id": "hdfc-life-receipt",
@@ -1198,7 +1432,7 @@
      "start": 58,
      "end": 93,
      "text": "HDFC Life Insurance Company Limited",
-     "org": "org-20",
+     "org": "name:hdfclifeinsurancecompany",
      "settled_by": "name"
     },
     {
@@ -1206,7 +1440,7 @@
      "start": 265,
      "end": 274,
      "text": "HDFC Life",
-     "org": "org-20",
+     "org": "name:hdfclifeinsurancecompany",
      "settled_by": "mention"
     }
    ],
@@ -1219,10 +1453,12 @@
      "id": "i1",
      "kind": "card",
      "value": "5555555555554444",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
-   "links": []
+   "links": [],
+   "same_org": []
   },
   {
    "id": "icici-lombard-notice",
@@ -1232,7 +1468,7 @@
      "start": 57,
      "end": 104,
      "text": "ICICI Lombard General Insurance Company Limited",
-     "org": "org-21",
+     "org": "name:icicilombardgeneralinsurancecompany",
      "settled_by": "name"
     },
     {
@@ -1240,12 +1476,13 @@
      "start": 273,
      "end": 283,
      "text": "ICICI Bank",
-     "org": "org-15",
+     "org": "name:icicibank",
      "settled_by": "name"
     }
    ],
    "identifiers": [],
-   "links": []
+   "links": [],
+   "same_org": []
   },
   {
    "id": "school-fee-banks",
@@ -1255,7 +1492,7 @@
      "start": 57,
      "end": 77,
      "text": "Sample Public School",
-     "org": "org-22",
+     "org": "name:samplepublicschool",
      "settled_by": "name"
     },
     {
@@ -1263,7 +1500,7 @@
      "start": 138,
      "end": 157,
      "text": "State Bank of India",
-     "org": "org-23",
+     "org": "name:statebankofindia",
      "settled_by": "name"
     },
     {
@@ -1271,7 +1508,7 @@
      "start": 158,
      "end": 171,
      "text": "Bank of India",
-     "org": "org-24",
+     "org": "name:bankofindia",
      "settled_by": "name"
     },
     {
@@ -1279,7 +1516,7 @@
      "start": 172,
      "end": 193,
      "text": "Central Bank of India",
-     "org": "org-25",
+     "org": "name:centralbankofindia",
      "settled_by": "name"
     },
     {
@@ -1287,7 +1524,7 @@
      "start": 194,
      "end": 213,
      "text": "Union Bank of India",
-     "org": "org-26",
+     "org": "name:unionbankofindia",
      "settled_by": "name"
     },
     {
@@ -1295,7 +1532,7 @@
      "start": 214,
      "end": 228,
      "text": "Bank of Baroda",
-     "org": "org-27",
+     "org": "name:bankofbaroda",
      "settled_by": "name"
     },
     {
@@ -1303,7 +1540,7 @@
      "start": 229,
      "end": 249,
      "text": "Punjab National Bank",
-     "org": "org-28",
+     "org": "name:punjabnationalbank",
      "settled_by": "name"
     },
     {
@@ -1311,12 +1548,13 @@
      "start": 250,
      "end": 268,
      "text": "Punjab \u0026 Sind Bank",
-     "org": "org-29",
+     "org": "name:punjabsindbank",
      "settled_by": "name"
     }
    ],
    "identifiers": [],
-   "links": []
+   "links": [],
+   "same_org": []
   },
   {
    "id": "sbi-passbook-hindi",
@@ -1326,7 +1564,7 @@
      "start": 99,
      "end": 120,
      "text": "स्टेट बैंक ऑफ़ इंडिया",
-     "org": "org-30",
+     "org": "name:स्टेटबैंकऑफ़इंडिया",
      "settled_by": "name"
     }
    ],
@@ -1339,7 +1577,8 @@
      "id": "i1",
      "kind": "account",
      "value": "30123456789",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1349,24 +1588,27 @@
      "id": "i2",
      "kind": "ifsc",
      "value": "SBIN0SAMPL4",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i2",
-     "org": "org-31",
+     "org": "IFSC SBIN",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i1",
-     "org": "org-31",
+     "org": "IFSC SBIN",
      "reasons": [
       "paired-code"
      ],
-     "via": "i2"
+     "via": "i2",
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -1375,8 +1617,14 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-30"
-   }
+    "issuer": "name:स्टेटबैंकऑफ़इंडिया",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": []
   },
   {
    "id": "pan-form-hindi",
@@ -1386,7 +1634,7 @@
      "start": 151,
      "end": 186,
      "text": "सैंपल टेक्नोलॉजीज़ प्राइवेट लिमिटेड",
-     "org": "org-32",
+     "org": "name:सैंपलटेक्नोलॉजीज़प्राइवेटलिमिटेड",
      "settled_by": "name"
     }
    ],
@@ -1399,7 +1647,8 @@
      "id": "i1",
      "kind": "in_pan",
      "value": "ABCPK0000F",
-     "valid": false
+     "valid": false,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1409,7 +1658,8 @@
      "id": "i2",
      "kind": "account",
      "value": "50100417263958",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1419,7 +1669,8 @@
      "id": "i3",
      "kind": "ifsc",
      "value": "HDFC0SAMPL1",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1429,26 +1680,30 @@
      "id": "i4",
      "kind": "in_pan",
      "value": "ABCDK0000F",
-     "valid": false
+     "valid": false,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i3",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i2",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
       "paired-code"
      ],
-     "via": "i3"
+     "via": "i3",
+     "tier": "likely"
     }
-   ]
+   ],
+   "same_org": []
   },
   {
    "id": "mizuho-statement-ja",
@@ -1458,7 +1713,7 @@
      "start": 72,
      "end": 77,
      "text": "みずほ銀行",
-     "org": "org-33",
+     "org": "name:みずほ銀行",
      "settled_by": "name"
     }
    ],
@@ -1471,16 +1726,18 @@
      "id": "i1",
      "kind": "account",
      "value": "12345678",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "org-33",
+     "org": "name:みずほ銀行",
      "reasons": [
       "statement-header"
-     ]
+     ],
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -1489,8 +1746,14 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-33"
-   }
+    "issuer": "name:みずほ銀行",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": []
   },
   {
    "id": "mufg-remittance-ja",
@@ -1500,7 +1763,7 @@
      "start": 76,
      "end": 83,
      "text": "三菱UFJ銀行",
-     "org": "org-34",
+     "org": "name:三菱ufj銀行",
      "settled_by": "name"
     },
     {
@@ -1508,7 +1771,7 @@
      "start": 161,
      "end": 169,
      "text": "ABN AMRO",
-     "org": "org-35",
+     "org": "name:abnamro",
      "settled_by": "name"
     },
     {
@@ -1516,7 +1779,7 @@
      "start": 192,
      "end": 201,
      "text": "三菱UFJ信託銀行",
-     "org": "org-36",
+     "org": "name:三菱ufj信託銀行",
      "settled_by": "name"
     },
     {
@@ -1524,7 +1787,7 @@
      "start": 206,
      "end": 213,
      "text": "三菱UFJ銀行",
-     "org": "org-34",
+     "org": "name:三菱ufj銀行",
      "settled_by": "name"
     }
    ],
@@ -1537,7 +1800,8 @@
      "id": "i1",
      "kind": "bic",
      "value": "BOTKJPJT",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1547,26 +1811,30 @@
      "id": "i2",
      "kind": "account",
      "value": "0123456",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "org-37",
+     "org": "BIC BOTKJPJT",
      "reasons": [
       "bic-institution"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i2",
-     "org": "org-37",
+     "org": "BIC BOTKJPJT",
      "reasons": [
       "paired-code"
      ],
-     "via": "i1"
+     "via": "i1",
+     "tier": "likely"
     }
-   ]
+   ],
+   "same_org": []
   },
   {
    "id": "rib-fr",
@@ -1576,7 +1844,7 @@
      "start": 171,
      "end": 188,
      "text": "La Banque Postale",
-     "org": "org-38",
+     "org": "name:labanquepostale",
      "settled_by": "name"
     }
    ],
@@ -1589,7 +1857,8 @@
      "id": "i1",
      "kind": "iban",
      "value": "FR1420041010050500013M02606",
-     "valid": true
+     "valid": true,
+     "tier": "certain"
     },
     {
      "page": 1,
@@ -1599,7 +1868,8 @@
      "id": "i2",
      "kind": "bic",
      "value": "PSSTFRPPXXX",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1609,7 +1879,8 @@
      "id": "i3",
      "kind": "fr_bank_code",
      "value": "20041",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1619,7 +1890,8 @@
      "id": "i4",
      "kind": "fr_branch_code",
      "value": "01005",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1629,7 +1901,8 @@
      "id": "i5",
      "kind": "account",
      "value": "0500013M026",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1639,46 +1912,69 @@
      "id": "i6",
      "kind": "fr_rib_key",
      "value": "06",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "org-39",
+     "org": "IBAN FR 20041",
      "reasons": [
-      "iban-bank-code",
-      "paired-code"
+      "iban-bank-code"
      ],
-     "via": "i2"
+     "tier": "certain"
     },
     {
      "identifier": "i2",
-     "org": "org-39",
+     "org": "BIC PSSTFRPP",
      "reasons": [
       "bic-institution"
-     ]
+     ],
+     "tier": "likely"
+    },
+    {
+     "identifier": "i1",
+     "org": "BIC PSSTFRPP",
+     "reasons": [
+      "paired-code"
+     ],
+     "via": "i2",
+     "tier": "likely"
     },
     {
      "identifier": "i3",
-     "org": "org-39",
+     "org": "IBAN FR 20041",
      "reasons": [
       "inside-iban"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i4",
-     "org": "org-39",
+     "org": "IBAN FR 20041",
      "reasons": [
       "inside-iban"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i5",
-     "org": "org-39",
+     "org": "IBAN FR 20041",
      "reasons": [
       "same-account"
-     ]
+     ],
+     "tier": "likely"
+    }
+   ],
+   "same_org": [
+    {
+     "keys": [
+      "BIC PSSTFRPP",
+      "IBAN FR 20041"
+     ],
+     "reason": "printed-together",
+     "tier": "likely"
     }
    ]
   },
@@ -1690,7 +1986,7 @@
      "start": 57,
      "end": 71,
      "text": "BANK OF BARODA",
-     "org": "org-27",
+     "org": "name:bankofbaroda",
      "settled_by": "name"
     }
    ],
@@ -1703,7 +1999,8 @@
      "id": "i1",
      "kind": "account",
      "value": "12340100005678",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1713,26 +2010,30 @@
      "id": "i2",
      "kind": "ifsc",
      "value": "BARB0SAMPL6",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i2",
-     "org": "org-40",
+     "org": "IFSC BARB",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i1",
-     "org": "org-40",
+     "org": "IFSC BARB",
      "reasons": [
       "paired-code"
      ],
-     "via": "i2"
+     "via": "i2",
+     "tier": "likely"
     }
-   ]
+   ],
+   "same_org": []
   },
   {
    "id": "scan-pnb-deposit",
@@ -1742,7 +2043,7 @@
      "start": 55,
      "end": 75,
      "text": "PUNJAB NATIONAL BANK",
-     "org": "org-28",
+     "org": "name:punjabnationalbank",
      "settled_by": "name"
     }
    ],
@@ -1755,7 +2056,8 @@
      "id": "i1",
      "kind": "account",
      "value": "0123000100456789",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1765,26 +2067,30 @@
      "id": "i2",
      "kind": "ifsc",
      "value": "PUNB0SAMPL7",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i2",
-     "org": "org-41",
+     "org": "IFSC PUNB",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i1",
-     "org": "org-41",
+     "org": "IFSC PUNB",
      "reasons": [
       "paired-code"
      ],
-     "via": "i2"
+     "via": "i2",
+     "tier": "likely"
     }
-   ]
+   ],
+   "same_org": []
   },
   {
    "id": "axis-statement-scanned-annex",
@@ -1794,7 +2100,7 @@
      "start": 60,
      "end": 73,
      "text": "Axis Bank Ltd",
-     "org": "org-42",
+     "org": "name:axisbank",
      "settled_by": "name"
     },
     {
@@ -1802,7 +2108,7 @@
      "start": 39,
      "end": 48,
      "text": "AXIS BANK",
-     "org": "org-42",
+     "org": "name:axisbank",
      "settled_by": "name"
     }
    ],
@@ -1815,7 +2121,8 @@
      "id": "i1",
      "kind": "account",
      "value": "917010012345678",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1825,7 +2132,8 @@
      "id": "i2",
      "kind": "ifsc",
      "value": "UTIB0SAMPL5",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     },
     {
      "page": 2,
@@ -1835,24 +2143,27 @@
      "id": "i3",
      "kind": "account",
      "value": "917010012345678",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i2",
-     "org": "org-43",
+     "org": "IFSC UTIB",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i1",
-     "org": "org-43",
+     "org": "IFSC UTIB",
      "reasons": [
       "paired-code"
      ],
-     "via": "i2"
+     "via": "i2",
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -1861,8 +2172,14 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-42"
-   }
+    "issuer": "name:axisbank",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": []
   },
   {
    "id": "utility-bill",
@@ -1872,7 +2189,7 @@
      "start": 55,
      "end": 84,
      "text": "Sample Power Distribution Ltd",
-     "org": "org-44",
+     "org": "name:samplepowerdistribution",
      "settled_by": "name"
     }
    ],
@@ -1885,7 +2202,8 @@
      "id": "i1",
      "kind": "account",
      "value": "57500000123456",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1895,26 +2213,30 @@
      "id": "i2",
      "kind": "ifsc",
      "value": "HDFC0SAMPL3",
-     "valid": true
+     "valid": true,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i2",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
       "ifsc-prefix"
-     ]
+     ],
+     "tier": "likely"
     },
     {
      "identifier": "i1",
-     "org": "org-1",
+     "org": "IFSC HDFC",
      "reasons": [
       "paired-code"
      ],
-     "via": "i2"
+     "via": "i2",
+     "tier": "likely"
     }
-   ]
+   ],
+   "same_org": []
   },
   {
    "id": "hdfc-ltd-loan-2019",
@@ -1924,7 +2246,7 @@
      "start": 60,
      "end": 68,
      "text": "HDFC Ltd",
-     "org": "org-45",
+     "org": "name:housingdevelopmentfinancecorporation",
      "settled_by": "mention"
     },
     {
@@ -1932,7 +2254,7 @@
      "start": 69,
      "end": 116,
      "text": "Housing Development Finance Corporation Limited",
-     "org": "org-45",
+     "org": "name:housingdevelopmentfinancecorporation",
      "settled_by": "name"
     }
    ],
@@ -1945,16 +2267,18 @@
      "id": "i1",
      "kind": "account",
      "value": "612345678",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "org-45",
+     "org": "name:housingdevelopmentfinancecorporation",
      "reasons": [
       "statement-header"
-     ]
+     ],
+     "tier": "likely"
     }
    ],
    "statement": {
@@ -1963,8 +2287,14 @@
     "accounts": [
      "i1"
     ],
-    "issuer": "org-45"
-   }
+    "issuer": "name:housingdevelopmentfinancecorporation",
+    "tiers": {
+     "accounts": "likely",
+     "issuer": "likely",
+     "period": "likely"
+    }
+   },
+   "same_org": []
   },
   {
    "id": "passport-asha-current",
@@ -1974,7 +2304,7 @@
      "start": 366,
      "end": 388,
      "text": "UTOPIA PASSPORT OFFICE",
-     "org": "org-46",
+     "org": "name:utopiapassportoffice",
      "settled_by": "name"
     }
    ],
@@ -1987,7 +2317,8 @@
      "id": "i1",
      "kind": "passport_number",
      "value": "SMP001826",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -1997,7 +2328,8 @@
      "id": "i2",
      "kind": "mrz",
      "value": "P\u003cUTOKALPIT\u003c\u003cASHA\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\nSMP0018266UTO8804215F3403174\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c2",
-     "valid": true
+     "valid": true,
+     "tier": "certain"
     }
    ],
    "links": [],
@@ -2016,8 +2348,15 @@
      "end": 354,
      "text": "17 MAR 2034"
     },
-    "current": true
-   }
+    "current": true,
+    "tiers": {
+     "current": "likely",
+     "expiry": "certain",
+     "holder": "certain",
+     "number": "certain"
+    }
+   },
+   "same_org": []
   },
   {
    "id": "passport-asha-expired",
@@ -2031,7 +2370,8 @@
      "id": "i1",
      "kind": "passport_number",
      "value": "SMP000417",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -2041,7 +2381,8 @@
      "id": "i2",
      "kind": "mrz",
      "value": "P\u003cUTOKALPIT\u003c\u003cASHA\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\nSMP0004175UTO8804215F1906095\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c0",
-     "valid": true
+     "valid": true,
+     "tier": "certain"
     }
    ],
    "links": [],
@@ -2060,8 +2401,15 @@
      "end": 287,
      "text": "09 JUN 2019"
     },
-    "current": false
-   }
+    "current": false,
+    "tiers": {
+     "current": "likely",
+     "expiry": "certain",
+     "holder": "certain",
+     "number": "certain"
+    }
+   },
+   "same_org": []
   },
   {
    "id": "passport-rohan",
@@ -2071,7 +2419,7 @@
      "start": 367,
      "end": 389,
      "text": "UTOPIA PASSPORT OFFICE",
-     "org": "org-46",
+     "org": "name:utopiapassportoffice",
      "settled_by": "name"
     }
    ],
@@ -2084,7 +2432,8 @@
      "id": "i1",
      "kind": "passport_number",
      "value": "SMP002935",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -2094,7 +2443,8 @@
      "id": "i2",
      "kind": "mrz",
      "value": "P\u003cUTOKALPIT\u003c\u003cROHAN\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\nSMP0029356UTO1609307M2801049\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c8",
-     "valid": true
+     "valid": true,
+     "tier": "certain"
     }
    ],
    "links": [],
@@ -2113,8 +2463,15 @@
      "end": 355,
      "text": "04 JAN 2028"
     },
-    "current": true
-   }
+    "current": true,
+    "tiers": {
+     "current": "likely",
+     "expiry": "certain",
+     "holder": "certain",
+     "number": "certain"
+    }
+   },
+   "same_org": []
   },
   {
    "id": "visa-asha",
@@ -2128,7 +2485,8 @@
      "id": "i1",
      "kind": "passport_number",
      "value": "SMP001826",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -2138,10 +2496,12 @@
      "id": "i2",
      "kind": "mrz",
      "value": "V\u003cUTOKALPIT\u003c\u003cASHA\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\nVS00077317UTO8804215F2701312\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c",
-     "valid": true
+     "valid": true,
+     "tier": "certain"
     }
    ],
-   "links": []
+   "links": [],
+   "same_org": []
   },
   {
    "id": "passport-bad-mrz",
@@ -2155,7 +2515,8 @@
      "id": "i1",
      "kind": "passport_number",
      "value": "L898902C3",
-     "valid": null
+     "valid": null,
+     "tier": "likely"
     },
     {
      "page": 1,
@@ -2165,7 +2526,8 @@
      "id": "i2",
      "kind": "mrz",
      "value": "P\u003cUTOERIKSSON\u003c\u003cANNA\u003cMARIA\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\nL898902C36UTO7408122F3105140\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c\u003c2",
-     "valid": false
+     "valid": false,
+     "tier": "likely"
     }
    ],
    "links": [],
@@ -2184,8 +2546,15 @@
      "end": 327,
      "text": "15 APR 2031"
     },
-    "current": true
-   }
+    "current": true,
+    "tiers": {
+     "current": "likely",
+     "expiry": "likely",
+     "holder": "likely",
+     "number": "likely"
+    }
+   },
+   "same_org": []
   }
  ],
  "answers": {

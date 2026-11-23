@@ -1,53 +1,81 @@
 package extract
 
 import (
+	"encoding/json"
+	"fmt"
 	"math/big"
+	"os"
 	"strings"
 )
 
-// ibanCountry is one row of the SWIFT IBAN registry: the IBAN's length and,
-// where the registry gives them, where the bank code, branch code and
-// account number sit (offsets in the IBAN, end exclusive; zero when absent).
-type ibanCountry struct {
-	length             int
-	bank0, bank1       int
-	branch0, branch1   int
-	account0, account1 int
+// IBANRegistry is sample/iban-registry.json, the table the scorer reads:
+// each registry country's IBAN length and where its bank identifier sits.
+type IBANRegistry struct{ countries map[string]ibanCountry }
+
+// ibanCountry gives an IBAN's length and its bank identifier's place,
+// offsets in the IBAN, end exclusive.
+type ibanCountry struct{ length, bank0, bank1 int }
+
+// LoadIBANRegistry reads the registry table. Every country whose IBANs the
+// extractor looks for must be in it.
+func LoadIBANRegistry(path string) (*IBANRegistry, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var f struct {
+		Countries map[string]struct {
+			Length int    `json:"length"`
+			Bank   string `json:"bank_identifier"`
+		} `json:"countries"`
+	}
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	reg := &IBANRegistry{countries: map[string]ibanCountry{}}
+	for cc, c := range f.Countries {
+		var first, last int
+		if n, _ := fmt.Sscanf(c.Bank, "%d-%d", &first, &last); n != 2 || first < 1 || last < first || 4+last > c.Length {
+			return nil, fmt.Errorf("%s: %s: bank_identifier %q is no place in an IBAN of %d characters", path, cc, c.Bank, c.Length)
+		}
+		reg.countries[cc] = ibanCountry{length: c.Length, bank0: 4 + first - 1, bank1: 4 + last}
+	}
+	for cc := range ibanSought {
+		if _, ok := reg.countries[cc]; !ok {
+			return nil, fmt.Errorf("%s: no row for %s", path, cc)
+		}
+	}
+	return reg, nil
 }
 
-var ibanCountries = map[string]ibanCountry{
-	"AD": {length: 24}, "AE": {length: 23}, "AL": {length: 28}, "AZ": {length: 28},
-	"BA": {length: 20}, "BG": {length: 22}, "BH": {length: 22}, "BR": {length: 29},
-	"CR": {length: 22}, "CY": {length: 28}, "CZ": {length: 24}, "DK": {length: 18},
-	"DO": {length: 28}, "EE": {length: 20}, "EG": {length: 29}, "FI": {length: 18},
-	"FO": {length: 18}, "GE": {length: 22}, "GI": {length: 23}, "GL": {length: 18},
-	"GR": {length: 27}, "GT": {length: 28}, "HR": {length: 21}, "HU": {length: 28},
-	"IL": {length: 23}, "IS": {length: 26}, "IT": {length: 27}, "JO": {length: 30},
-	"KW": {length: 30}, "KZ": {length: 20}, "LB": {length: 28}, "LC": {length: 32},
-	"LI": {length: 21}, "LT": {length: 20}, "LV": {length: 21}, "MD": {length: 24},
-	"ME": {length: 22}, "MK": {length: 19}, "MR": {length: 27}, "MT": {length: 31},
-	"MU": {length: 30}, "NO": {length: 15}, "PK": {length: 24}, "PL": {length: 28},
-	"PS": {length: 29}, "PT": {length: 25}, "QA": {length: 29}, "RO": {length: 24},
-	"RS": {length: 22}, "SA": {length: 24}, "SE": {length: 24}, "SI": {length: 19},
-	"SK": {length: 24}, "SM": {length: 27}, "TN": {length: 24}, "TR": {length: 26},
-	"UA": {length: 29}, "VG": {length: 24}, "XK": {length: 20},
-	"AT": {length: 20, bank0: 4, bank1: 9, account0: 9, account1: 20},
-	"BE": {length: 16, bank0: 4, bank1: 7, account0: 7, account1: 14},
-	"CH": {length: 21, bank0: 4, bank1: 9, account0: 9, account1: 21},
-	"DE": {length: 22, bank0: 4, bank1: 12, account0: 12, account1: 22},
-	"ES": {length: 24, bank0: 4, bank1: 8, branch0: 8, branch1: 12, account0: 14, account1: 24},
-	"FR": {length: 27, bank0: 4, bank1: 9, branch0: 9, branch1: 14, account0: 14, account1: 25},
-	"MC": {length: 27, bank0: 4, bank1: 9, branch0: 9, branch1: 14, account0: 14, account1: 25},
-	"GB": {length: 22, bank0: 4, bank1: 8, branch0: 8, branch1: 14, account0: 14, account1: 22},
-	"IE": {length: 22, bank0: 4, bank1: 8, branch0: 8, branch1: 14, account0: 14, account1: 22},
-	"LU": {length: 20, bank0: 4, bank1: 7, account0: 7, account1: 20},
-	"NL": {length: 18, bank0: 4, bank1: 8, account0: 8, account1: 18},
+// ibanSought are the countries whose IBANs findIBAN looks for.
+var ibanSought = set(strings.Fields(`AD AE AL AT AZ BA BE BG BH BR CH CR CY CZ DE DK DO EE EG ES FI FO FR GB GE GI GL GR GT
+HR HU IE IL IS IT JO KW KZ LB LC LI LT LU LV MC MD ME MK MR MT MU NL NO PK PL PS PT QA RO RS SA SE SI SK SM TN TR UA VG XK`)...)
+
+// ibanParts are the countries whose IBAN bank code the extractor reads, with
+// where the branch code and the account number sit in their IBANs (offsets
+// in the IBAN, end exclusive; zero when absent). The registry table holds
+// neither place.
+var ibanParts = map[string]struct{ branch0, branch1, account0, account1 int }{
+	"AT": {account0: 9, account1: 20},
+	"BE": {account0: 7, account1: 14},
+	"CH": {account0: 9, account1: 21},
+	"DE": {account0: 12, account1: 22},
+	"ES": {branch0: 8, branch1: 12, account0: 14, account1: 24},
+	"FR": {branch0: 9, branch1: 14, account0: 14, account1: 25},
+	"MC": {branch0: 9, branch1: 14, account0: 14, account1: 25},
+	"GB": {branch0: 8, branch1: 14, account0: 14, account1: 22},
+	"IE": {branch0: 8, branch1: 14, account0: 14, account1: 22},
+	"LU": {account0: 7, account1: 20},
+	"NL": {account0: 8, account1: 18},
 }
 
-// ibanValid applies the ISO 13616 check: move the first four characters to
-// the end, turn letters into 10..35, and the number mod 97 must be 1.
-func ibanValid(iban string) bool {
-	c, ok := ibanCountries[iban[:2]]
+// proves applies FORMAT.md's test for a certain IBAN: its country is in the
+// table, it has that country's length, and the ISO 13616 check passes (move
+// the first four characters to the end, turn letters into 10..35, and the
+// number mod 97 must be 1).
+func (reg *IBANRegistry) proves(iban string) bool {
+	c, ok := reg.countries[iban[:2]]
 	if !ok || len(iban) != c.length {
 		return false
 	}
@@ -64,6 +92,16 @@ func ibanValid(iban string) bool {
 	}
 	n, ok := new(big.Int).SetString(b.String(), 10)
 	return ok && new(big.Int).Mod(n, big.NewInt(97)).Int64() == 1
+}
+
+// codeKey is the key of the bank an IBAN names by its bank code ("Code
+// keys"), for a country whose bank code the extractor reads, or "".
+func (reg *IBANRegistry) codeKey(iban string) string {
+	if _, ok := ibanParts[iban[:2]]; !ok {
+		return ""
+	}
+	c := reg.countries[iban[:2]]
+	return "IBAN " + iban[:2] + " " + iban[c.bank0:c.bank1]
 }
 
 func itoa(n int) string {
@@ -118,22 +156,19 @@ func mrzDigit(s string) byte {
 	return byte('0' + sum%10)
 }
 
-func mrzCheck(field string, digit byte) bool {
-	if digit == '<' {
-		digit = '0'
-	}
-	return mrzDigit(field) == digit
-}
+func mrzCheck(field string, digit byte) bool { return mrzDigit(field) == digit }
 
 // mrzValid checks every check digit of a TD3 passport zone (P) or an MRV-A
-// visa zone (V); both have two lines of 44 characters.
+// visa zone (V); both have two lines of 44 characters. A check digit is a
+// digit, except that an empty personal number may give a filler.
 func mrzValid(l1, l2 string) bool {
 	if len(l1) != 44 || len(l2) != 44 {
 		return false
 	}
 	ok := mrzCheck(l2[0:9], l2[9]) && mrzCheck(l2[13:19], l2[19]) && mrzCheck(l2[21:27], l2[27])
 	if l1[0] == 'P' {
-		ok = ok && mrzCheck(l2[28:42], l2[42]) && mrzCheck(l2[0:10]+l2[13:20]+l2[21:43], l2[43])
+		personal := mrzCheck(l2[28:42], l2[42]) || l2[42] == '<' && strings.Trim(l2[28:42], "<") == ""
+		ok = ok && personal && mrzCheck(l2[0:10]+l2[13:20]+l2[21:43], l2[43])
 	}
 	return ok
 }

@@ -9,13 +9,22 @@ import (
 
 var ref = Date{2026, 11, 22}
 
+// registry is the IBAN registry table the scorer reads.
+var registry = func() *IBANRegistry {
+	r, err := LoadIBANRegistry("../../sample/iban-registry.json")
+	if err != nil {
+		panic(err)
+	}
+	return r
+}()
+
 func doc(id string, lines ...string) Document {
 	return Document{ID: id, Pages: []Page{{Text: strings.Join(lines, "\n")}}}
 }
 
 func runOne(t *testing.T, d Document, dir *Directory) (Output, DocOut) {
 	t.Helper()
-	o := Run([]Document{d}, dir, ref)
+	o := Run([]Document{d}, dir, registry, ref)
 	for _, e := range o.Documents {
 		if e.ID == d.ID {
 			checkSpans(t, d, e)
@@ -66,6 +75,15 @@ func linksOf(o Output, e DocOut) []string {
 		out = append(out, val[l.Identifier]+" -> "+who+": "+strings.Join(l.Reasons, ","))
 	}
 	sort.Strings(out)
+	return out
+}
+
+// joinsOf lists same_org rows as "key = key: reason tier".
+func joinsOf(e DocOut) []string {
+	var out []string
+	for _, j := range e.SameOrg {
+		out = append(out, j.Keys[0]+" = "+j.Keys[1]+": "+j.Reason+" "+string(j.Tier))
+	}
 	return out
 }
 
@@ -201,10 +219,14 @@ func TestCodeTies(t *testing.T) {
 		"Debit account: 111122223333 IFSC: ACME0BR0001 Bank: ACME Bank",
 		"Credit account: 444455556666 IFSC: ZETA0BR0002 Bank: Zeta Bank"), nil)
 	eq(t, "links", linksOf(o, e), []string{
-		"111122223333 -> ACME Bank: paired-code",
-		"444455556666 -> Zeta Bank: paired-code",
-		"ACME0BR0001 -> ACME Bank: ifsc-prefix",
-		"ZETA0BR0002 -> Zeta Bank: ifsc-prefix",
+		"111122223333 -> IFSC ACME: paired-code",
+		"444455556666 -> IFSC ZETA: paired-code",
+		"ACME0BR0001 -> IFSC ACME: ifsc-prefix",
+		"ZETA0BR0002 -> IFSC ZETA: ifsc-prefix",
+	})
+	eq(t, "same_org", joinsOf(e), []string{
+		"IFSC ACME = name:acmebank: spells-code likely",
+		"IFSC ZETA = name:zetabank: spells-code likely",
 	})
 	if e.Orgs[0].Text != "ACME" || *e.Orgs[0].SettledBy != "code" && *e.Orgs[0].SettledBy != "mention" {
 		t.Errorf("ACME in the heading is settled by the code beside it: %+v", e.Orgs[0])
@@ -236,15 +258,15 @@ func TestPairedCodeNeedsTheRow(t *testing.T) {
 		"1 ALFA0BR0001 First Party, savings 111122223333",
 		"2 BETA0BR0002 Second Party, current 444455556666"), nil)
 	eq(t, "links", linksOf(o, e), []string{
-		"111122223333 -> org-1: paired-code",
-		"444455556666 -> org-2: paired-code",
-		"ALFA0BR0001 -> org-1: ifsc-prefix",
-		"BETA0BR0002 -> org-2: ifsc-prefix",
+		"111122223333 -> IFSC ALFA: paired-code",
+		"444455556666 -> IFSC BETA: paired-code",
+		"ALFA0BR0001 -> IFSC ALFA: ifsc-prefix",
+		"BETA0BR0002 -> IFSC BETA: ifsc-prefix",
 	})
 
 	// two accounts and one code on a line: the line does not say whose code
 	o, e = runOne(t, doc("d", "From account: 111122223333 To account: 444455556666 IFSC: ALFA0BR0001"), nil)
-	eq(t, "links", linksOf(o, e), []string{"ALFA0BR0001 -> org-1: ifsc-prefix"})
+	eq(t, "links", linksOf(o, e), []string{"ALFA0BR0001 -> IFSC ALFA: ifsc-prefix"})
 }
 
 func TestIdentifiers(t *testing.T) {
@@ -303,12 +325,15 @@ func TestIBANParts(t *testing.T) {
 		"IBAN : FR14 2004 1010 0505 0001 3M02 606",
 		"BIC : EXMPFRPPXXX",
 		"Code banque: 20041, Code guichet: 01005, Numéro de compte: 0500013M026, Clé RIB: 06"), nil)
-	got := strings.Join(linksOf(o, e), "\n")
-	for _, want := range []string{"20041 -> org-1: inside-iban", "01005 -> org-1: inside-iban", "0500013M026 -> org-1: same-account", "FR1420041010050500013M02606 -> org-1: iban-bank-code,paired-code", "EXMPFRPPXXX -> org-1: bic-institution"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q in\n%s", want, got)
-		}
-	}
+	eq(t, "links", linksOf(o, e), []string{
+		"01005 -> IBAN FR 20041: inside-iban",
+		"0500013M026 -> IBAN FR 20041: same-account",
+		"20041 -> IBAN FR 20041: inside-iban",
+		"EXMPFRPPXXX -> BIC EXMPFRPP: bic-institution",
+		"FR1420041010050500013M02606 -> BIC EXMPFRPP: paired-code",
+		"FR1420041010050500013M02606 -> IBAN FR 20041: iban-bank-code",
+	})
+	eq(t, "same_org", joinsOf(e), []string{"BIC EXMPFRPP = IBAN FR 20041: printed-together likely"})
 }
 
 func TestOCRRepairOnlyOnScans(t *testing.T) {
@@ -437,7 +462,7 @@ func TestPassports(t *testing.T) {
 		"Passport number: L898902C3",
 		"V<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<",
 		"L8988901C4XXX4009078F96121096ZE184226B<<<<<<")
-	o := Run([]Document{old, bad, visa}, nil, ref)
+	o := Run([]Document{old, bad, visa}, nil, registry, ref)
 	byID := map[string]DocOut{}
 	for _, d := range o.Documents {
 		byID[d.ID] = d
@@ -508,7 +533,7 @@ func TestRenewalSupersedes(t *testing.T) {
 		{"the word in prose is no stamp", []Document{pp("aa", "01 Jan 2020", "01 Jan 2030", "Altered pages make it void.", "VOID IF ALTERED")},
 			map[string]string{"aa": "true"}, "aa"},
 	} {
-		o := Run(c.docs, nil, ref)
+		o := Run(c.docs, nil, registry, ref)
 		got := current(o)
 		for id, w := range c.want {
 			if got[id] != w {
@@ -529,7 +554,7 @@ func TestLatestStatementByPeriodNotFile(t *testing.T) {
 	mk := func(id, period string) Document {
 		return doc(id, "Riverside Bank", "Account statement", "Account number: 111122223333", "Period: "+period)
 	}
-	o := Run([]Document{mk("sep", "01 Sep 2026 to 30 Sep 2026"), mk("oct", "01 Oct 2026 to 31 Oct 2026"), mk("aug", "01 Aug 2026 to 31 Aug 2026")}, nil, ref)
+	o := Run([]Document{mk("sep", "01 Sep 2026 to 30 Sep 2026"), mk("oct", "01 Oct 2026 to 31 Oct 2026"), mk("aug", "01 Aug 2026 to 31 Aug 2026")}, nil, registry, ref)
 	if len(o.Answers.LatestStatement) != 1 || o.Answers.LatestStatement[0].Document != "oct" {
 		t.Errorf("latest: %+v", o.Answers.LatestStatement)
 	}
@@ -560,7 +585,7 @@ func TestGroupedAccount(t *testing.T) {
 	mk := func(id, acct, period string) Document {
 		return doc(id, "Riverside Bank", "Account statement", "Account: "+acct, "Period: "+period)
 	}
-	o := Run([]Document{mk("sep", "4720195386", "01 Sep 2026 to 30 Sep 2026"), mk("oct", "4720 1953 86", "01 Oct 2026 to 31 Oct 2026")}, nil, ref)
+	o := Run([]Document{mk("sep", "4720195386", "01 Sep 2026 to 30 Sep 2026"), mk("oct", "4720 1953 86", "01 Oct 2026 to 31 Oct 2026")}, nil, registry, ref)
 	if len(o.Answers.LatestStatement) != 1 || o.Answers.LatestStatement[0].Document != "oct" {
 		t.Errorf("latest: %+v", o.Answers.LatestStatement)
 	}
@@ -572,15 +597,15 @@ func TestLatestWithheldWhenALaterStatementIsUnread(t *testing.T) {
 	}
 	sep := mk("sep", "4720195386", "01 Sep 2026 to 30 Sep 2026")
 	oct := mk("oct", "12-34-56-78-90", "01 Oct 2026 to 31 Oct 2026")
-	if o := Run([]Document{sep, oct}, nil, ref); len(o.Answers.LatestStatement) != 0 {
+	if o := Run([]Document{sep, oct}, nil, registry, ref); len(o.Answers.LatestStatement) != 0 {
 		t.Errorf("October's account was not read, yet September is the answer: %+v", o.Answers.LatestStatement)
 	}
 	aug := mk("aug", "12-34-56-78-90", "01 Aug 2026 to 31 Aug 2026")
-	if o := Run([]Document{sep, aug}, nil, ref); len(o.Answers.LatestStatement) != 1 {
+	if o := Run([]Document{sep, aug}, nil, registry, ref); len(o.Answers.LatestStatement) != 1 {
 		t.Errorf("an unread earlier statement does not change the latest: %+v", o.Answers.LatestStatement)
 	}
 	other := doc("other", "Zeta Bank", "Account statement", "Account: 12-34-56-78-90", "Period: 01 Oct 2026 to 31 Oct 2026")
-	if o := Run([]Document{sep, other}, nil, ref); len(o.Answers.LatestStatement) != 1 {
+	if o := Run([]Document{sep, other}, nil, registry, ref); len(o.Answers.LatestStatement) != 1 {
 		t.Errorf("another issuer's unread statement does not change the latest: %+v", o.Answers.LatestStatement)
 	}
 }
@@ -599,8 +624,9 @@ func TestDirectory(t *testing.T) {
 	if e.Orgs[1].Org != nil {
 		t.Errorf("a clash in the directory settles nothing: %+v", e.Orgs[1])
 	}
-	if len(e.Links) == 0 || e.Links[0].Org != *e.Orgs[0].Org {
-		t.Errorf("the code and the name join one card: %+v", e.Links)
+	eq(t, "same_org", joinsOf(e), []string{"IFSC RIVR = name:riversidebank: directory certain"})
+	if c := o.Organisations["IFSC RIVR"]; c.Directory == nil || *c.Directory != "Q1" {
+		t.Errorf("the code's card is its entry: %+v", c)
 	}
 
 	_, off := runOne(t, doc("d", "Riverside Bank"), nil)

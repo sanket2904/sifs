@@ -128,7 +128,7 @@ func findStatement(lines []Line, ids []Identifier, mentions []Mention) *Statemen
 			break
 		}
 	}
-	if at < 0 || len(mentions) == 0 || mentions[0].Token == "" {
+	if at < 0 || len(mentions) == 0 || mentions[0].Key == "" {
 		return nil
 	}
 	st.Issuer = mentions[0]
@@ -170,7 +170,7 @@ func oneAccount(ids []Identifier) bool {
 // sameAccount reports whether a domestic account number is the account
 // part of the IBAN, leading zeros aside.
 func sameAccount(acct, iban Identifier) bool {
-	c := ibanCountries[iban.Value[:2]]
+	c := ibanParts[iban.Value[:2]]
 	if acct.Kind != KindAccount || c.account1 == 0 {
 		return false
 	}
@@ -188,6 +188,8 @@ type Passport struct {
 	candidates     []Date // the dates the expiry could be when it cannot be told
 	ExpiryAt       *Span
 	Current        *bool
+	// why holder, number and expiry are what they are
+	holderProof, numberProof, expiryProof proof
 }
 
 var (
@@ -292,9 +294,10 @@ func findPassport(lines []Line, ids []Identifier, ref Date) *Passport {
 	}
 	if p.MRZ != nil {
 		l1, l2, _ := strings.Cut(p.MRZ.Value, "\n")
+		sur, given, _ := strings.Cut(strings.TrimRight(l1[5:], "<"), "<<")
+		sur, given = strings.ReplaceAll(sur, "<", " "), strings.ReplaceAll(given, "<", " ")
 		if *p.MRZ.Valid && p.Surname == "" {
-			sur, given, _ := strings.Cut(strings.TrimRight(l1[5:], "<"), "<<")
-			p.Surname, p.Given = strings.ReplaceAll(sur, "<", " "), strings.ReplaceAll(given, "<", " ")
+			p.Surname, p.Given = sur, given
 		}
 		// The zone and the printed date must agree; a zone that fails its
 		// check digits cannot say which date is right.
@@ -310,12 +313,37 @@ func findPassport(lines []Line, ids []Identifier, ref Date) *Passport {
 		} else {
 			p.Expiry = &zd
 		}
+		// A fact is the zone's when a zone whose check digits pass says it.
+		if p.MRZ.proof == zoneChecked {
+			if sameZoneName(p.Surname, sur) && sameZoneName(p.Given, given) {
+				p.holderProof = zoneSays
+			}
+			if p.Number != nil && p.Number.Value == strings.ReplaceAll(l2[0:9], "<", "") {
+				p.numberProof = zoneSays
+			}
+			if p.Expiry != nil && ok && *p.Expiry == zd {
+				p.expiryProof = zoneSays
+			}
+		}
 	}
 	if p.Surname == "" || p.Given == "" {
 		return nil
 	}
 	p.Current = isCurrent(p, cancelled, ref)
 	return &p
+}
+
+// sameZoneName reports whether a printed name is the zone's, case and
+// spacing ignored. A zone writes A to Z only, so a printed name with any
+// other letter is never the same.
+func sameZoneName(printed, zone string) bool {
+	up := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' {
+			return r - 'a' + 'A'
+		}
+		return r
+	}, printed)
+	return strings.Join(strings.Fields(up), " ") == strings.Join(strings.Fields(zone), " ")
 }
 
 // Holder is the answer key for a holder: SURNAME, GIVEN NAMES.

@@ -51,7 +51,7 @@ func TestOddInputs(t *testing.T) {
 	for _, set := range append([][]string{ids}, split(ids)...) {
 		writeJSON(t, filepath.Join(text, "index.json"), map[string]any{"format": 1, "text_set": "text", "reference_date": "2026-11-22", "documents": set})
 		out := filepath.Join(dir, "out.json")
-		if err := run(text, "", out, "go-m1a"); err != nil {
+		if err := run(text, "", "../../../sample/iban-registry.json", out, "go-m1a"); err != nil {
 			t.Fatalf("%v: %v", set, err)
 		}
 		var o struct {

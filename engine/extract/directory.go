@@ -13,7 +13,7 @@ import (
 type Directory struct {
 	entries map[string]DirEntry
 	byName  map[string][]string // match key -> entry ids
-	byCode  map[string][]string // institution code -> entry ids
+	byCode  map[string][]string // code key -> entry ids
 }
 
 // DirEntry is one directory entry, reduced to what the extractor reads.
@@ -66,15 +66,15 @@ func NewDirectory(entries []DirEntry) *Directory {
 			add(d.byName, n.Key, e.ID)
 		}
 		for _, b := range e.Codes.BIC {
-			if len(b) >= 6 {
-				add(d.byCode, "bic:"+b[:6], e.ID)
+			if len(b) >= 8 {
+				add(d.byCode, "BIC "+b[:8], e.ID)
 			}
 		}
 		for _, p := range e.Codes.IFSCPrefix {
-			add(d.byCode, "ifsc:"+p, e.ID)
+			add(d.byCode, "IFSC "+p, e.ID)
 		}
 		for _, c := range e.Codes.IBANBankCode {
-			add(d.byCode, "iban:"+c.Country+":"+c.Code, e.ID)
+			add(d.byCode, "IBAN "+c.Country+" "+c.Code, e.ID)
 		}
 	}
 	return d
@@ -87,6 +87,73 @@ func (d *Directory) lookupName(text string) (string, bool) {
 
 // lookupCode gives the one entry holding an institution code, if exactly one does.
 func (d *Directory) lookupCode(code string) (string, bool) { return only(d.byCode[code]) }
+
+// holdsCode reports whether any entry holds an institution code exactly.
+func (d *Directory) holdsCode(code string) bool { return len(d.byCode[code]) > 0 }
+
+// lookupKey gives the one entry a key's own spelling looks up to: a code
+// key's code, or a name key's match key.
+func (d *Directory) lookupKey(key string) (string, bool) {
+	if k, ok := strings.CutPrefix(key, "name:"); ok {
+		return only(d.byName[k])
+	}
+	return d.lookupCode(key)
+}
+
+// settle adds to one document what the directory proves or settles: an
+// acronym name that is exactly one entry's name, the code identifiers it
+// holds, the code links whose card it gives, and the joins of a printed
+// name and a code that look up to one entry, the same one.
+func (d *Directory) settle(r *DocResult) {
+	for i := range r.Mentions {
+		m := &r.Mentions[i]
+		if m.Key == "" && m.kind == acronymName {
+			if _, ok := d.lookupName(m.Text); ok {
+				m.Key, m.SettledBy = "name:"+matchKey(m.Text), "directory"
+			}
+		}
+	}
+	for i := range r.Identifiers {
+		if id := &r.Identifiers[i]; id.isCode() && id.Code != "" && d.holdsCode(id.Code) {
+			id.proof = directoryCode
+		}
+	}
+	for i := range r.Links {
+		l := &r.Links[i]
+		if (l.Reason == ReasonIFSCPrefix || l.Reason == ReasonBICInstitution) && l.Key != "" {
+			if _, ok := d.lookupCode(l.Key); ok {
+				l.proof = directoryCode
+			}
+		}
+	}
+	names := map[string][]string{} // name key -> texts of its mentions here
+	for _, m := range r.Mentions {
+		if strings.HasPrefix(m.Key, "name:") {
+			names[m.Key] = append(names[m.Key], m.Text)
+		}
+	}
+	codes := map[string]bool{} // code keys linked here by their own code
+	for _, l := range r.Links {
+		if l.Reason == ReasonIFSCPrefix || l.Reason == ReasonBICInstitution || l.Reason == ReasonIBANBankCode {
+			codes[l.Key] = true
+		}
+	}
+	for n, texts := range names {
+		id, ok := d.lookupName(texts[0])
+		for _, t := range texts[1:] {
+			other, found := d.lookupName(t)
+			ok = ok && found && other == id
+		}
+		if !ok {
+			continue
+		}
+		for c := range codes {
+			if e, found := d.lookupCode(c); found && e == id {
+				r.Joins = append(r.Joins, Join{A: n, B: c, Reason: JoinDirectory, proof: directoryJoin})
+			}
+		}
+	}
+}
 
 func only(ids []string) (string, bool) {
 	if len(ids) == 1 {

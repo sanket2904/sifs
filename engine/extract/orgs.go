@@ -10,7 +10,7 @@ import (
 // name as the document writes it.
 type Mention struct {
 	Span
-	Token     string // the organisation's token; "" when nothing settles it
+	Key       string // the organisation's key; "" when nothing settles it
 	SettledBy string // name, mention, code, directory, or ""
 	words     []string
 	kind      nameKind

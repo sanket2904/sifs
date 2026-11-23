@@ -1,6 +1,6 @@
 # Go M1a extractor
 
-The M1a extractor, round 2. It is rules only, with no model. It reads the sample's page text and writes the run file that `sample/FORMAT.md` describes. The code lives in `engine/`: the package `engine/extract` and the command `engine/cmd/m1a-extract`. The module imports the standard library only.
+The M1a extractor, round 3. It is rules only, with no model. It reads the sample's page text and writes the run file that `sample/FORMAT.md` describes. The code lives in `engine/`: the package `engine/extract` and the command `engine/cmd/m1a-extract`. The module imports the standard library only.
 
 ## Reproduce
 
@@ -9,6 +9,23 @@ sample/tools/go-m1a-runs.sh
 ```
 
 The script builds the command and writes the four runs under `sample/runs/`. Each run gets the scorer's `.score.json` beside it, and the script prints each table. It exits non-zero when any run fails the bar. A run with the directory off is started without `-directory`, so the program never opens `banks.json`. Two runs in a row give byte-identical files.
+
+## Round 3: output format 2
+
+The runs are now in format 2 (`sample/FORMAT.md`). The extractor recognises the same text as in round 2. What changed is what it claims:
+
+- Every identifier, link, statement fact, passport fact and `same_org` row has a tier. The tier comes from the proof the extractor recorded when it drew the conclusion, through one table in `engine/extract/tiers.go` that mirrors FORMAT.md's tables.
+- Keys are spelt from text: `name:<match key>` for a printed name, `IFSC HDFC`, `BIC COBADEFF` or `IBAN DE 37040044` for a code. No key is a counter, and no two keys are merged. The joins the extractor used to make by union are now `same_org` rows.
+- The IBAN length and bank code place come from `sample/iban-registry.json`, the table the scorer reads.
+
+| Run | certain r/w | likely r/w | left out | same_org r/w/l | merges | round 2 measures r/w/l |
+| --- | --- | --- | --- | --- | --- | --- |
+| on, text | 73/0 | 134/0 | 8 | 20/0/0 | 0 | 248/0/5 |
+| off, text | 23/0 | 171/0 | 16 | 7/0/11 | 0 | 248/0/5 |
+| on, text-ocr | 66/0 | 136/0 | 8 | 19/0/0 | 0 | 244/0/5 |
+| off, text-ocr | 19/0 | 171/0 | 15 | 7/0/10 | 0 | 244/0/5 |
+
+Mentions and cards carry no tier, so certain and likely rows do not add up to every right row. The last column adds the measures that round 2 scored, so it compares with the round 2 tables below. The other left-out rows are three directory ids that only a merge used to give a card, and, with the directory off, the joins that only the directory can make.
 
 ## Result
 

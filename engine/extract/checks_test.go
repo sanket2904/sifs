@@ -19,8 +19,8 @@ func TestIBANValid(t *testing.T) {
 		{"FR1420041010050500013M0260", false}, // one short
 		{"ZZ29NWBK60161331926819", false},     // no such country
 	} {
-		if got := ibanValid(c.iban); got != c.want {
-			t.Errorf("ibanValid(%s) = %v, want %v", c.iban, got, c.want)
+		if got := registry.proves(c.iban); got != c.want {
+			t.Errorf("proves(%s) = %v, want %v", c.iban, got, c.want)
 		}
 	}
 }
@@ -68,6 +68,7 @@ func TestMRZValid(t *testing.T) {
 		{"expiry digit wrong", "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<", "L898902C36UTO7408122F1204158ZE184226B<<<<<10", false},
 		{"visa MRV-A", "V<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<", "L8988901C4XXX4009078F96121096ZE184226B<<<<<<", true},
 		{"short line", "P<UTO", "L898902C3", false},
+		{"a filler for a check digit", "P<UTODOE<<JANE<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", "<<<<<<<<<<UTO7408122F1204159<<<<<<<<<<<<<<<<", false},
 	} {
 		if got := mrzValid(c.l1, c.l2); got != c.want {
 			t.Errorf("%s: mrzValid = %v, want %v", c.name, got, c.want)

@@ -35,12 +35,12 @@ func BenchmarkRun(b *testing.B) {
 	}
 	b.Run("off", func(b *testing.B) {
 		for range b.N {
-			Run(docs, nil, ref)
+			Run(docs, nil, registry, ref)
 		}
 	})
 	b.Run("on", func(b *testing.B) {
 		for range b.N {
-			Run(docs, dir, ref)
+			Run(docs, dir, registry, ref)
 		}
 	})
 }
