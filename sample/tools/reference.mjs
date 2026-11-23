@@ -6,17 +6,16 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { SAMPLE } from './generate.mjs';
 import { locate, readsBack } from './lib/find.mjs';
-import { matchKey } from './lib/key.mjs';
 import { readLabels } from './lib/labels.mjs';
 import { isMain } from './lib/main.mjs';
 import {
 	CODE_REASONS,
-	codeKey,
 	documentKey,
 	mayBeCertainIdentifier,
 	mayBeCertainJoin,
 	mayBeCertainLink,
-	mayBeCertainPassport
+	mayBeCertainPassport,
+	ownCodeKey
 } from './lib/tiers.mjs';
 import { readTextSet, TEXT_SETS } from './text.mjs';
 
@@ -34,10 +33,7 @@ export function reference(labels, textSet, directory, banks) {
 	let nameKeys;
 	const declare = (document, target, name) => {
 		if (!nameKeys.has(target))
-			nameKeys.set(
-				target,
-				documentKey(document, matchKey(name ?? labels.organisations[target].name))
-			);
+			nameKeys.set(target, documentKey(document, name));
 		const key = nameKeys.get(target);
 		if (target.startsWith('directory:'))
 			organisations[key] ??= { name, directory: directory === 'on' ? target.slice(10) : null };
@@ -50,8 +46,9 @@ export function reference(labels, textSet, directory, banks) {
 		}
 		return key;
 	};
-	// The key of an institution code. With the directory on, its card is the
-	// directory entry that holds the code; a code is never a printed name.
+	// The key of an institution code, or of an IBAN of a country the registry
+	// table does not have. With the directory on, its card is the directory
+	// entry that holds the code; a code is never a printed name.
 	const codeKeyOf = new Map();
 	const declareCode = (key, target) => {
 		organisations[key] ??= {
@@ -104,20 +101,23 @@ export function reference(labels, textSet, directory, banks) {
 		}
 		const byId = new Map(identifiers.map((i) => [i.id, i]));
 		// A code's own reason puts the link on the code's key, and paired-code
-		// on its via's key. Every other link is held at the printed name.
+		// on its via's key. Every other link is held at the printed name, and
+		// is left out when the text set does not hold the name.
 		const keyFor = (l, reasons) => {
 			const ident = byId.get(l.identifier);
 			if (reasons.some((r) => CODE_REASONS.get(r) === ident.kind))
-				return declareCode(codeKey(ident), l.org);
-			if (reasons.includes('paired-code')) return declareCode(codeKey(byId.get(l.via)), l.org);
-			return declare(label.id, l.org);
+				return declareCode(ownCodeKey(ident, label.id), l.org);
+			if (reasons.includes('paired-code'))
+				return declareCode(ownCodeKey(byId.get(l.via), label.id), l.org);
+			return nameKeys.get(l.org) ?? null;
 		};
 		const links = label.links
 			.filter((l) => kept.has(l.identifier))
 			.map((l) => ({ l, reasons: l.reasons.filter((r) => r !== 'paired-code' || kept.has(l.via)) }))
 			.filter(({ reasons }) => reasons.length)
-			.map(({ l, reasons }) => {
-				const org = keyFor(l, reasons);
+			.map(({ l, reasons }) => ({ l, reasons, org: keyFor(l, reasons) }))
+			.filter(({ org }) => org !== null)
+			.map(({ l, reasons, org }) => {
 				const test = { identifier: byId.get(l.identifier), reasons, card: organisations[org] };
 				return {
 					identifier: l.identifier,

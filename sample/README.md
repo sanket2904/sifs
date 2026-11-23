@@ -50,7 +50,7 @@ Git does not keep modified times. Run `generate.mjs` after a checkout if a test 
 | `directory/build.mjs` | Builds `banks.json` from Wikidata and `codes.json`. |
 | `directory/codes.json` | Bank codes and names that do not come from Wikidata, with their sources. |
 | `tools/` | `generate.mjs`, `check.mjs`, `planted.mjs`, `locate.mjs`, `mutants.mjs`, and `pdfkit-text.swift`. |
-| `tools/fixtures/` | `format-2-shared-name-key.json`, a format 2 output an extractor wrote for two made-up receipts that print one short name for two banks. `score.test.mjs` shows that the scorer refuses it. |
+| `tools/fixtures/` | `format-2-shared-name-key.json`, a format 2 output for `credit-advice-smbk-ca` and `payroll-release-smbk-gb`, two receipts that print one short name for two banks, with one key for that name in both, as format 2 allowed. `score.test.mjs` shows that the scorer refuses it. |
 
 A text PDF shows a line in Helvetica when all its characters are Latin-1, so the line is visible. Other lines use a font with no glyphs and a ToUnicode map, as `src-tauri/src/extract/readers/macos/pdf/sample.rs` does. They read correctly but show as dots. A PDF text page has no blank lines and no runs of spaces, because PDFKit drops both. A scanned page is a 1-bit picture of upper-case text in a 5 by 7 pixel font, with no text layer.
 
@@ -58,7 +58,7 @@ A text PDF shows a line in Helvetica when all its characters are Latin-1, so the
 
 A span is `page` (from 1), `start`, `end` and `text`. `start` and `end` count Unicode scalar values, end exclusive, in the page text: the page's lines joined with a line feed. For a txt file the page text is the file without its final line feed. For HTML it is the text of the `<p>` elements, one per line.
 
-`organisations` maps a local id to an organisation: `name`, `directory` (its directory id, or `null` when no directory entry holds it), `names` (spellings that name it by themselves; two spellings with the same match key are one name), and, for an invented bank that no directory holds, `bic` (the BICs the sample gives it, so that its `bic-institution` links can be checked). The local id is the organisation's identity in every mode. It is the same across documents, so `hdfc-bank` is one card whatever a document calls it.
+`organisations` maps a local id to an organisation: `name`, `directory` (its directory id, or `null` when no directory entry holds it), `names` (spellings that name it by themselves; two spellings with the same match key are one name), and, for an invented bank that no directory holds, `bic` (the BICs the sample gives it, so that its `bic-institution` links can be checked). The local id is the labels' identity for the organisation, in every mode and across documents, so the labels know `hdfc-bank` is one organisation whatever a document calls it. It is not an extractor's key: an extractor keys each document's printed name on its own (`FORMAT.md`, "No merging"), and only the engine's rule "may be the same organisation" puts two documents' names on one card.
 
 Each entry in `documents` has an `id` from `spec.json`, an optional `note`, and either `"nothing_to_find": true` or these lists:
 

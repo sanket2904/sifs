@@ -27,20 +27,31 @@ export function codeKey({ kind, value }) {
 	return null;
 }
 
-// Whether a key is spelt as an institution code's key: a key codeKey can give.
+// Whether a key is spelt as an institution code's key ("Code keys"): an IFSC's
+// four letters, a BIC's six letters and two letters or digits, an IBAN's
+// country and a bank code of the length iban-registry.json gives it.
 export function isCodeKey(key) {
-	if (/^IFSC [A-Z0-9]{4}$/.test(key) || /^BIC [A-Z0-9]{8}$/.test(key)) return true;
+	if (/^IFSC [A-Z]{4}$/.test(key) || /^BIC [A-Z]{6}[A-Z0-9]{2}$/.test(key)) return true;
 	const iban = /^IBAN ([A-Z]{2}) ([A-Z0-9]+)$/.exec(key);
 	return iban !== null && ibanBankCodeLength(iban[1]) === iban[2].length;
 }
 
-// A document key stands for one printed name inside one document (FORMAT.md,
-// "No merging"): name:<document id>:<the name>. documentOfKey gives the
-// document a key names, or null when the key is not spelt as a document key.
-export const documentKey = (document, name) => `name:${document}:${name}`;
-const DOCUMENT_KEY = /^name:([a-z0-9-]+):(.+)$/s;
+// A document key stands for one printed name inside one document, or for an
+// IBAN of a country iban-registry.json does not have (FORMAT.md, "No
+// merging"): name:<document id>:<the match key of the printed text>.
+// documentOfKey gives the document a key names, or null when the key is not
+// spelt as a document key.
+export const documentKey = (document, text) => `name:${document}:${matchKey(text)}`;
+const DOCUMENT_KEY = /^name:([a-z0-9-]+):([\p{L}\p{M}\p{N}]+)$/u;
 export const documentOfKey = (key) => DOCUMENT_KEY.exec(key)?.[1] ?? null;
 export const nameOfKey = (key) => DOCUMENT_KEY.exec(key)?.[2] ?? null;
+
+// The key a link by the identifier's own code reason goes to: its code's key,
+// or for an IBAN of a country the table does not have, the document key spelt
+// from the IBAN. null for a kind that names no institution.
+export const ownCodeKey = (identifier, document) =>
+	codeKey(identifier) ??
+	(identifier.kind === 'iban' ? documentKey(document, identifier.value) : null);
 
 // Whether the directory entry holds the identifier's institution code exactly:
 // an IFSC's four letters, a BIC's first eight characters, an IBAN's country and

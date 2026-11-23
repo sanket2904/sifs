@@ -1,63 +1,63 @@
 {
  "format": 2,
- "extractor": "go-m1a",
+ "extractor": "format-2-example",
  "directory": "on",
  "text_set": "text",
  "organisations": {
-  "BIC MMBKCATT": {
-   "name": "Meridian Meadow Bank of Canada",
-   "directory": "FIXTURE:meridian-ca"
+  "BIC SMBKCAT0": {
+   "name": null,
+   "directory": null
   },
-  "BIC MMBKGB2L": {
-   "name": "Meridian Meadow Bank of Britain",
-   "directory": "FIXTURE:meridian-gb"
+  "BIC SMBKGB20": {
+   "name": null,
+   "directory": null
   },
-  "name:mmbk": {
-   "name": "MMBK",
+  "name:smbk": {
+   "name": "SMBK",
    "directory": null
   }
  },
  "documents": [
   {
-   "id": "ca-origin-archived-trace",
+   "id": "credit-advice-smbk-ca",
    "orgs": [
     {
      "page": 1,
-     "start": 119,
-     "end": 123,
-     "text": "MMBK",
-     "org": "name:mmbk",
+     "start": 194,
+     "end": 198,
+     "text": "SMBK",
+     "org": "name:smbk",
      "settled_by": "code"
     }
    ],
    "identifiers": [
     {
-     "page": 1,
-     "start": 132,
-     "end": 143,
-     "text": "MMBKCATTXXX",
      "id": "i1",
+     "page": 1,
+     "start": 209,
+     "end": 220,
+     "text": "SMBKCAT0XXX",
      "kind": "bic",
-     "value": "MMBKCATTXXX",
+     "value": "SMBKCAT0XXX",
      "valid": true,
-     "tier": "certain"
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "BIC MMBKCATT",
+     "org": "BIC SMBKCAT0",
      "reasons": [
       "bic-institution"
      ],
-     "tier": "certain"
+     "tier": "likely"
     }
    ],
    "same_org": [
     {
      "keys": [
-      "BIC MMBKCATT",
-      "name:mmbk"
+      "name:smbk",
+      "BIC SMBKCAT0"
      ],
      "reason": "spells-code",
      "tier": "likely"
@@ -65,45 +65,45 @@
    ]
   },
   {
-   "id": "gb-one-sided-payroll-confirmation",
+   "id": "payroll-release-smbk-gb",
    "orgs": [
     {
      "page": 1,
-     "start": 122,
-     "end": 126,
-     "text": "MMBK",
-     "org": "name:mmbk",
+     "start": 160,
+     "end": 164,
+     "text": "SMBK",
+     "org": "name:smbk",
      "settled_by": "code"
     }
    ],
    "identifiers": [
     {
-     "page": 1,
-     "start": 132,
-     "end": 143,
-     "text": "MMBKGB2LXXX",
      "id": "i1",
+     "page": 1,
+     "start": 170,
+     "end": 181,
+     "text": "SMBKGB20XXX",
      "kind": "bic",
-     "value": "MMBKGB2LXXX",
+     "value": "SMBKGB20XXX",
      "valid": true,
-     "tier": "certain"
+     "tier": "likely"
     }
    ],
    "links": [
     {
      "identifier": "i1",
-     "org": "BIC MMBKGB2L",
+     "org": "BIC SMBKGB20",
      "reasons": [
       "bic-institution"
      ],
-     "tier": "certain"
+     "tier": "likely"
     }
    ],
    "same_org": [
     {
      "keys": [
-      "BIC MMBKGB2L",
-      "name:mmbk"
+      "name:smbk",
+      "BIC SMBKGB20"
      ],
      "reason": "spells-code",
      "tier": "likely"

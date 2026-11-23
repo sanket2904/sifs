@@ -33,13 +33,13 @@ const MUTANTS = [
 	[
 		'tools/score.mjs',
 		'a key over two organisations is a merge',
-		"...(organisations.length > 1 ? [{ key: k, why: 'organisations', organisations }] : []),",
-		''
+		"return organisations.length > 1 ? [{ key: k, why: 'organisations', organisations }] : [];",
+		'return [];'
 	],
 	[
 		'tools/score.mjs',
 		"a link by its code's own reason goes to the code's key",
-		'if (own && canonical !== null && link.org !== canonical)',
+		'if (own && link.org !== canonical)',
 		'if (false)'
 	],
 	[
@@ -47,18 +47,6 @@ const MUTANTS = [
 		"a BIC's institution is its first eight characters",
 		'return `BIC ${v.slice(0, 8)}`;',
 		'return `BIC ${v.slice(0, 6)}`;'
-	],
-	[
-		'tools/score.mjs',
-		'a key holding a code and a printed name is a merge',
-		"...(codeKeys.has(k) && named.has(k) ? [{ key: k, why: 'name-and-code' }] : [])",
-		''
-	],
-	[
-		'tools/score.mjs',
-		"only a code's own reason gives a key its code",
-		'if (l.reasons.some((r) => CODE_REASONS.get(r) === l.identifier.kind) && codeKey(l.identifier))',
-		'if (codeKey(l.identifier))'
 	],
 	[
 		'tools/score.mjs',
@@ -95,12 +83,6 @@ const MUTANTS = [
 		'cards on likely rows only are listed',
 		'likely_only_cards: keys.filter((k) => !certainKeys.has(k)).sort(),',
 		'likely_only_cards: [],'
-	],
-	[
-		'tools/score.mjs',
-		'only a merge of two organisations makes rows wrong',
-		"merges.filter((m) => m.why === 'organisations').map((m) => m.key)",
-		'merges.map((m) => m.key)'
 	],
 	['tools/score.mjs', 'a merge fails the run', 'merges.length > 0 ||', ''],
 	[
@@ -267,12 +249,6 @@ const MUTANTS = [
 	],
 	[
 		'tools/score.mjs',
-		'two same_org claims never share an id',
-		'const k = JSON.stringify(row.keys);',
-		"const k = row.keys.join('\\0');"
-	],
-	[
-		'tools/score.mjs',
 		'same_org claims are scored in one order',
 		'[...claims.keys()].sort()',
 		'[...claims.keys()]'
@@ -334,8 +310,8 @@ const MUTANTS = [
 	[
 		'tools/score.mjs',
 		'a passport expiry is compared',
-		"op.expiry === lp.expiry ? 'right' : 'wrong'",
-		"'right'"
+		"op.expiry === lp.expiry && cited ? 'right' : 'wrong'",
+		"cited ? 'right' : 'wrong'"
 	],
 	[
 		'tools/score.mjs',
@@ -591,6 +567,108 @@ const MUTANTS = [
 		"a printed expiry's day is the zone's",
 		'if (given.length !== want.length || given.some((n, i) => n !== want[i])) return null;',
 		'if (given.length !== want.length) return null;'
+	],
+	[
+		'tools/score.mjs',
+		'a statement period given is judged, even where OCR made it impossible',
+		"if (!os) add('statement_period', lang, missing(periodGone), id, want);",
+		"if (!os || periodGone) add('statement_period', lang, missing(periodGone), id, want);"
+	],
+	[
+		'tools/score.mjs',
+		'an issuer given is judged, even where OCR made it impossible',
+		'if (!os?.issuer)',
+		'if (!os?.issuer || w.impossibleMention.has(issuer.id))'
+	],
+	[
+		'tools/score.mjs',
+		'a holder given is judged, even where OCR made it impossible',
+		"if (!got) add('passport_holder', lang, missing(holderGone), id, name);",
+		"if (!got || holderGone) add('passport_holder', lang, missing(holderGone), id, name);"
+	],
+	[
+		'tools/score.mjs',
+		'an expiry given is judged, even where OCR made it impossible',
+		"if (!op?.expiry) add('passport_expiry', lang, missing(expiryGone), id, lp.expiry);",
+		"if (!op?.expiry || expiryGone) add('passport_expiry', lang, missing(expiryGone), id, lp.expiry);"
+	],
+	[
+		'tools/score.mjs',
+		'current given is judged, even where OCR made it impossible',
+		'if (op?.current === null || op?.current === undefined)',
+		'if (expiryGone || op?.current === null || op?.current === undefined)'
+	],
+	[
+		'tools/score.mjs',
+		'an answer given is judged, even where OCR made it impossible',
+		'if (!hits.length) add(measure, lang, missing(gone(want.document)), want.document, show(want));',
+		'if (!hits.length || gone(want.document)) add(measure, lang, missing(gone(want.document)), want.document, show(want));'
+	],
+	[
+		'tools/score.mjs',
+		'a certain expiry cites the labelled printed date of expiry',
+		"op.tiers.expiry !== 'certain' ||",
+		'true ||'
+	],
+	[
+		'tools/score.mjs',
+		"a printed name never sits on a code's key",
+		'if (m.org !== null && isCode(m.org))',
+		'if (false)'
+	],
+	[
+		'tools/score.mjs',
+		"a statement's issuer is never a code's key",
+		'if (statement?.issuer && isCode(statement.issuer))',
+		'if (false)'
+	],
+	[
+		'tools/score.mjs',
+		"a code's key is used only in a document that gives the code",
+		'if (isCodeKey(l.org) && !codes.has(l.org))',
+		'if (false)'
+	],
+	[
+		'tools/score.mjs',
+		"an IBAN's document key is a code's key that no name sits on",
+		'const isCode = (k) => isCodeKey(k) || ibanKeys.has(k);',
+		'const isCode = (k) => isCodeKey(k);'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		"an IFSC's key holds four letters",
+		'/^IFSC [A-Z]{4}$/',
+		'/^IFSC [A-Z0-9]{4}$/'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		"a BIC's key holds six letters and two letters or digits",
+		'/^BIC [A-Z]{6}[A-Z0-9]{2}$/',
+		'/^BIC [A-Z0-9]{8}$/'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		"a document key's name part is letters, marks and numbers",
+		'([\\p{L}\\p{M}\\p{N}]+)$/u',
+		'(.+)$/su'
+	],
+	[
+		'tools/score.mjs',
+		"a document key's name part is spelt from a mention on it",
+		'if (!mentions.some((m) => m.org === k && documentKey(doc.id, m.text) === k))',
+		'if (!mentions.some((m) => m.org === k))'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		'an IBAN of a country the table does not have goes to its document key',
+		"(identifier.kind === 'iban' ? documentKey(document, identifier.value) : null);",
+		'null;'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		'a printed expiry holds one four-digit year',
+		'if (years.length !== 1 ||',
+		'if (!years.length ||'
 	],
 	[
 		'tools/reference.mjs',
