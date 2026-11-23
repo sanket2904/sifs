@@ -329,6 +329,74 @@ test('a name inside a longer name keyed to the longer name’s own card is no wr
 	assert.equal(result.failed, false);
 });
 
+// An output with one card and only the short form inside a labelled name.
+const shortOnly = (directory, set, id, inside, card) => {
+	const output = perfect(directory, set);
+	const short = spanOf(output, id, inside);
+	short.end = short.start + 4;
+	short.text = inside.slice(0, 4);
+	return {
+		...output,
+		organisations: { 'only-card': card },
+		documents: [
+			{ id, orgs: [{ ...short, org: 'only-card', settled_by: 'name' }], identifiers: [], links: [] }
+		],
+		answers: { latest_statement: [], current_passport: [] }
+	};
+};
+
+for (const directory of ['on', 'off'])
+	for (const set of ['text', 'text-ocr'])
+		test(`only the short form inside a labelled name, on a card that claims that name's organisation, is no wrong attachment, directory ${directory}, ${set}`, () => {
+			for (const [id, inside, name, entry] of [
+				['hdfc-branch-letter', 'HDFC Bank Limited', 'HDFC Bank Limited', 'Q631047'],
+				[
+					'hdfc-life-receipt',
+					'HDFC Life Insurance Company Limited',
+					'HDFC Life Insurance Company Limited',
+					'Q5629189'
+				],
+				['hdfc-branch-letter', 'HDFC Bank Limited', null, 'Q631047']
+			]) {
+				if (name === null && directory === 'off') continue;
+				const card = { name, directory: directory === 'on' ? entry : null };
+				const result = run(shortOnly(directory, set, id, inside, card));
+				assert.deepEqual(result.wrong_attachments, [], `${id} ${name}`);
+				assert.equal(totals(result, 'mentions').wrong, 1, `${id} ${name}`);
+				assert.equal(result.failed, false, `${id} ${name}`);
+			}
+		});
+
+for (const directory of ['on', 'off'])
+	test(`only the short form inside a labelled name stays a wrong attachment on a card that names something else or nothing, directory ${directory}`, () => {
+		for (const card of [
+			{ name: 'HDFC Life Insurance Company Limited', directory: null },
+			{ name: null, directory: null }
+		]) {
+			const result = run(
+				shortOnly(directory, 'text', 'hdfc-branch-letter', 'HDFC Bank Limited', card)
+			);
+			assert.equal(result.wrong_attachments.length, 1, JSON.stringify(card));
+			assert.equal(result.failed, true, JSON.stringify(card));
+		}
+		const output = perfect(directory);
+		output.organisations['new-boi'] = {
+			name: 'Bank of India',
+			directory: directory === 'on' ? 'Q2004439' : null
+		};
+		doc(output, 'school-fee-banks').orgs.push({
+			...spanOf(output, 'school-fee-banks', 'Bank of India'),
+			org: 'new-boi',
+			settled_by: 'name'
+		});
+		const result = run(output);
+		assert.deepEqual(
+			result.wrong_attachments.map((a) => a.key),
+			['new-boi']
+		);
+		assert.equal(result.failed, true);
+	});
+
 test('a keyed mention on a name the labels exclude, keyed to some other card, is a wrong attachment', () => {
 	const output = perfect();
 	doc(output, 'hdfc-life-receipt').orgs.push({

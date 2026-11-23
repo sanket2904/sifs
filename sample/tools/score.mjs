@@ -506,13 +506,24 @@ export function score(labels, textSet, rawOutput, directory) {
 			const notOrgs = label.not_orgs.filter((n) => w.mentionKey(n) === w.mentionKey(o));
 			const notOrg = notOrgs[0];
 			// Text the labels say is no organisation puts its document on a wrong
-			// card, unless the key is the card of the labelled name around it.
+			// card, unless the key is the card of the labelled name around it. A
+			// key nothing maps is that card when its card claims the one labelled
+			// name around it by name or directory id.
 			const enclosing = (n) =>
 				label.orgs.filter((l) => l.page === n.page && l.start <= n.start && n.end <= l.end);
 			const t = single(o.org);
-			const excluded = notOrgs.find(
-				(n) => t === null || !enclosing(n).some((l) => target(l) === t)
-			);
+			const { name, directory: cardId } = out.cards.get(o.org);
+			const claims = (u) =>
+				u !== null &&
+				(name !== null || cardId !== null) &&
+				(name === null || nameFits(u, name)) &&
+				(cardId === null || cardId === directoryIdOf(u));
+			const isCardOf = (n) => {
+				const around = enclosing(n);
+				if (t !== null) return around.some((l) => target(l) === t);
+				return around.length === 1 && claims(target(around[0]));
+			};
+			const excluded = notOrgs.find((n) => !isCardOf(n));
 			if (excluded)
 				wrongAttachments.push({
 					document: id,
