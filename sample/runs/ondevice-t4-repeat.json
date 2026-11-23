@@ -1,0 +1,663 @@
+{
+  "context_size" : 4096,
+  "process_max_rss_mb" : 270.53125,
+  "rows" : [
+    {
+      "document" : "hdfc-statement-sep",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "statement",
+        "statement",
+        "statement",
+        "statement",
+        "statement"
+      ],
+      "lang" : "en",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        0.86302900314331055,
+        0.67580199241638184,
+        0.66947197914123535,
+        0.65084695816040039,
+        0.65372395515441895
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "hdfc-statement-sep",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "statement",
+        "statement",
+        "statement",
+        "statement",
+        "statement"
+      ],
+      "lang" : "en",
+      "same_all_five" : true,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        0.65069890022277832,
+        0.64350509643554688,
+        0.66339898109436035,
+        0.64614200592041016,
+        0.65447008609771729
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "visa-asha",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "visa",
+        "visa",
+        "visa",
+        "visa",
+        "visa"
+      ],
+      "lang" : "en",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        0.67072105407714844,
+        0.67474305629730225,
+        0.67510795593261719,
+        0.67880797386169434,
+        0.6822359561920166
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "visa-asha",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "visa",
+        "visa",
+        "visa",
+        "visa",
+        "visa"
+      ],
+      "lang" : "en",
+      "same_all_five" : true,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        0.67964398860931396,
+        1.5332599878311157,
+        0.6862339973449707,
+        0.66478300094604492,
+        0.67439496517181396
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "passport-asha-current",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "passport",
+        "passport",
+        "passport",
+        "passport",
+        "passport"
+      ],
+      "lang" : "en",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        1.7130450010299683,
+        1.7159780263900757,
+        1.7067519426345825,
+        1.7037599086761475,
+        1.6949959993362427
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "passport-asha-current",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "passport",
+        "passport",
+        "passport",
+        "passport",
+        "passport"
+      ],
+      "lang" : "en",
+      "same_all_five" : true,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        1.7132689952850342,
+        0.7730100154876709,
+        1.7339609861373901,
+        0.68062806129455566,
+        0.67673695087432861
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "commerzbank-kontoauszug",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "statement",
+        "statement",
+        "statement",
+        "statement",
+        "statement"
+      ],
+      "lang" : "de",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        0.71709895133972168,
+        0.70611000061035156,
+        0.70934295654296875,
+        0.69261300563812256,
+        0.70359694957733154
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "commerzbank-kontoauszug",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "statement",
+        "statement",
+        "statement",
+        "statement",
+        "statement"
+      ],
+      "lang" : "de",
+      "same_all_five" : true,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        0.73019802570343018,
+        0.77262198925018311,
+        0.74265599250793457,
+        0.76536405086517334,
+        0.72774899005889893
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "rib-fr",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "passport",
+        "passport",
+        "passport",
+        "passport",
+        "passport"
+      ],
+      "lang" : "fr",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        0.91965508460998535,
+        0.92619001865386963,
+        0.9297339916229248,
+        0.91116905212402344,
+        0.97059094905853271
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "rib-fr",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "statement",
+        "passport",
+        "statement",
+        "other",
+        "passport"
+      ],
+      "lang" : "fr",
+      "same_all_five" : false,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        0.92169702053070068,
+        0.93729698657989502,
+        0.88452303409576416,
+        0.92018496990203857,
+        0.95018410682678223
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "mizuho-statement-ja",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "statement",
+        "statement",
+        "statement",
+        "statement",
+        "statement"
+      ],
+      "lang" : "ja",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        0.6012120246887207,
+        0.6023629903793335,
+        0.60055410861968994,
+        0.5876239538192749,
+        0.58521604537963867
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "mizuho-statement-ja",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "statement",
+        "statement",
+        "statement",
+        "statement",
+        "statement"
+      ],
+      "lang" : "ja",
+      "same_all_five" : true,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        0.59506404399871826,
+        0.59508800506591797,
+        0.58831799030303955,
+        0.587380051612854,
+        0.58339798450469971
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "essay-ja",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "other",
+        "other",
+        "other",
+        "other",
+        "other"
+      ],
+      "lang" : "ja",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        0.54107105731964111,
+        0.54459095001220703,
+        0.53955996036529541,
+        0.54283499717712402,
+        0.53731203079223633
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "essay-ja",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "cannotTell",
+        "cannotTell",
+        "cannotTell",
+        "other",
+        "cannotTell"
+      ],
+      "lang" : "ja",
+      "same_all_five" : false,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        0.54931402206420898,
+        0.67283904552459717,
+        0.6714630126953125,
+        0.55054497718811035,
+        0.66360902786254883
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "hdfc-letter-hindi",
+      "errors" : [
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale"
+      ],
+      "kinds" : [
+        "error",
+        "error",
+        "error",
+        "error",
+        "error"
+      ],
+      "lang" : "hi",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        0.0033921003341674805,
+        0.0026810169219970703,
+        0.0028640031814575195,
+        0.0026069879531860352,
+        0.0026390552520751953
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "hdfc-letter-hindi",
+      "errors" : [
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale"
+      ],
+      "kinds" : [
+        "error",
+        "error",
+        "error",
+        "error",
+        "error"
+      ],
+      "lang" : "hi",
+      "same_all_five" : true,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        0.0027880668640136719,
+        0.0027639865875244141,
+        0.0028070211410522461,
+        0.0027830600738525391,
+        0.0026249885559082031
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "sbi-passbook-hindi",
+      "errors" : [
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale"
+      ],
+      "kinds" : [
+        "error",
+        "error",
+        "error",
+        "error",
+        "error"
+      ],
+      "lang" : "hi",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        0.0025529861450195312,
+        0.002552032470703125,
+        0.0026190280914306641,
+        0.0027639865875244141,
+        0.0027790069580078125
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "sbi-passbook-hindi",
+      "errors" : [
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale"
+      ],
+      "kinds" : [
+        "error",
+        "error",
+        "error",
+        "error",
+        "error"
+      ],
+      "lang" : "hi",
+      "same_all_five" : true,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        0.0025660991668701172,
+        0.0028280019760131836,
+        0.0028289556503295898,
+        0.002758026123046875,
+        0.0028650760650634766
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "recipe-hindi",
+      "errors" : [
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale"
+      ],
+      "kinds" : [
+        "error",
+        "error",
+        "error",
+        "error",
+        "error"
+      ],
+      "lang" : "hi",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        0.0027329921722412109,
+        0.0025600194931030273,
+        0.0027179718017578125,
+        0.0026930570602416992,
+        0.0028100013732910156
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "recipe-hindi",
+      "errors" : [
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale"
+      ],
+      "kinds" : [
+        "error",
+        "error",
+        "error",
+        "error",
+        "error"
+      ],
+      "lang" : "hi",
+      "same_all_five" : true,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        0.0027749538421630859,
+        0.0029100179672241211,
+        0.0028840303421020508,
+        0.0027800798416137695,
+        0.0025449991226196289
+      ],
+      "set" : "sample"
+    },
+    {
+      "document" : "explicitly-not-statement",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "form",
+        "form",
+        "form",
+        "form",
+        "form"
+      ],
+      "lang" : "en",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        0.52285003662109375,
+        0.52525901794433594,
+        0.52662301063537598,
+        0.53080904483795166,
+        0.53069496154785156
+      ],
+      "set" : "sol-diag"
+    },
+    {
+      "document" : "explicitly-not-statement",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "form",
+        "form",
+        "cannotTell",
+        "cannotTell",
+        "form"
+      ],
+      "lang" : "en",
+      "same_all_five" : false,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        0.52743303775787354,
+        0.53081405162811279,
+        0.42607700824737549,
+        0.42077898979187012,
+        0.52661406993865967
+      ],
+      "set" : "sol-diag"
+    },
+    {
+      "document" : "service-invoice",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "invoice",
+        "invoice",
+        "invoice",
+        "invoice",
+        "invoice"
+      ],
+      "lang" : "en",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        0.48150098323822021,
+        0.48050189018249512,
+        0.47617805004119873,
+        0.47416007518768311,
+        0.47251999378204346
+      ],
+      "set" : "astra"
+    },
+    {
+      "document" : "service-invoice",
+      "errors" : [
+
+      ],
+      "kinds" : [
+        "invoice",
+        "invoice",
+        "invoice",
+        "invoice",
+        "invoice"
+      ],
+      "lang" : "en",
+      "same_all_five" : true,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        0.48659801483154297,
+        0.48364698886871338,
+        0.47989404201507568,
+        0.48166704177856445,
+        0.48249101638793945
+      ],
+      "set" : "astra"
+    },
+    {
+      "document" : "devanagari-date-proof",
+      "errors" : [
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale"
+      ],
+      "kinds" : [
+        "error",
+        "error",
+        "error",
+        "error",
+        "error"
+      ],
+      "lang" : "hi",
+      "same_all_five" : true,
+      "sampling" : "greedy",
+      "seconds" : [
+        0.0029999017715454102,
+        0.0027589797973632812,
+        0.0030839443206787109,
+        0.0028270483016967773,
+        0.0027190446853637695
+      ],
+      "set" : "sol-localised"
+    },
+    {
+      "document" : "devanagari-date-proof",
+      "errors" : [
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale",
+        "unsupportedLanguageOrLocale"
+      ],
+      "kinds" : [
+        "error",
+        "error",
+        "error",
+        "error",
+        "error"
+      ],
+      "lang" : "hi",
+      "same_all_five" : true,
+      "sampling" : "default-sampling",
+      "seconds" : [
+        0.0030930042266845703,
+        0.0029870271682739258,
+        0.0027980804443359375,
+        0.002843022346496582,
+        0.0028449296951293945
+      ],
+      "set" : "sol-localised"
+    }
+  ],
+  "supports_hi" : false
+}

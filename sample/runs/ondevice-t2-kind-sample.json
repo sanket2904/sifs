@@ -1,0 +1,1041 @@
+{
+  "confusion_truth_by_model_kind" : {
+    "neither" : {
+      "error" : 5,
+      "form" : 1,
+      "invoice" : 3,
+      "letter" : 5,
+      "other" : 5,
+      "passport" : 1,
+      "receipt" : 3,
+      "statement" : 1
+    },
+    "passport" : {
+      "passport" : 4
+    },
+    "passport-lookalike" : {
+      "visa" : 1
+    },
+    "statement" : {
+      "error" : 1,
+      "statement" : 13
+    }
+  },
+  "documents" : [
+    {
+      "document" : "sample/abn-amro-statement",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/axis-statement-scanned-annex",
+      "kind" : "statement",
+      "pages" : [
+        "statement",
+        "form"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/commerzbank-kontoauszug",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/credit-union-statement",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/deutsche-bank-brief",
+      "kind" : "letter",
+      "pages" : [
+        "letter"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/email-fee-payment",
+      "kind" : "letter",
+      "pages" : [
+        "letter"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/essay-ja",
+      "kind" : "other",
+      "pages" : [
+        "other"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/hdfc-branch-letter",
+      "kind" : "letter",
+      "pages" : [
+        "letter"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/hdfc-card-statement",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/hdfc-letter-hindi",
+      "kind" : "error",
+      "pages" : [
+        "error"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/hdfc-life-receipt",
+      "kind" : "error",
+      "pages" : [
+        "error"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/hdfc-ltd-loan-2019",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/hdfc-statement-aug",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/hdfc-statement-jul",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/hdfc-statement-sep",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/household-notes",
+      "kind" : "other",
+      "pages" : [
+        "other"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/icici-lombard-notice",
+      "kind" : "error",
+      "pages" : [
+        "error"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/invoice-lookalike-numbers",
+      "kind" : "invoice",
+      "pages" : [
+        "invoice"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/kotak-statement",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/mizuho-statement-ja",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/mufg-remittance-ja",
+      "kind" : "letter",
+      "pages" : [
+        "letter"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/natwest-statement",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/neft-receipt-tied",
+      "kind" : "receipt",
+      "pages" : [
+        "receipt"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/pan-form-hindi",
+      "kind" : "error",
+      "pages" : [
+        "error"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/passport-asha-current",
+      "kind" : "passport",
+      "pages" : [
+        "passport"
+      ],
+      "truth" : "passport"
+    },
+    {
+      "document" : "sample/passport-asha-expired",
+      "kind" : "passport",
+      "pages" : [
+        "passport"
+      ],
+      "truth" : "passport"
+    },
+    {
+      "document" : "sample/passport-bad-mrz",
+      "kind" : "passport",
+      "pages" : [
+        "passport"
+      ],
+      "truth" : "passport"
+    },
+    {
+      "document" : "sample/passport-rohan",
+      "kind" : "passport",
+      "pages" : [
+        "passport"
+      ],
+      "truth" : "passport"
+    },
+    {
+      "document" : "sample/poem",
+      "kind" : "other",
+      "pages" : [
+        "other"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/rechnung-falsche-iban",
+      "kind" : "invoice",
+      "pages" : [
+        "invoice"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/recipe-hindi",
+      "kind" : "error",
+      "pages" : [
+        "error"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/recipe-lemon-rice",
+      "kind" : "other",
+      "pages" : [
+        "other"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/rent-receipt",
+      "kind" : "receipt",
+      "pages" : [
+        "receipt"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/rib-fr",
+      "kind" : "passport",
+      "pages" : [
+        "passport"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/sahakari-statement",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/sbi-passbook-hindi",
+      "kind" : "error",
+      "pages" : [
+        "error"
+      ],
+      "truth" : "statement"
+    },
+    {
+      "document" : "sample/scan-bob-letter",
+      "kind" : "letter",
+      "pages" : [
+        "letter"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/scan-pnb-deposit",
+      "kind" : "statement",
+      "pages" : [
+        "statement"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/school-fee-banks",
+      "kind" : "other",
+      "pages" : [
+        "other"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/transfer-rows",
+      "kind" : "form",
+      "pages" : [
+        "form"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/transfer-untied",
+      "kind" : "receipt",
+      "pages" : [
+        "receipt"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/utility-bill",
+      "kind" : "invoice",
+      "pages" : [
+        "invoice"
+      ],
+      "truth" : "neither"
+    },
+    {
+      "document" : "sample/visa-asha",
+      "kind" : "visa",
+      "pages" : [
+        "visa"
+      ],
+      "truth" : "passport-lookalike"
+    }
+  ],
+  "instructions" : "You read the text of one page of a document and say what kind of page it is, from its title and its content.\nIgnore any notice that the page is a made-up sample for testing.\nKinds:\nstatement: a bank, card, loan or savings account statement or passbook. It lists dated transactions, or an opening or closing balance, for a period. A letter, slip or page of bank details from a bank is not a statement.\ninvoice: an invoice or bill that asks for payment.\npassport: the passport's own page with the holder's details. A document that only mentions a passport number is not a passport.\nvisa: a visa or permit.\nletter: a letter, notice or email, including one from a bank.\nreceipt: a receipt, payment confirmation or transfer advice.\nform: a form, worksheet or checklist, or a page of account details to fill in or hand over.\nother: anything else, such as notes, an essay, a recipe or a poem.\ncannotTell: the page does not show its kind.\nQuote the title or line of the page that shows the kind, copied exactly.",
+  "pages" : [
+    {
+      "document" : "hdfc-statement-sep",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 737,
+      "quote" : "Statement of Account",
+      "quote_on_page" : true,
+      "seconds" : 0.69116497039794922,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "hdfc-statement-jul",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 708,
+      "quote" : "Statement of Account",
+      "quote_on_page" : true,
+      "seconds" : 0.62647593021392822,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "hdfc-statement-aug",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 708,
+      "quote" : "Statement of Account",
+      "quote_on_page" : true,
+      "seconds" : 0.63349807262420654,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "kotak-statement",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 585,
+      "quote" : "Kotak Mahindra Bank Savings Account Statement",
+      "quote_on_page" : true,
+      "seconds" : 0.60961103439331055,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "sahakari-statement",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 565,
+      "quote" : "Savings account statement",
+      "quote_on_page" : true,
+      "seconds" : 0.56430208683013916,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "credit-union-statement",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 534,
+      "quote" : "Member savings statement",
+      "quote_on_page" : true,
+      "seconds" : 0.55457496643066406,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "natwest-statement",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 616,
+      "quote" : "National Westminster Bank Plc Current account statement",
+      "quote_on_page" : true,
+      "seconds" : 0.66306102275848389,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "abn-amro-statement",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 588,
+      "quote" : "Account statement (English copy)",
+      "quote_on_page" : true,
+      "seconds" : 0.60996806621551514,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "commerzbank-kontoauszug",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "de",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 658,
+      "quote" : "Kontoauszug Nr. 10/2026",
+      "quote_on_page" : true,
+      "seconds" : 0.73568093776702881,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "deutsche-bank-brief",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "letter",
+      "lang" : "de",
+      "model_kind" : "letter",
+      "page" : 1,
+      "prompt_tokens" : 538,
+      "quote" : "Sehr geehrte Frau Mustermann, ab dem 1. Mai 2026 gelten neue Meldegrenzen der Deutschen Bundesbank für Zahlungen ins Ausland.",
+      "quote_on_page" : true,
+      "seconds" : 0.88588500022888184,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "rechnung-falsche-iban",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "invoice",
+      "lang" : "de",
+      "model_kind" : "invoice",
+      "page" : 1,
+      "prompt_tokens" : 603,
+      "quote" : "Rechnung",
+      "quote_on_page" : true,
+      "seconds" : 0.5541919469833374,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "invoice-lookalike-numbers",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "invoice",
+      "lang" : "en",
+      "model_kind" : "invoice",
+      "page" : 1,
+      "prompt_tokens" : 590,
+      "quote" : "Invoice number: 50100987654321",
+      "quote_on_page" : true,
+      "seconds" : 0.73050093650817871,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "neft-receipt-tied",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "receipt",
+      "lang" : "en",
+      "model_kind" : "receipt",
+      "page" : 1,
+      "prompt_tokens" : 584,
+      "quote" : "HDFC NetBanking - Funds transfer receipt",
+      "quote_on_page" : true,
+      "seconds" : 0.65255105495452881,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "transfer-untied",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "receipt",
+      "lang" : "en",
+      "model_kind" : "receipt",
+      "page" : 1,
+      "prompt_tokens" : 568,
+      "quote" : "Payment confirmation - international transfer",
+      "quote_on_page" : true,
+      "seconds" : 0.57437503337860107,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "transfer-rows",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "form",
+      "lang" : "en",
+      "model_kind" : "form",
+      "page" : 1,
+      "prompt_tokens" : 535,
+      "quote" : "Bulk transfer advice",
+      "quote_on_page" : true,
+      "seconds" : 0.57718205451965332,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "hdfc-branch-letter",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "letter",
+      "lang" : "en",
+      "model_kind" : "letter",
+      "page" : 1,
+      "prompt_tokens" : 509,
+      "quote" : "Dear Customer, From 1 September 2026 our Sample Nagar branch will open from 9:30 to 16:30 on weekdays. Saturday hours stay the same. Yours faithfully, Branch Manager, HDFC Bank",
+      "quote_on_page" : true,
+      "seconds" : 1.0203709602355957,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "hdfc-letter-hindi",
+      "dropped_lines" : 0,
+      "error" : "unsupportedLanguageOrLocale",
+      "kind_after_quote_check" : "error",
+      "lang" : "hi",
+      "model_kind" : "error",
+      "page" : 1,
+      "prompt_tokens" : 530,
+      "quote" : "",
+      "quote_on_page" : false,
+      "seconds" : 0.0030089616775512695,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "rent-receipt",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "receipt",
+      "lang" : "en",
+      "model_kind" : "receipt",
+      "page" : 1,
+      "prompt_tokens" : 546,
+      "quote" : "Received from Asha Kalpit the sum of INR 18,000.00 as rent for October 2026",
+      "quote_on_page" : true,
+      "seconds" : 0.84448707103729248,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "email-fee-payment",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "letter",
+      "lang" : "en",
+      "model_kind" : "letter",
+      "page" : 1,
+      "prompt_tokens" : 573,
+      "quote" : "Hello, I paid the term fee today through hdfcbank netbanking. The HDFC BANK app showed reference N2026102098765 for it.",
+      "quote_on_page" : true,
+      "seconds" : 0.94913601875305176,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "hdfc-card-statement",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 611,
+      "quote" : "HDFC Bank Credit Card Statement",
+      "quote_on_page" : true,
+      "seconds" : 0.68802797794342041,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "hdfc-life-receipt",
+      "dropped_lines" : 0,
+      "error" : "refusal: I apologize, but I cannot fulfill this request.",
+      "kind_after_quote_check" : "error",
+      "lang" : "en",
+      "model_kind" : "error",
+      "page" : 1,
+      "prompt_tokens" : 525,
+      "quote" : "",
+      "quote_on_page" : false,
+      "seconds" : 0.10019803047180176,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "icici-lombard-notice",
+      "dropped_lines" : 0,
+      "error" : "refusal: I apologize, but I cannot fulfill this request.",
+      "kind_after_quote_check" : "error",
+      "lang" : "en",
+      "model_kind" : "error",
+      "page" : 1,
+      "prompt_tokens" : 519,
+      "quote" : "",
+      "quote_on_page" : false,
+      "seconds" : 0.097995996475219727,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "school-fee-banks",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "other",
+      "lang" : "en",
+      "model_kind" : "other",
+      "page" : 1,
+      "prompt_tokens" : 496,
+      "quote" : "Sample Public School: fee payment",
+      "quote_on_page" : true,
+      "seconds" : 0.48123002052307129,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "household-notes",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "other",
+      "lang" : "en",
+      "model_kind" : "other",
+      "page" : 1,
+      "prompt_tokens" : 486,
+      "quote" : "Household notes, October 2026",
+      "quote_on_page" : true,
+      "seconds" : 0.53427207469940186,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "sbi-passbook-hindi",
+      "dropped_lines" : 0,
+      "error" : "unsupportedLanguageOrLocale",
+      "kind_after_quote_check" : "error",
+      "lang" : "hi",
+      "model_kind" : "error",
+      "page" : 1,
+      "prompt_tokens" : 663,
+      "quote" : "",
+      "quote_on_page" : false,
+      "seconds" : 0.0025899410247802734,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "pan-form-hindi",
+      "dropped_lines" : 0,
+      "error" : "unsupportedLanguageOrLocale",
+      "kind_after_quote_check" : "error",
+      "lang" : "hi",
+      "model_kind" : "error",
+      "page" : 1,
+      "prompt_tokens" : 591,
+      "quote" : "",
+      "quote_on_page" : false,
+      "seconds" : 0.0026669502258300781,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "recipe-hindi",
+      "dropped_lines" : 0,
+      "error" : "unsupportedLanguageOrLocale",
+      "kind_after_quote_check" : "error",
+      "lang" : "hi",
+      "model_kind" : "error",
+      "page" : 1,
+      "prompt_tokens" : 549,
+      "quote" : "",
+      "quote_on_page" : false,
+      "seconds" : 0.0024830102920532227,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "mizuho-statement-ja",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "ja",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 575,
+      "quote" : "普通預金 取引明細",
+      "quote_on_page" : true,
+      "seconds" : 0.58421707153320312,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "mufg-remittance-ja",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "letter",
+      "lang" : "ja",
+      "model_kind" : "letter",
+      "page" : 1,
+      "prompt_tokens" : 555,
+      "quote" : "受取銀行: 三菱UFJ銀行",
+      "quote_on_page" : true,
+      "seconds" : 0.59078097343444824,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "essay-ja",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "other",
+      "lang" : "ja",
+      "model_kind" : "other",
+      "page" : 1,
+      "prompt_tokens" : 496,
+      "quote" : "見本: テスト用に作った架空の文章です。",
+      "quote_on_page" : true,
+      "seconds" : 0.54074203968048096,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "rib-fr",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "fr",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 568,
+      "quote" : "DOCUMENT D'EXEMPLE. Inventé pour des tests. Ce n'est pas un vrai RIB.",
+      "quote_on_page" : true,
+      "seconds" : 0.93767797946929932,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "scan-bob-letter",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "letter",
+      "lang" : "en",
+      "model_kind" : "letter",
+      "page" : 1,
+      "prompt_tokens" : 552,
+      "quote" : "TO: ASHA KALPIT",
+      "quote_on_page" : true,
+      "seconds" : 0.5705190896987915,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "scan-pnb-deposit",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 541,
+      "quote" : "CASH DEPOSIT SLIP (COUNTERFOIL)",
+      "quote_on_page" : true,
+      "seconds" : 0.66599798202514648,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "axis-statement-scanned-annex",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 581,
+      "quote" : "Statement of account",
+      "quote_on_page" : true,
+      "seconds" : 0.55551207065582275,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "axis-statement-scanned-annex",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "form",
+      "lang" : "en",
+      "model_kind" : "form",
+      "page" : 2,
+      "prompt_tokens" : 508,
+      "quote" : "AXIS BANK - ACCOUNT OPENING FORM (COPY)",
+      "quote_on_page" : true,
+      "seconds" : 0.62588703632354736,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "utility-bill",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "invoice",
+      "lang" : "en",
+      "model_kind" : "invoice",
+      "page" : 1,
+      "prompt_tokens" : 556,
+      "quote" : "Electricity bill for August 2026",
+      "quote_on_page" : true,
+      "seconds" : 0.62255895137786865,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "hdfc-ltd-loan-2019",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "statement",
+      "lang" : "en",
+      "model_kind" : "statement",
+      "page" : 1,
+      "prompt_tokens" : 544,
+      "quote" : "Home loan account statement",
+      "quote_on_page" : true,
+      "seconds" : 0.60173594951629639,
+      "set" : "sample",
+      "truth" : "statement"
+    },
+    {
+      "document" : "passport-asha-current",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 621,
+      "quote" : "PASSPORT Type: P Issuing state: UTO Passport No.: SMP001826 Surname: KALPIT Given names: ASHA Nationality: UTOPIAN Date of birth: 21 APR 1988 Sex: F Place of birth: SAMPLE CITY Date of issue: 18 MAR 2024 Date of expiry: 17 MAR 2034 Authority: UTOPIA PASSPORT OFFICE",
+      "quote_on_page" : true,
+      "seconds" : 1.8131319284439087,
+      "set" : "sample",
+      "truth" : "passport"
+    },
+    {
+      "document" : "passport-asha-expired",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 613,
+      "quote" : "PASSPORT TYPE: P ISSUING STATE: UTO PASSPORT NO: SMP000417 SURNAME: KALPIT GIVEN NAMES: ASHA DATE OF BIRTH: 21 APR 1988 SEX: F DATE OF ISSUE: 10 JUN 2009 DATE OF EXPIRY: 09 JUN 2019 CANCELLED",
+      "quote_on_page" : true,
+      "seconds" : 1.7031060457229614,
+      "set" : "sample",
+      "truth" : "passport"
+    },
+    {
+      "document" : "passport-rohan",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 621,
+      "quote" : "PASSPORT Type: P Issuing state: UTO Passport No.: SMP002935 Surname: KALPIT Given names: ROHAN Nationality: UTOPIAN Date of birth: 30 SEP 2016 Sex: M Place of birth: SAMPLE CITY Date of issue: 05 JAN 2023 Date of expiry: 04 JAN 2028 Authority: UTOPIA PASSPORT OFFICE",
+      "quote_on_page" : true,
+      "seconds" : 1.8222830295562744,
+      "set" : "sample",
+      "truth" : "passport"
+    },
+    {
+      "document" : "visa-asha",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "visa",
+      "lang" : "en",
+      "model_kind" : "visa",
+      "page" : 1,
+      "prompt_tokens" : 590,
+      "quote" : "Specimen visa of the fictional state of Utopia (ICAO code UTO).",
+      "quote_on_page" : true,
+      "seconds" : 0.70184898376464844,
+      "set" : "sample",
+      "truth" : "passport-lookalike"
+    },
+    {
+      "document" : "passport-bad-mrz",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "passport",
+      "lang" : "en",
+      "model_kind" : "passport",
+      "page" : 1,
+      "prompt_tokens" : 608,
+      "quote" : "PASSPORT Type: P Issuing state: UTO",
+      "quote_on_page" : true,
+      "seconds" : 0.67837405204772949,
+      "set" : "sample",
+      "truth" : "passport"
+    },
+    {
+      "document" : "recipe-lemon-rice",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "other",
+      "lang" : "en",
+      "model_kind" : "other",
+      "page" : 1,
+      "prompt_tokens" : 510,
+      "quote" : "Lemon rice",
+      "quote_on_page" : true,
+      "seconds" : 0.48107993602752686,
+      "set" : "sample",
+      "truth" : "neither"
+    },
+    {
+      "document" : "poem",
+      "dropped_lines" : 0,
+      "error" : null,
+      "kind_after_quote_check" : "other",
+      "lang" : "en",
+      "model_kind" : "other",
+      "page" : 1,
+      "prompt_tokens" : 471,
+      "quote" : "Morning",
+      "quote_on_page" : true,
+      "seconds" : 0.4525219202041626,
+      "set" : "sample",
+      "truth" : "neither"
+    }
+  ],
+  "process_max_rss_mb" : 269.421875,
+  "sampling" : "greedy",
+  "seconds_max" : 1.8222830295562744,
+  "seconds_median" : 0.60978955030441284,
+  "sets" : [
+    "sample"
+  ]
+}
