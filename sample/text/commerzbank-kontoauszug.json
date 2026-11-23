@@ -1,0 +1,14 @@
+{
+	"id": "commerzbank-kontoauszug",
+	"file": "kontoauszug-oktober.pdf",
+	"sha256": "2a4aa63d277c5c93b21b1acf4880043698369dea7046c3fe580748c2dc59e533",
+	"format": "pdf",
+	"lang": "de",
+	"created": "2026-11-01T06:00:00Z",
+	"pages": [
+		{
+			"text": "MUSTERDOKUMENT. Für Tests erfunden. Kein echter Kontoauszug.\nSAMPLE DOCUMENT. Made up for testing.\nCommerzbank AG\nKontoauszug Nr. 10/2026\nKontoinhaberin: Erika Mustermann\nAnschrift: Beispielweg 7, 50667 Köln\nIBAN: DE89 3704 0044 0532 0130 00\nBIC: COBADEFFXXX\nZeitraum: 01.10.2026 bis 31.10.2026\nAlter Kontostand: 2.450,00 EUR\n01.10.2026 Miete Oktober -950,00\n14.10.2026 Überweisung ins Ausland -1.250,00\n15.10.2026 Gehalt +3.120,00\nNeuer Kontostand: 3.370,00 EUR",
+			"scanned": false
+		}
+	]
+}

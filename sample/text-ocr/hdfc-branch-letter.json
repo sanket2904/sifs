@@ -1,0 +1,14 @@
+{
+	"id": "hdfc-branch-letter",
+	"file": "branch-hours-letter.pdf",
+	"sha256": "b19ff2cd820da3598563445655ed2d3550076a31b6b59f5759a4ae45d8e00776",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-08-12T06:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real letter.\nHDFC Bank Limited\nSample Nagar Branch, Pune\n12 Aug 2026\nDear Customer,\nFrom 1 September 2026 our Sample Nagar branch will open from 9:30 to 16:30 on weekdays.\nSaturday hours stay the same.\nYours faithfully,\nBranch Manager, HDFC Bank",
+			"scanned": false
+		}
+	]
+}

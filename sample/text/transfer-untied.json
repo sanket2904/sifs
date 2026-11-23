@@ -1,0 +1,14 @@
+{
+	"id": "transfer-untied",
+	"file": "payment-confirmation.pdf",
+	"sha256": "6507ddd7dec99911856a1ba928a53b49a14c80729d57a792e58e7bc6d397f498",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-10-14T08:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real receipt.\nPayment confirmation - international transfer\nReference: TRX-2026-000417\nValue date: 14 Oct 2026\nAmount: EUR 1,250.00\nFrom account: DE89 3704 0044 0532 0130 00\nOrdering customer: Erika Mustermann\nTo account: 7730194522\nBeneficiary: Taro Yamada\nBanks involved in this payment: Commerzbank, BNP Paribas, Mizuho Bank\nCharges: shared",
+			"scanned": false
+		}
+	]
+}

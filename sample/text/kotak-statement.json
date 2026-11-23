@@ -1,0 +1,14 @@
+{
+	"id": "kotak-statement",
+	"file": "statement-oct-udaharan.pdf",
+	"sha256": "dc8f482debfe6c586235c305fb9e57ed824557a7e59899175ade89c9feb64427",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-11-02T08:30:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real statement.\nKotak Mahindra Bank\nSavings Account Statement\nCustomer: Neha Udaharan\nAccount No. 1234567890\nBranch: Sample Road, Mumbai\nPeriod: 01 Oct 2026 - 31 Oct 2026\nOpening balance INR 8,200.00\n05 Oct 2026 Transfer received 12,000.00 Cr 20,200.00\n18 Oct 2026 Grocery store 1,845.00 Dr 18,355.00\nClosing balance INR 18,355.00",
+			"scanned": false
+		}
+	]
+}

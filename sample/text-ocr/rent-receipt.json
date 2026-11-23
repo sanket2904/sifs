@@ -1,0 +1,14 @@
+{
+	"id": "rent-receipt",
+	"file": "rent-receipt-october.pdf",
+	"sha256": "30ac2c3e7c6ef084d5f0182f3cb5b9429bab235181427e87b048f9aac0ad3bc3",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-10-03T12:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real receipt.\nRent receipt\nReceived from Asha Kalpit the sum of INR 18,000.00 as rent for October 2026\nfor the flat at 14 Imaginary Lane, Sample Nagar, Pune.\nPaid by bank transfer to account no. 33445566778899.\nLandlord: R. Example\nPhone: +44 7700 900417\nDate: 03 Oct 2026",
+			"scanned": false
+		}
+	]
+}

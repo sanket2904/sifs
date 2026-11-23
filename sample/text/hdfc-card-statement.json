@@ -1,0 +1,14 @@
+{
+	"id": "hdfc-card-statement",
+	"file": "card-statement-sep.pdf",
+	"sha256": "238902a59b7e1ac5547a55d79a38f14c33c332461706d1bcc68fb3e7838b3d44",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-09-16T04:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real statement.\nHDFC Bank Credit Card Statement\nCard holder: Asha Kalpit\nCard number: 4242 4242 4242 4242\nStatement period: 16 Aug 2026 to 15 Sep 2026\nPayment due date: 05 Oct 2026\nTotal amount due: INR 9,120.40\nMinimum amount due: INR 460.00\n18 Aug 2026 Sample Grocers, Pune 2,310.40\n02 Sep 2026 Example Books 810.00\n09 Sep 2026 Rail ticket 6,000.00\nThe card number above is a published test number.",
+			"scanned": false
+		}
+	]
+}

@@ -1,0 +1,14 @@
+{
+	"id": "natwest-statement",
+	"file": "current-account-sep.pdf",
+	"sha256": "62387006c564dbd70462f1f12fb77a4d39e796b17c60a175bda8baab7f142e86",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-10-01T07:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real statement.\nNational Westminster Bank Plc\nCurrent account statement\nName: Jane Q. Sample\nSort code: 60-16-13 Account number: 31926819\nIBAN: GB29 NWBK 6016 1331 9268 19\nBIC: NWBKGB2L\nPeriod: 1 September 2026 to 30 September 2026\nBalance brought forward GBP 1,204.18\n04 Sep 2026 Card payment, Example Cafe 8.40 1,195.78\n25 Sep 2026 Salary 2,310.00 3,505.78\nBalance carried forward GBP 3,505.78",
+			"scanned": false
+		}
+	]
+}

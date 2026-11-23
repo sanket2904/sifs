@@ -1,0 +1,14 @@
+{
+	"id": "mizuho-statement-ja",
+	"file": "torihiki-meisai.pdf",
+	"sha256": "af5c44e98aeb40a513585bbf6b762747992daddd5d95dfa770b83e456ced0405",
+	"format": "pdf",
+	"lang": "ja",
+	"created": "2026-09-03T01:00:00Z",
+	"pages": [
+		{
+			"text": "見本: テスト用に作った架空の書類です。実在の明細ではありません。\nSAMPLE DOCUMENT. Made up for testing.\nみずほ銀行\n普通預金 取引明細\nお名前: 山田 太郎 様\n口座番号: 12345678\n期間: 2026年8月1日～2026年8月31日\n前月繰越: 125,000円\n8月10日 給与振込 280,000円\n8月27日 家賃 -95,000円\n残高: 310,000円",
+			"scanned": false
+		}
+	]
+}

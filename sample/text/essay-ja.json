@@ -1,0 +1,14 @@
+{
+	"id": "essay-ja",
+	"file": "aki-no-sanpo.html",
+	"sha256": "44684bdbe0737ec24056c4d7bce88f2b15615477133dd90edbf4e3579c4b42a3",
+	"format": "html",
+	"lang": "ja",
+	"created": "2025-11-03T03:00:00Z",
+	"pages": [
+		{
+			"text": "見本: テスト用に作った架空の文章です。\nSAMPLE DOCUMENT. Made up for testing.\n秋の散歩\n朝の空気が少し冷たくなってきた。公園の木々は赤や黄色に色づき、子どもたちが落ち葉を集めて遊んでいる。\n帰り道にパン屋で焼きたてのパンを買った。小さな幸せだと思う。",
+			"scanned": false
+		}
+	]
+}

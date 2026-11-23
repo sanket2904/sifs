@@ -1,0 +1,18 @@
+{
+	"id": "axis-statement-scanned-annex",
+	"file": "minor-account-statement.pdf",
+	"sha256": "bd9040997ecbc8e4968f8779e5a7773c93777d44eab861f639acaaab1bcdd9ab",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-07-01T05:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real statement.\nAxis Bank Ltd\nStatement of account\nCustomer: Rohan Kalpit (minor), guardian Asha Kalpit\nAccount number: 917010012345678\nIFSC: UTIB0SAMPL5\nPeriod: 01 Apr 2026 to 30 Jun 2026\nOpening balance: INR 5,000.00\n15 Apr 2026 Gift from grandparents 2,000.00 Cr 7,000.00\nClosing balance: INR 7,000.00\nPage 2 is a scanned copy of the account opening form.",
+			"scanned": false
+		},
+		{
+			"text": "SAMPLE DOCUMENT - MADE UF FOR TESTING\nAXIS BANK- ACCOUNT OPENING FoRM ccOPY)\nACcOUNT No: 917010012345678\nNAME OF MINORE ROHAN KALPIT\nGUARDIANI ASHA KALPIT\nDATE OF BIRTH: 30/09/2016",
+			"scanned": true
+		}
+	]
+}

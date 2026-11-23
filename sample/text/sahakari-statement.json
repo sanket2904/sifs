@@ -1,0 +1,14 @@
+{
+	"id": "sahakari-statement",
+	"file": "sahakari-statement-oct.pdf",
+	"sha256": "6dbbc36c04e7bcee72f7386b173f016101f66914089bfe06462bd05abc91ffae",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-11-03T06:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real statement.\nSample Nagar Sahakari Bank Ltd\nSavings account statement\nMember: Asha Kalpit\nAccount number: 004512000789\nStatement period: 01 Oct 2026 to 31 Oct 2026\nOpening balance: INR 3,400.00\n12 Oct 2026 Cash deposit 1,000.00 Cr 4,400.00\nClosing balance: INR 4,400.00\nThank you for banking with Sample Nagar Sahakari Bank.",
+			"scanned": false
+		}
+	]
+}

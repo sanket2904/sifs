@@ -1,0 +1,14 @@
+{
+	"id": "scan-bob-letter",
+	"file": "scan-kyc-letter.pdf",
+	"sha256": "9235332a9c2c9ec542ce2f71a3d59d7458a0578d8eaf689687d11f4ad395e7bf",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-06-18T11:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT - MADE UF FOR TESTING\nNOTA REHL LETTER\nBANK OF BARODA\nSAMPLE NAGAR BRANCH, PUNE\nDATE: 18/06/2026\nTOESASHR KALPIT\nSUBJECT: KYC UPDATE FOR YOUR AccoUNT\nACCOUNT NO: 12340100005678\nIFSC: BARBØSAMPL6\nPLEASE VISIT THE BRANCH WITH YOUR PAN CARD\nBEFORE 31/07/2026.\nBRANCH MANAGER",
+			"scanned": true
+		}
+	]
+}

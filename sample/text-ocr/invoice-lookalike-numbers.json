@@ -1,0 +1,14 @@
+{
+	"id": "invoice-lookalike-numbers",
+	"file": "invoice-sample-supplies.pdf",
+	"sha256": "2c4f2e97001fee517e8c18ec967dfcc0d88fea86825986134370815634345a17",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-05-14T11:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real invoice.\nSample Supplies Ltd, 1 Example Street, London\nPhone: 020 7946 0123\nInvoice\nInvoice number: 50100987654321\nDate: 14 May 2026\nPrinter paper, 10 boxes GBP 240.00\nPay to IBAN: GB28 NWBK 6016 1331 9268 19\nCard on file: 4111 1111 1111 1112\nTotal due: GBP 240.00 by 14 June 2026",
+			"scanned": false
+		}
+	]
+}

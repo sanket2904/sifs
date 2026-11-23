@@ -1,0 +1,14 @@
+{
+	"id": "passport-bad-mrz",
+	"file": "passport-eriksson.pdf",
+	"sha256": "159d6fbecc13b8a83b896360000fd2a5be4dc4ef636f93e324a281ad53d6d767",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2021-04-20T08:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real passport.\nSpecimen page in the style of ICAO Doc 9303, fictional state of Utopia (UTO).\nPASSPORT\nType: P Issuing state: UTO\nPassport No.: L898902C3\nSurname: ERIKSSON\nGiven names: ANNA MARIA\nDate of birth: 12 AUG 1974\nSex: F\nDate of issue: 16 APR 2021\nDate of expiry: 15 APR 2031\nP<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F3105140<<<<<<<<<<<<<<<2",
+			"scanned": false
+		}
+	]
+}

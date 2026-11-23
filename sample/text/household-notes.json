@@ -1,0 +1,14 @@
+{
+	"id": "household-notes",
+	"file": "notes-october.txt",
+	"sha256": "507ffaff6a172a06fbf0ae55de521aea78781f66c41994c164c4391bdd66ba2f",
+	"format": "txt",
+	"lang": "en",
+	"created": "2026-10-31T16:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real note.\nHousehold notes, October 2026\n- Paid the electricity bill from the BOI account.\n- Moved 10,000 to SBI for the recurring deposit.\n- Asked HDFC about the locker rent.",
+			"scanned": false
+		}
+	]
+}

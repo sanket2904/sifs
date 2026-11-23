@@ -1,0 +1,14 @@
+{
+	"id": "credit-union-statement",
+	"file": "member-savings-oct.pdf",
+	"sha256": "7c205db55e0f308c155af5e9bb88c58b969f8f00cb6943bcece548c9cb4b09c1",
+	"format": "pdf",
+	"lang": "en",
+	"created": "2026-11-04T07:00:00Z",
+	"pages": [
+		{
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real statement.\nSampleton Credit Union\nMember savings statement\nMember: Jane Q. Sample\nMember account: 88120457\nPeriod: 1 October 2026 to 31 October 2026\nBalance brought forward GBP 410.00\n15 Oct 2026 Payroll saving 50.00 460.00\nBalance carried forward GBP 460.00",
+			"scanned": false
+		}
+	]
+}
