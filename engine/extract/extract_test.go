@@ -429,6 +429,37 @@ func TestLatestStatementByPeriodNotFile(t *testing.T) {
 	}
 }
 
+func TestGroupedAccount(t *testing.T) {
+	for _, c := range []struct{ line, value, text string }{
+		{"Account: 1234 5678 90", "1234567890", "1234 5678 90"},
+		{"Member number / account: 12345 67890", "1234567890", "12345 67890"},
+		{"Account no.: 123 456 789  Branch: North", "123456789", "123 456 789"},
+		{"Account: 1234 5678 90 (savings)", "1234567890", "1234 5678 90"},
+		{"Account: 123456 01 Jan 2026", "123456", "123456"},
+		{"Invoice account: 1234 5678 90", "", ""},
+	} {
+		_, e := runOne(t, doc("d", c.line), nil)
+		got := ""
+		for _, i := range e.Identifiers {
+			if i.Kind == KindAccount {
+				got = i.Value + "|" + i.Text
+			}
+		}
+		if want := c.value + "|" + c.text; c.value != "" && got != want || c.value == "" && got != "" {
+			t.Errorf("%q: account %q, want %q", c.line, got, want)
+		}
+	}
+
+	// one account in two spellings is one account for the latest answer
+	mk := func(id, acct, period string) Document {
+		return doc(id, "Riverside Bank", "Statement of account", "Account: "+acct, "Period: "+period)
+	}
+	o := Run([]Document{mk("sep", "1234567890", "01 Sep 2026 to 30 Sep 2026"), mk("oct", "1234 5678 90", "01 Oct 2026 to 31 Oct 2026")}, nil, ref)
+	if len(o.Answers.LatestStatement) != 1 || o.Answers.LatestStatement[0].Document != "oct" {
+		t.Errorf("latest: %+v", o.Answers.LatestStatement)
+	}
+}
+
 func TestDirectory(t *testing.T) {
 	dir := NewDirectory([]DirEntry{
 		entry("Q1", "Riverside Bank", "riversidebank", "RIVR"),

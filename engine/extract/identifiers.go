@@ -280,18 +280,53 @@ var (
 // findLabelledAccount takes a number as an account when the field label
 // right before it names an account: "Account number:", "खाता संख्या:",
 // "口座番号:". One word of account type may sit between label and number.
+// A number written in groups ("1234 5678 90") is one account when its
+// groups run to the end of the field; its value drops the spaces.
 func findLabelledAccount(l Line, _ []Identifier) []found {
 	var out []found
+	isAccount := func(b0 int) bool {
+		label := fieldLabel(l.Text[:b0])
+		return label != "" && reAccountWord.MatchString(label) && !reNotAccount.MatchString(label)
+	}
+	for _, m := range reGroupedValue.FindAllStringIndex(l.Text, -1) {
+		v := digitsOnly(l.Text[m[0]:m[1]])
+		if len(v) >= 6 && len(v) <= 20 && endsField(l.Text[m[1]:]) && isAccount(m[0]) {
+			out = append(out, found{m[0], m[1], v, nil})
+		}
+	}
 	for _, m := range reAccountValue.FindAllStringIndex(l.Text, -1) {
 		v := l.Text[m[0]:m[1]]
-		if countDigits(v) < 6 || len(v)-countDigits(v) > 2 {
+		if countDigits(v) < 6 || len(v)-countDigits(v) > 2 || overlapsFound(m, out) {
 			continue
 		}
-		if label := fieldLabel(l.Text[:m[0]]); label != "" && reAccountWord.MatchString(label) && !reNotAccount.MatchString(label) {
+		if isAccount(m[0]) {
 			out = append(out, found{m[0], m[1], v, nil})
 		}
 	}
 	return out
+}
+
+var reGroupedValue = regexp.MustCompile(`\b[0-9]{2,}(?: [0-9]{2,})+\b`)
+
+// endsField reports whether the rest of a line starts where a field value
+// ends: the end of the line, a wide gap, or a list mark. A single space
+// and more digits or a word could be the next value: "123456 01 Jan".
+func endsField(rest string) bool {
+	rest = strings.TrimSuffix(rest, "\r")
+	if rest == "" || strings.HasPrefix(rest, "  ") || strings.HasPrefix(rest, "\t") {
+		return true
+	}
+	r := strings.TrimPrefix(rest, " ")
+	return r != "" && strings.ContainsAny(r[:1], ",;|()")
+}
+
+func overlapsFound(m []int, fs []found) bool {
+	for _, f := range fs {
+		if m[0] < f.b1 && f.b0 < m[1] {
+			return true
+		}
+	}
+	return false
 }
 
 // fieldLabel returns the label of the field whose value starts where prefix
