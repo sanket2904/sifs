@@ -674,6 +674,12 @@ const MUTANTS = [
 		'if (!years.length ||'
 	],
 	[
+		'tools/score.mjs',
+		"a scanned page's expiry citation folds the OCR's spacing",
+		'onPage(s.page, fold(s.text))',
+		'onPage(s.page, s.text)'
+	],
+	[
 		'tools/reference.mjs',
 		'the reference cites the printed expiry',
 		'				expiryAt: seen\n',

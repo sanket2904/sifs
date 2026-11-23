@@ -1604,6 +1604,14 @@ test('a certain expiry cites the printed date of expiry, and no other text that 
 		byTier(scanned.run(cited), 'passport_expiry', 'certain'),
 		byTier(run(perfect('on', 'text-ocr')), 'passport_expiry', 'certain')
 	);
+	// The read's case: the OCR spaced the printed expiry's words unevenly.
+	const spaced = changedSet('text-ocr', (pages) => misread(pages(id), '02 JUN 1998', '02  JUN 1998'));
+	const respaced = spaced.perfect();
+	assert.equal(doc(respaced, id).passport.expiry_at.text, '02  JUN 1998');
+	assert.deepEqual(
+		byTier(spaced.run(respaced), 'passport_expiry', 'certain'),
+		byTier(run(perfect('on', 'text-ocr')), 'passport_expiry', 'certain')
+	);
 });
 
 test('a format 2 output is refused with what changed, and the saved one that shared a name key across documents breaks format 3', () => {

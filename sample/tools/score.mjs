@@ -461,6 +461,8 @@ function pair(labelled, output, keyOf) {
 }
 
 const squash = (v) => v.replace(/\s/gu, '');
+// OCR text spaces words unevenly: runs of white space fold to one.
+const fold = (v) => v.replace(/\s+/gu, ' ').trim();
 // A card name ignores case and all whitespace: 三菱 UFJ 銀行 is 三菱UFJ銀行.
 const cardName = (v) => v.normalize('NFKC').toUpperCase().replace(/\s/gu, '');
 const normName = (v) =>
@@ -563,6 +565,7 @@ export function score(labels, textSet, rawOutput, directory) {
 		const mentionKey = (m) => (ocrRead(id, m.page) ? onPage(m.page, m.text) : spanKey(m));
 		const identKey = (i) => (ocrRead(id, i.page) ? onPage(i.page, squash(i.value)) : spanKey(i));
 		const decoyKey = (n) => (ocrRead(id, n.page) ? onPage(n.page, squash(n.text)) : spanKey(n));
+		const expiryKey = (s) => (ocrRead(id, s.page) ? onPage(s.page, fold(s.text)) : spanKey(s));
 		const idents = pair(label.identifiers, output.identifiers, identKey);
 		// The labelled identifier an output identifier is: the one it pairs
 		// with, when the kind and value agree.
@@ -577,6 +580,7 @@ export function score(labels, textSet, rawOutput, directory) {
 			impossibleIdent,
 			impossibleMention,
 			mentionKey,
+			expiryKey,
 			identKey,
 			decoyKey,
 			mentions: pair(label.orgs, output.orgs, mentionKey),
@@ -1035,11 +1039,11 @@ export function score(labels, textSet, rawOutput, directory) {
 			const expiryGone = !possible(id, lp.expiry_at);
 			if (!op?.expiry) add('passport_expiry', lang, missing(expiryGone), id, lp.expiry);
 			else {
-				// A certain expiry cites the printed date of expiry, matched as a
-				// mention is: by span, or on a page the OCR read by page and text.
+				// A certain expiry cites the printed date of expiry: by span, or on
+				// a page the OCR read by page and text, its spacing folded.
 				const cited =
 					op.tiers.expiry !== 'certain' ||
-					w.mentionKey(op.expiryAt) === w.mentionKey(lp.expiry_at);
+					w.expiryKey(op.expiryAt) === w.expiryKey(lp.expiry_at);
 				add(
 					'passport_expiry',
 					lang,
