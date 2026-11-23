@@ -340,6 +340,7 @@ var cjkBank = []rune("銀行")
 
 func isCJKNameRune(r rune) bool {
 	return unicode.Is(unicode.Han, r) || unicode.Is(unicode.Katakana, r) || r == 'ー' || r == '・' || r == '＆' ||
+		r == 'ﾞ' || r == 'ﾟ' ||
 		(r < 0x80 && (unicode.IsLetter(r) || unicode.IsDigit(r))) || (r >= 0xFF10 && r <= 0xFF5A)
 }
 
@@ -396,7 +397,7 @@ func legalTail(rs []rune, start, end int) int {
 		if strings.HasPrefix(string(rs[i:]), "株式会社") {
 			j += len([]rune("株式会社"))
 		} else {
-			for j < len(rs) && unicode.Is(unicode.Latin, rs[j]) {
+			for j < len(rs) && isWordRune(rs[j]) {
 				j++
 			}
 			if j == i || !unicode.IsUpper(rs[i]) || !legalForms[strings.ToLower(string(rs[i:j]))] {
