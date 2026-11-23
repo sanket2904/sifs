@@ -213,6 +213,19 @@ func render(results []DocResult, u *union, dir *Directory, ref Date) Output {
 		names[r] = map[string]int{}
 		return k
 	}
+	// With the directory on, a code that no entry holds and no mention
+	// names says nothing about who holds it: it gets no card, and nothing
+	// links to it. With the directory off nothing can tell an assigned
+	// code from an invented one, so a code keeps its card, with no name.
+	named := map[string]bool{}
+	for _, r := range results {
+		for _, m := range r.Mentions {
+			if m.Token != "" {
+				named[u.find(m.Token)] = true
+			}
+		}
+	}
+	carded := func(tok string) bool { r := u.find(tok); return dir == nil || named[r] || u.dir[r] != "" }
 	for _, r := range results {
 		d := DocOut{ID: r.ID, Orgs: []OrgOut{}, Identifiers: []IdentOut{}, Links: []LinkOut{}}
 		for _, m := range r.Mentions {
@@ -230,6 +243,9 @@ func render(results []DocResult, u *union, dir *Directory, ref Date) Output {
 		}
 		at := map[string]int{}
 		for _, l := range r.Links {
+			if !carded(l.Token) {
+				continue
+			}
 			k := key(l.Token)
 			i, ok := at[l.Ident+"|"+k]
 			if !ok {

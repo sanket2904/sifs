@@ -538,6 +538,30 @@ func TestDirectory(t *testing.T) {
 	}
 }
 
+func TestCodeAloneMakesNoCardWithTheDirectory(t *testing.T) {
+	d := doc("d", "Riverside Bank", "Account details", "Konto: 1234567890", "SWIFT: ZZZZCH2X")
+	known := entry("Q7", "Zeta Bank", "zetabank", "")
+	known.Codes.BIC = []string{"ZZZZCH2X"}
+	for _, c := range []struct {
+		dir   *Directory
+		links int
+	}{
+		{NewDirectory([]DirEntry{entry("Q1", "Riverside Bank", "riversidebank", "")}), 0},
+		{NewDirectory([]DirEntry{known}), 2},
+		{nil, 2}, // with the directory off a code keeps its card
+	} {
+		o, e := runOne(t, d, c.dir)
+		if len(e.Links) != c.links {
+			t.Errorf("links %q, want %d", linksOf(o, e), c.links)
+		}
+		for k, card := range o.Organisations {
+			if c.dir != nil && card.Name == nil {
+				t.Errorf("a card with no name and no directory entry: %s", k)
+			}
+		}
+	}
+}
+
 func entry(id, name, key, ifsc string) DirEntry {
 	e := DirEntry{ID: id, Name: name}
 	e.Names = append(e.Names, struct {
