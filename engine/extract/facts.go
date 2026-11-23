@@ -18,11 +18,77 @@ var (
 	reStatementTitle = regexp.MustCompile(`(?i)\b(?:statement|passbook|kontoauszug|relev[ée] de compte|estado de cuenta)\b|明細|पासबुक|विवरण`)
 )
 
+var (
+	negBefore = set("not", "no", "non", "kein", "keine", "keinen", "nicht", "pas", "geen", "niet")
+	negAfter  = []string{"नहीं", "ではありません", "ではない", "じゃない"}
+	specimen  = set("real", "genuine", "actual", "original", "vrai", "véritable", "echt", "echter", "echte", "echtes", "verdadero", "असली", "वास्तविक", "本物", "実在")
+)
+
+// denies reports whether a line says the document is not what re names: a
+// negation right before the role word ("Not a statement", "kein
+// Kontoauszug") or right after it ("विवरण नहीं"). "Not a real statement"
+// is no denial: it says the paper is a made-up statement, not that it is
+// something other than a statement.
+func denies(line string, re *regexp.Regexp) bool {
+	toks := tokenize(line)
+	for _, m := range re.FindAllStringIndex(line, -1) {
+		var before, after []string
+		for _, t := range toks {
+			switch {
+			case t.b1 <= m[0]:
+				before = append(before, t.low())
+			case t.b0 >= m[1]:
+				after = append(after, t.low())
+			}
+		}
+		if specimenBefore(line[:m[0]]) {
+			continue
+		}
+		for i := max(0, len(before)-3); i < len(before); i++ {
+			if negBefore[before[i]] {
+				return true
+			}
+		}
+		rest := strings.TrimSpace(line[m[1]:])
+		for _, n := range negAfter {
+			if strings.HasPrefix(rest, n) || len(after) > 1 && after[1] == n {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// specimenBefore reports whether the text before a role word ends in a
+// word that says real ("a real", "echter", "実在の").
+func specimenBefore(prefix string) bool {
+	p := strings.TrimSuffix(strings.ToLower(fold(strings.TrimSpace(prefix))), "の")
+	for w := range specimen {
+		if strings.HasSuffix(p, w) {
+			return true
+		}
+	}
+	return false
+}
+
+func deniedAnywhere(lines []Line, re *regexp.Regexp) bool {
+	for _, l := range lines {
+		if denies(l.Text, re) {
+			return true
+		}
+	}
+	return false
+}
+
 // findStatement reads a statement: a document that calls itself one above
 // its period field, the account or accounts above that field that all spell
 // one account, and the first organisation the document names as its issuer.
-// Anything less, and it is no statement: a bill has a period too.
+// Anything less, and it is no statement: a bill has a period too. A
+// document that says it is no statement is none.
 func findStatement(lines []Line, ids []Identifier, mentions []Mention) *Statement {
+	if deniedAnywhere(lines, reStatementTitle) {
+		return nil
+	}
 	var st Statement
 	at, titled := -1, false
 	for i, l := range lines {
@@ -108,12 +174,17 @@ var (
 	reExpiry    = regexp.MustCompile(`(?i)\b(?:date\s+of\s+expiry|date\s+d'expiration|gültig\s+bis)\s*:\s*`)
 	reCancelled = regexp.MustCompile(`^(?:CANCELLED|CANCELED|VOID|ANNULÉ|ANNULE|UNGÜLTIG|ENTWERTET)$`)
 	rePassTitle = regexp.MustCompile(`^(?:PASSPORT|PASSEPORT|REISEPASS)$`)
+	rePassWord  = regexp.MustCompile(`(?i)\bpass(?:port|eport)\b|reisepass|旅券|पासपोर्ट`)
 )
 
 // findPassport reads a passport page: one with a passport zone (TD3), or,
 // with no zone at all, one titled passport that gives a passport number.
-// A visa page has a visa zone and is no passport.
+// A visa page has a visa zone and is no passport, and so is a page that
+// says it is none.
 func findPassport(lines []Line, ids []Identifier, ref Date) *Passport {
+	if deniedAnywhere(lines, rePassWord) {
+		return nil
+	}
 	var p Passport
 	zones := 0
 	for i := range ids {

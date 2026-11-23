@@ -314,6 +314,44 @@ func TestStatement(t *testing.T) {
 	}
 }
 
+func TestDeniedRole(t *testing.T) {
+	body := []string{"Riverside Bank", "", "Account number: 111122223333", "Period: 01 Aug 2026 to 31 Aug 2026"}
+	for _, c := range []struct {
+		title string
+		want  bool
+	}{
+		{"Not a statement - account lookup sheet", false},
+		{"Dies ist kein Kontoauszug", false},
+		{"Ce n'est pas un relevé de compte", false},
+		{"खाता विवरण नहीं है", false},
+		{"Statement of account. Not a real statement.", true},
+		{"Kein echter Kontoauszug", true},
+		{"実在の明細ではありません。取引明細", true},
+		{"明細ではありません", false},
+		{"असली पासबुक नहीं, खाता पासबुक", true},
+		{"This statement is not a tax invoice", true},
+	} {
+		lines := append([]string{}, body...)
+		lines[1] = c.title
+		o, e := runOne(t, doc("s", lines...), nil)
+		if got := e.Statement != nil; got != c.want {
+			t.Errorf("%q: statement %v, want %v", c.title, got, c.want)
+		}
+		if !c.want && (len(e.Links) != 0 || len(o.Answers.LatestStatement) != 0) {
+			t.Errorf("%q: no statement, yet links %+v answers %+v", c.title, e.Links, o.Answers.LatestStatement)
+		}
+	}
+
+	_, e := runOne(t, doc("p", "PASSPORT", "This is not a passport", "Passport No.: AB1234567", "Surname: DOE", "Given names: JANE", "Date of expiry: 01 Jan 2030"), nil)
+	if e.Passport != nil {
+		t.Errorf("a page that says it is no passport is none: %+v", e.Passport)
+	}
+	_, e = runOne(t, doc("p", "PASSPORT", "Not a real passport", "Passport No.: AB1234567", "Surname: DOE", "Given names: JANE", "Date of expiry: 01 Jan 2030"), nil)
+	if e.Passport == nil {
+		t.Errorf("a specimen passport is a passport")
+	}
+}
+
 func TestPeriodOrder(t *testing.T) {
 	for _, c := range []struct {
 		s        string
