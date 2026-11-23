@@ -1,6 +1,20 @@
 // Identifier kinds: how a value is written down (normalize) and whether it
 // passes its own check (valid). A kind with valid === null has no check.
 const IBAN_LENGTH = { CH: 21, DE: 22, ES: 24, FR: 27, GB: 22, IE: 22, NL: 18 };
+// Where the bank code sits in each country's IBAN.
+const IBAN_BANK_CODE = {
+	CH: [4, 9],
+	DE: [4, 12],
+	ES: [4, 8],
+	FR: [4, 9],
+	GB: [4, 8],
+	IE: [4, 8],
+	NL: [4, 8]
+};
+export const ibanBankCode = (iban) => {
+	const [from, to] = IBAN_BANK_CODE[iban.slice(0, 2)] ?? [];
+	return { country: iban.slice(0, 2), code: from === undefined ? null : iban.slice(from, to) };
+};
 
 const mod97 = (digits) => [...digits].reduce((r, d) => (r * 10 + Number(d)) % 97, 0);
 const ibanDigits = (s) =>

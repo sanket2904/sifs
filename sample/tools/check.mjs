@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { build, FILES, loadSpec, pageText, SAMPLE, SUMS, sumsFile } from './generate.mjs';
-import { KINDS, parseMrz, ribKey } from './lib/ids.mjs';
+import { ibanBankCode, KINDS, parseMrz, ribKey } from './lib/ids.mjs';
 import { matchKey } from './lib/key.mjs';
 import { LISTS, readLabels, spans } from './lib/labels.mjs';
 import { planted } from './lib/planted.mjs';
@@ -50,15 +50,6 @@ const HELD = new Set([
 	'fr_bank_code',
 	'fr_branch_code'
 ]);
-const IBAN_BANK_CODE = {
-	CH: [4, 9],
-	DE: [4, 12],
-	ES: [4, 8],
-	FR: [4, 9],
-	GB: [4, 8],
-	IE: [4, 8],
-	NL: [4, 8]
-};
 // Where a domestic identifier sits inside its country's IBAN.
 const IBAN_PARTS = {
 	GB: { gb_sort_code: [8, 14], account: [14, 22] },
@@ -90,10 +81,6 @@ const FIELDS = {
 	]
 };
 
-const ibanBankCode = (iban) => {
-	const [from, to] = IBAN_BANK_CODE[iban.slice(0, 2)] ?? [];
-	return { country: iban.slice(0, 2), code: from === undefined ? null : iban.slice(from, to) };
-};
 const ibanPart = (iban, kind) => {
 	const [from, to] = IBAN_PARTS[iban.slice(0, 2)]?.[kind] ?? [];
 	return from === undefined ? null : iban.slice(from, to);
