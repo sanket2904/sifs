@@ -148,8 +148,8 @@ func (reg *IBANRegistry) findIBAN(l Line, _ []Identifier) []found {
 	var out []found
 	t := l.Text
 	for _, m := range reIBANStart.FindAllStringIndex(t, -1) {
-		c := reg.countries[t[m[0]:m[0]+2]]
-		if !ibanSought[t[m[0]:m[0]+2]] {
+		c, ok := reg.countries[t[m[0]:m[0]+2]]
+		if !ok {
 			continue
 		}
 		var b strings.Builder

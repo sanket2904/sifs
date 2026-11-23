@@ -18,8 +18,7 @@ type IBANRegistry struct{ countries map[string]ibanCountry }
 // offsets in the IBAN, end exclusive.
 type ibanCountry struct{ length, bank0, bank1 int }
 
-// LoadIBANRegistry reads the registry table. Every country whose IBANs the
-// extractor looks for must be in it.
+// LoadIBANRegistry reads the registry table.
 func LoadIBANRegistry(path string) (*IBANRegistry, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -42,17 +41,8 @@ func LoadIBANRegistry(path string) (*IBANRegistry, error) {
 		}
 		reg.countries[cc] = ibanCountry{length: c.Length, bank0: 4 + first - 1, bank1: 4 + last}
 	}
-	for cc := range ibanSought {
-		if _, ok := reg.countries[cc]; !ok {
-			return nil, fmt.Errorf("%s: no row for %s", path, cc)
-		}
-	}
 	return reg, nil
 }
-
-// ibanSought are the countries whose IBANs findIBAN looks for.
-var ibanSought = set(strings.Fields(`AD AE AL AT AZ BA BE BG BH BR CH CR CY CZ DE DK DO EE EG ES FI FO FR GB GE GI GL GR GT
-HR HU IE IL IS IT JO KW KZ LB LC LI LT LU LV MC MD ME MK MR MT MU NL NO PK PL PS PT QA RO RS SA SE SI SK SM TN TR UA VG XK`)...)
 
 // ibanParts are the countries whose IBANs the extractor reads further: where
 // the branch code and the account number sit in them (offsets in the IBAN,
