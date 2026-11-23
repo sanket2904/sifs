@@ -1677,6 +1677,176 @@ test('a certain expiry cites the printed date of expiry, and no other text that 
 	);
 });
 
+const ZONE_ONLY_MRZ =
+	'P<UTOSOLIS<<MIRA<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nUT90123459UTO9004126F3208151<<<<<<<<<<<<<<02';
+
+const zoneOnlyPassport = ({
+	expiry = 'cannot-tell',
+	expiryAt = null,
+	textSetName = 'text',
+	scanned = false,
+	garbleZone = false
+} = {}) => {
+	const baseText = [
+		'PASSPORT UTO',
+		'Surname: SOLIS',
+		'Given names: MIRA',
+		'Passport No.: UT9012345',
+		'Date of issue: 15 AUG 2024',
+		'Note: valid through 15 AUG 2032',
+		ZONE_ONLY_MRZ
+	].join('\n');
+	const at = (text, source = baseText) => {
+		const start = [...source.slice(0, source.indexOf(text))].length;
+		return { page: 1, start, end: start + [...text].length, text };
+	};
+	const pageText = garbleZone ? baseText.replace('F3208151', 'F32O8l51') : baseText;
+	const passportLabel = {
+		holder: { surname: 'SOLIS', given: 'MIRA' },
+		number: 'i1',
+		mrz: 'i2',
+		issued: '2024-08-15',
+		expiry,
+		...(expiry === 'cannot-tell' ? { expiry_candidates: ['1932-08-15', '2032-08-15'] } : {}),
+		...(expiryAt !== undefined ? { expiry_at: expiryAt } : {}),
+		current: true
+	};
+	const customLabels = {
+		organisations: {},
+		documents: [
+			{
+				id: 'zone-passport',
+				orgs: [],
+				not_orgs: [],
+				identifiers: [
+					{ id: 'i1', ...at('UT9012345'), kind: 'passport_number', value: 'UT9012345', valid: null },
+					{ id: 'i2', ...at(ZONE_ONLY_MRZ), kind: 'mrz', value: ZONE_ONLY_MRZ, valid: true }
+				],
+				not_identifiers: [],
+				links: [],
+				not_links: [],
+				passport: passportLabel
+			}
+		],
+		answers: {
+			latest_statement: [],
+			current_passport: [{ holder: 'SOLIS, MIRA', document: 'zone-passport' }]
+		}
+	};
+	const textSet = {
+		index: { text_set: textSetName },
+		docs: new Map([
+			['zone-passport', { id: 'zone-passport', lang: 'en', pages: [{ text: pageText, scanned }] }]
+		])
+	};
+	const output = (passport = null, currentAnswer = []) => ({
+		format: 3,
+		extractor: 'test',
+		directory: 'off',
+		text_set: textSetName,
+		organisations: {},
+		documents: [
+			{
+				id: 'zone-passport',
+				orgs: [],
+				identifiers: garbleZone
+					? [{ id: 'i1', ...at('UT9012345', pageText), kind: 'passport_number', value: 'UT9012345', valid: null, tier: 'likely' }]
+					: [
+							{ id: 'i1', ...at('UT9012345', pageText), kind: 'passport_number', value: 'UT9012345', valid: null, tier: 'likely' },
+							{ id: 'i2', ...at(ZONE_ONLY_MRZ, pageText), kind: 'mrz', value: ZONE_ONLY_MRZ, valid: true, tier: 'certain' }
+						],
+				links: [],
+				...(passport ? { passport } : {}),
+				same_org: []
+			}
+		],
+		answers: { latest_statement: [], current_passport: currentAnswer }
+	});
+	return {
+		span: (text) => at(text, pageText),
+		output,
+		run: (o) => score(customLabels, textSet, o, { entries: [] })
+	};
+};
+
+test('a passport label with no printed expiry span scores a missing expiry by whether its zone can be found', () => {
+	for (const expiryAt of [null, undefined]) {
+		const present = zoneOnlyPassport({ expiryAt });
+		const result = present.run(present.output());
+		assert.equal(totals(result, 'passport_expiry').left_out, 1);
+		assert.equal(totals(result, 'passport_expiry').impossible, 0);
+		assert.equal(totals(result, 'passport_current').left_out, 1);
+		assert.equal(totals(result, 'answer_current_passport').left_out, 1);
+		assert.equal(result.failed, false);
+
+		const unreadable = zoneOnlyPassport({
+			expiryAt,
+			textSetName: 'text-ocr',
+			scanned: true,
+			garbleZone: true
+		});
+		const excused = unreadable.run(unreadable.output());
+		assert.equal(totals(excused, 'passport_expiry').impossible, 1);
+		assert.equal(totals(excused, 'passport_expiry').left_out, 0);
+		assert.equal(totals(excused, 'passport_current').impossible, 1);
+		assert.equal(totals(excused, 'answer_current_passport').impossible, 1);
+		assert.equal(excused.failed, false);
+	}
+});
+
+test('against a zone-only passport label, a likely expiry is right when equal and wrong when different', () => {
+	for (const [labelExpiry, rightGuess, wrongGuess] of [
+		['cannot-tell', 'cannot-tell', '2032-08-15'],
+		['2032-08-15', '2032-08-15', '1932-08-15']
+	]) {
+		const fixture = zoneOnlyPassport({ expiry: labelExpiry });
+		const passport = (expiry) => ({
+			holder: { surname: 'SOLIS', given: 'MIRA' },
+			number: 'i1',
+			mrz: 'i2',
+			expiry,
+			expiry_at: null,
+			current: true,
+			tiers: { holder: 'certain', number: 'certain', expiry: 'likely', current: 'likely' }
+		});
+		const ok = fixture.run(fixture.output(passport(rightGuess), [{ holder: 'SOLIS, MIRA', document: 'zone-passport' }]));
+		assert.deepEqual(byTier(ok, 'passport_expiry', 'likely'), { right: 1, wrong: 0 }, labelExpiry);
+		assert.equal(ok.failed, false, labelExpiry);
+
+		const bad = fixture.run(fixture.output(passport(wrongGuess), [{ holder: 'SOLIS, MIRA', document: 'zone-passport' }]));
+		assert.deepEqual(byTier(bad, 'passport_expiry', 'likely'), { right: 0, wrong: 1 }, labelExpiry);
+		assert.equal(bad.failed, false, labelExpiry);
+	}
+});
+
+test('against a zone-only passport label, a certain expiry is wrong even when its date equals the label', () => {
+	for (const labelExpiry of ['2032-08-15', 'cannot-tell']) {
+		const fixture = zoneOnlyPassport({ expiry: labelExpiry });
+		const base = {
+			holder: { surname: 'SOLIS', given: 'MIRA' },
+			number: 'i1',
+			mrz: 'i2',
+			expiry: '2032-08-15',
+			current: true,
+			tiers: { holder: 'certain', number: 'certain', expiry: 'certain', current: 'likely' }
+		};
+		assert.throws(
+			() => fixture.run(fixture.output({ ...base, expiry_at: null })),
+			/passport\.tiers\.expiry: cannot be certain/,
+			`${labelExpiry} without expiry_at`
+		);
+		const cited = fixture.run(
+			fixture.output(
+				{ ...base, expiry_at: fixture.span('15 AUG 2032') },
+				[{ holder: 'SOLIS, MIRA', document: 'zone-passport' }]
+			)
+		);
+		assert.deepEqual(byTier(cited, 'passport_expiry', 'certain'), { right: 0, wrong: 1 }, labelExpiry);
+		assert.match(wrongs(cited, 'passport_expiry')[0].what, /not the printed date of expiry/, labelExpiry);
+		assert.equal(cited.failed, true, labelExpiry);
+	}
+});
+
 test('a format 2 output is refused with what changed, and the saved one that shared a name key across documents breaks format 3', () => {
 	const saved = JSON.parse(
 		readFileSync(new URL('fixtures/format-2-shared-name-key.json', import.meta.url), 'utf8')
