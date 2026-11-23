@@ -460,6 +460,25 @@ func TestGroupedAccount(t *testing.T) {
 	}
 }
 
+func TestLatestWithheldWhenALaterStatementIsUnread(t *testing.T) {
+	mk := func(id, acct, period string) Document {
+		return doc(id, "Riverside Bank", "Statement of account", "Account: "+acct, "Period: "+period)
+	}
+	sep := mk("sep", "1234567890", "01 Sep 2026 to 30 Sep 2026")
+	oct := mk("oct", "12-34-56-78-90", "01 Oct 2026 to 31 Oct 2026")
+	if o := Run([]Document{sep, oct}, nil, ref); len(o.Answers.LatestStatement) != 0 {
+		t.Errorf("October's account was not read, yet September is the answer: %+v", o.Answers.LatestStatement)
+	}
+	aug := mk("aug", "12-34-56-78-90", "01 Aug 2026 to 31 Aug 2026")
+	if o := Run([]Document{sep, aug}, nil, ref); len(o.Answers.LatestStatement) != 1 {
+		t.Errorf("an unread earlier statement does not change the latest: %+v", o.Answers.LatestStatement)
+	}
+	other := doc("other", "Zeta Bank", "Statement of account", "Account: 12-34-56-78-90", "Period: 01 Oct 2026 to 31 Oct 2026")
+	if o := Run([]Document{sep, other}, nil, ref); len(o.Answers.LatestStatement) != 1 {
+		t.Errorf("another issuer's unread statement does not change the latest: %+v", o.Answers.LatestStatement)
+	}
+}
+
 func TestDirectory(t *testing.T) {
 	dir := NewDirectory([]DirEntry{
 		entry("Q1", "Riverside Bank", "riversidebank", "RIVR"),

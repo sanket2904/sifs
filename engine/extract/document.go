@@ -38,6 +38,7 @@ type DocResult struct {
 	Links       []Link
 	Ties        []Tie
 	Statement   *Statement
+	Unread      *Statement // a statement whose account was not read
 	Passport    *Passport
 }
 
@@ -71,9 +72,12 @@ func Extract(doc Document, ref Date) DocResult {
 	r.Mentions = append(r.Mentions, shortForms(lines, names, r.Identifiers, r.Ties)...)
 	sortSpans(r.Mentions, func(m Mention) Span { return m.Span })
 	r.Links = codeLinks(r.Identifiers)
-	r.Statement = findStatement(lines, r.Identifiers, r.Mentions)
-	if r.Statement != nil {
-		r.Links = append(r.Links, headerLinks(*r.Statement, r.Links, r.Ties)...)
+	switch st := findStatement(lines, r.Identifiers, r.Mentions); {
+	case st != nil && st.Accounts == nil:
+		r.Unread = st
+	case st != nil:
+		r.Statement = st
+		r.Links = append(r.Links, headerLinks(*st, r.Links, r.Ties)...)
 	}
 	r.Passport = findPassport(lines, r.Identifiers, ref)
 	return r

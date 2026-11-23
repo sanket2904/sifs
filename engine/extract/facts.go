@@ -83,8 +83,11 @@ func deniedAnywhere(lines []Line, re *regexp.Regexp) bool {
 // findStatement reads a statement: a document that calls itself one above
 // its period field, the account or accounts above that field that all spell
 // one account, and the first organisation the document names as its issuer.
-// Anything less, and it is no statement: a bill has a period too. A
-// document that says it is no statement is none.
+// Without the title, the period or the issuer it is no statement: a bill
+// has a period too. A document that says it is no statement is none. When
+// the accounts above the period do not spell one account, the statement is
+// returned with no accounts: it was not read, and answers that depend on
+// it must know so.
 func findStatement(lines []Line, ids []Identifier, mentions []Mention) *Statement {
 	if deniedAnywhere(lines, reStatementTitle) {
 		return nil
@@ -116,7 +119,7 @@ func findStatement(lines []Line, ids []Identifier, mentions []Mention) *Statemen
 		}
 	}
 	if len(st.Accounts) == 0 || !oneAccount(st.Accounts) {
-		return nil
+		st.Accounts = nil
 	}
 	return &st
 }

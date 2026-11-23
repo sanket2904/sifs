@@ -284,7 +284,7 @@ func render(results []DocResult, u *union, dir *Directory, ref Date) Output {
 		}
 		out.Organisations[k] = c
 	}
-	out.Answers.LatestStatement = latestStatements(results)
+	out.Answers.LatestStatement = latestStatements(results, u.find)
 	out.Answers.CurrentPassport = currentPassports(results)
 	return out
 }
@@ -310,20 +310,27 @@ func mostUsed(counts map[string]int) string {
 
 // latestStatements answers, for every account, which statement is its
 // latest by the statement's own period. Statements are one account when
-// they share any spelling of it. A tie between two documents is no answer.
-func latestStatements(results []DocResult) []AccountAnswer {
+// they share any spelling of it. A tie between two documents is no answer,
+// and so is a later statement of the same issuer whose account was not
+// read: it may be this account's. org gives a token's organisation.
+func latestStatements(results []DocResult, org func(string) string) []AccountAnswer {
 	type stmt struct {
 		doc       string
 		to        Date
+		issuer    string
 		spellings []string
 		iban      string
 	}
 	var all []stmt
+	unread := map[string][]Date{} // issuer -> periods' ends
 	for _, r := range results {
+		if r.Unread != nil {
+			unread[org(r.Unread.Issuer.Token)] = append(unread[org(r.Unread.Issuer.Token)], r.Unread.To)
+		}
 		if r.Statement == nil {
 			continue
 		}
-		s := stmt{doc: r.ID, to: r.Statement.To}
+		s := stmt{doc: r.ID, to: r.Statement.To, issuer: org(r.Statement.Issuer.Token)}
 		for _, a := range r.Statement.Accounts {
 			s.spellings = append(s.spellings, a.Value)
 			if a.Kind == KindIBAN {
@@ -351,7 +358,7 @@ func latestStatements(results []DocResult) []AccountAnswer {
 	for _, r := range order {
 		g := groups[r]
 		sort.SliceStable(g, func(i, j int) bool { return g[j].to.before(g[i].to) })
-		if len(g) > 1 && g[0].to == g[1].to && g[0].doc != g[1].doc {
+		if len(g) > 1 && g[0].to == g[1].to && g[0].doc != g[1].doc || laterThan(unread[g[0].issuer], g[0].to) {
 			continue
 		}
 		acct := g[0].spellings[0]
@@ -363,6 +370,15 @@ func latestStatements(results []DocResult) []AccountAnswer {
 		out = append(out, AccountAnswer{Account: acct, Document: g[0].doc})
 	}
 	return out
+}
+
+func laterThan(ds []Date, d Date) bool {
+	for _, e := range ds {
+		if d.before(e) {
+			return true
+		}
+	}
+	return false
 }
 
 // currentPassports answers, for every holder, which passport is current:
