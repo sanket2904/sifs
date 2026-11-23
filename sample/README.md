@@ -73,6 +73,8 @@ Each entry in `documents` has an `id` from `spec.json`, an optional `note`, and 
 | `statement` | A span holding the period field's value, `accounts` (identifier ids that spell the statement's own account), `issuer` (the `orgs` id of the header), `from` and `to`. |
 | `passport` | `holder` (`surname`, `given`), `number` and `mrz` (identifier ids), `issued`, `expiry` (a date, or `cannot-tell` with `expiry_candidates`), `expiry_at` (the span of the printed expiry), `current`, and `why` when needed. `null` for a document that looks like a passport and is not one. |
 
+When a passport prints no date of expiry and the expiry rests on the machine-readable zone alone, set `expiry_at` to `null`. Set `expiry` to the date, or to `cannot-tell` with `expiry_candidates`. With no printed span, the expiry rests on the zone, so it can be found in a text set when the label's `mrz` identifier can. An extractor's expiry against such a label is `likely` at most, and a `certain` expiry is wrong because no printed date exists to cite.
+
 ### Mentions, with the directory on and off
 
 `resolved_by_document` is what the document itself settles: `{"org": <local id>, "evidence": [...]}`, or `null` when nothing in the document settles it. Each evidence entry is one of these:

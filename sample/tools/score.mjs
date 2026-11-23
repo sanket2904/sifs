@@ -545,6 +545,18 @@ export function score(labels, textSet, rawOutput, directory) {
 	// Only a page the OCR read can move a span. Every other page holds the
 	// same text in both text sets and matches by span.
 	const ocrRead = (docId, page) => out.textSet !== 'text' && pagesOf(docId)[page - 1].scanned;
+	// With no printed expiry span, the expiry rests on the zone, so it can be
+	// found in the text set exactly when the label's mrz identifier can, and no
+	// printed date exists for a certain expiry to cite.
+	const passportExpiry = (w) => {
+		const p = w.label.passport;
+		const printed = p.expiry_at ?? null;
+		const span = printed ?? w.identById.get(p.mrz) ?? null;
+		return {
+			gone: !span || !possible(w.id, span, span.value),
+			citedBy: (s) => printed !== null && w.expiryKey(s) === w.expiryKey(printed)
+		};
+	};
 
 	const labelled = (id) => {
 		const d = labelDocs.get(id);
@@ -1053,14 +1065,15 @@ export function score(labels, textSet, rawOutput, directory) {
 					op.tiers.number
 				);
 
-			const expiryGone = !possible(id, lp.expiry_at);
+			const expiry = passportExpiry(w);
+			const expiryGone = expiry.gone;
 			if (!op?.expiry) add('passport_expiry', lang, missing(expiryGone), id, lp.expiry);
 			else {
 				// A certain expiry cites the printed date of expiry: by span, or on
 				// a page the OCR read by page and text, its spacing folded.
 				const cited =
 					op.tiers.expiry !== 'certain' ||
-					w.expiryKey(op.expiryAt) === w.expiryKey(lp.expiry_at);
+					expiry.citedBy(op.expiryAt);
 				add(
 					'passport_expiry',
 					lang,
@@ -1101,12 +1114,13 @@ export function score(labels, textSet, rawOutput, directory) {
 		return !possible(docId, s) || s.accounts.every((a) => w.impossibleIdent.has(a));
 	};
 	const passportGone = (docId) => {
-		const p = workOf.get(docId).label.passport;
+		const w = workOf.get(docId);
+		const p = w.label.passport;
 		const text = pagesOf(docId)
 			.map((pg) => pg.text)
 			.join('\n');
 		return (
-			!possible(docId, p.expiry_at) ||
+			passportExpiry(w).gone ||
 			!text.includes(p.holder.surname) ||
 			!text.includes(p.holder.given)
 		);

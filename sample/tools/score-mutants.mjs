@@ -708,6 +708,30 @@ const MUTANTS = [
 		'the reference cites the printed expiry',
 		'				expiryAt: seen\n',
 		'				expiryAt: null\n'
+	],
+	[
+		'tools/score.mjs',
+		"with no printed expiry span, the expiry rests on the label's zone",
+		'const span = printed ?? w.identById.get(p.mrz) ?? null;',
+		'const span = printed;'
+	],
+	[
+		'tools/score.mjs',
+		'with no printed expiry span, an unreadable zone makes the expiry impossible',
+		'gone: !span || !possible(w.id, span, span.value),',
+		'gone: printed !== null && !possible(w.id, printed),'
+	],
+	[
+		'tools/score.mjs',
+		'with no printed expiry span, a certain expiry is wrong',
+		'citedBy: (s) => printed !== null && w.expiryKey(s) === w.expiryKey(printed)',
+		'citedBy: (s) => printed === null || w.expiryKey(s) === w.expiryKey(printed)'
+	],
+	[
+		'tools/score.mjs',
+		'a current-passport answer with no printed expiry span checks the zone',
+		'passportExpiry(w).gone ||',
+		'(p.expiry_at != null && !possible(docId, p.expiry_at)) ||'
 	]
 ];
 
