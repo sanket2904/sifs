@@ -329,73 +329,52 @@ test('a name inside a longer name keyed to the longer name’s own card is no wr
 	assert.equal(result.failed, false);
 });
 
-// An output with one card and only the short form inside a labelled name.
-const shortOnly = (directory, set, id, inside, card) => {
+// An output whose only card is `card`, reporting the first four characters of
+// each labelled name in `hits` as that card's only mention in its document.
+const shortHits = (directory, set, card, hits) => {
 	const output = perfect(directory, set);
-	const short = spanOf(output, id, inside);
-	short.end = short.start + 4;
-	short.text = inside.slice(0, 4);
 	return {
 		...output,
-		organisations: { 'only-card': card },
-		documents: [
-			{ id, orgs: [{ ...short, org: 'only-card', settled_by: 'name' }], identifiers: [], links: [] }
-		],
+		organisations: { k: card },
+		documents: hits.map(([id, name]) => {
+			const span = spanOf(output, id, name);
+			const text = name.slice(0, 4);
+			return {
+				id,
+				orgs: [{ ...span, end: span.start + 4, text, org: 'k', settled_by: 'name' }],
+				identifiers: [],
+				links: []
+			};
+		}),
 		answers: { latest_statement: [], current_passport: [] }
 	};
 };
 
 for (const directory of ['on', 'off'])
 	for (const set of ['text', 'text-ocr'])
-		test(`only the short form inside a labelled name, on a card that claims that name's organisation, is no wrong attachment, directory ${directory}, ${set}`, () => {
-			for (const [id, inside, name, entry] of [
-				['hdfc-branch-letter', 'HDFC Bank Limited', 'HDFC Bank Limited', 'Q631047'],
-				[
-					'hdfc-life-receipt',
-					'HDFC Life Insurance Company Limited',
-					'HDFC Life Insurance Company Limited',
-					'Q5629189'
-				],
-				['hdfc-branch-letter', 'HDFC Bank Limited', null, 'Q631047']
-			]) {
-				if (name === null && directory === 'off') continue;
-				const card = { name, directory: directory === 'on' ? entry : null };
-				const result = run(shortOnly(directory, set, id, inside, card));
-				assert.deepEqual(result.wrong_attachments, [], `${id} ${name}`);
-				assert.equal(totals(result, 'mentions').wrong, 1, `${id} ${name}`);
-				assert.equal(result.failed, false, `${id} ${name}`);
-			}
+		test(`one card named by a name two organisations share, with short hits in a document of each, fails the run, directory ${directory}, ${set}`, () => {
+			const output = shortHits(directory, set, { name: 'HDFC', directory: null }, [
+				['hdfc-branch-letter', 'HDFC Bank Limited'],
+				['hdfc-ltd-loan-2019', 'HDFC Ltd']
+			]);
+			const result = run(output);
+			assert.notDeepEqual(result.wrong_attachments, []);
+			assert.equal(result.failed, true);
 		});
 
 for (const directory of ['on', 'off'])
-	test(`only the short form inside a labelled name stays a wrong attachment on a card that names something else or nothing, directory ${directory}`, () => {
-		for (const card of [
-			{ name: 'HDFC Life Insurance Company Limited', directory: null },
-			{ name: null, directory: null }
-		]) {
+	for (const set of ['text', 'text-ocr'])
+		test(`a right card reported only through the short form inside a longer labelled name is a wrong attachment, directory ${directory}, ${set}`, () => {
+			const card = { name: 'HDFC Bank Limited', directory: directory === 'on' ? 'Q631047' : null };
 			const result = run(
-				shortOnly(directory, 'text', 'hdfc-branch-letter', 'HDFC Bank Limited', card)
+				shortHits(directory, set, card, [['hdfc-branch-letter', 'HDFC Bank Limited']])
 			);
-			assert.equal(result.wrong_attachments.length, 1, JSON.stringify(card));
-			assert.equal(result.failed, true, JSON.stringify(card));
-		}
-		const output = perfect(directory);
-		output.organisations['new-boi'] = {
-			name: 'Bank of India',
-			directory: directory === 'on' ? 'Q2004439' : null
-		};
-		doc(output, 'school-fee-banks').orgs.push({
-			...spanOf(output, 'school-fee-banks', 'Bank of India'),
-			org: 'new-boi',
-			settled_by: 'name'
+			assert.deepEqual(
+				result.wrong_attachments.map((a) => [a.document, a.key]),
+				[['hdfc-branch-letter', 'k']]
+			);
+			assert.equal(result.failed, true);
 		});
-		const result = run(output);
-		assert.deepEqual(
-			result.wrong_attachments.map((a) => a.key),
-			['new-boi']
-		);
-		assert.equal(result.failed, true);
-	});
 
 test('a keyed mention on a name the labels exclude, keyed to some other card, is a wrong attachment', () => {
 	const output = perfect();

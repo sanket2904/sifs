@@ -216,20 +216,14 @@ const MUTANTS = [
 	[
 		'tools/score.mjs',
 		'only the enclosing name’s own card excuses a mention on a not_orgs span',
-		'notOrgs.find((n) => !isCardOf(n))',
-		'notOrgs.find(() => true)'
+		'(n) => t === null || !enclosing(n).some((l) => target(l) === t)',
+		'() => true'
 	],
 	[
 		'tools/score.mjs',
 		'a wrong attachment does not depend on directory ids',
-		'notOrgs.find((n) => !isCardOf(n))',
-		'notOrgs.find((n) => [...targetsOf(o.org)].some((x) => n.entry === directoryIdOf(x)))'
-	],
-	[
-		'tools/score.mjs',
-		'an unmapped key is excused only when its card claims the enclosing name’s organisation',
-		'(name === null || nameFits(u, name)) &&',
-		''
+		'(n) => t === null || !enclosing(n).some((l) => target(l) === t)',
+		'(n) => [...targetsOf(o.org)].some((x) => n.entry === directoryIdOf(x))'
 	],
 	['tools/score.mjs', 'a wrong attachment fails the run', 'wrongAttachments.length > 0 ||', ''],
 	[
