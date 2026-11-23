@@ -367,6 +367,8 @@ func TestDeniedRole(t *testing.T) {
 		{"明細ではありません", false},
 		{"असली पासबुक नहीं, खाता पासबुक", true},
 		{"This statement is not a tax invoice", true},
+		{"Sheet No. 7 statement", true},
+		{"No 12 statement", true},
 	} {
 		lines := append([]string{}, body...)
 		lines[1] = c.title
@@ -503,7 +505,7 @@ func TestRenewalSupersedes(t *testing.T) {
 			map[string]string{"aa": "null", "bb": "null"}, ""},
 		{"a stamped cancellation", []Document{pp("aa", "01 Jan 2020", "01 Jan 2030", "*** VOID ***"), pp("bb", "01 Jan 2021", "01 Jan 2031", "STATUS: ANNULÉ")},
 			map[string]string{"aa": "false", "bb": "false"}, ""},
-		{"the word in prose is no stamp", []Document{pp("aa", "01 Jan 2020", "01 Jan 2030", "Altered pages make it void.")},
+		{"the word in prose is no stamp", []Document{pp("aa", "01 Jan 2020", "01 Jan 2030", "Altered pages make it void.", "VOID IF ALTERED")},
 			map[string]string{"aa": "true"}, "aa"},
 	} {
 		o := Run(c.docs, nil, ref)

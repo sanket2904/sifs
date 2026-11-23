@@ -34,28 +34,46 @@ var (
 func denies(line string, re *regexp.Regexp) bool {
 	toks := tokenize(line)
 	for _, m := range re.FindAllStringIndex(line, -1) {
-		var before, after []string
+		var before, after []token
 		for _, t := range toks {
 			switch {
 			case t.b1 <= m[0]:
-				before = append(before, t.low())
+				before = append(before, t)
 			case t.b0 >= m[1]:
-				after = append(after, t.low())
+				after = append(after, t)
 			}
 		}
 		if specimenBefore(line[:m[0]]) {
 			continue
 		}
 		for i := max(0, len(before)-3); i < len(before); i++ {
-			if negBefore[before[i]] {
+			if negBefore[before[i].low()] && !isNumberMark(line, toks, before[i]) {
 				return true
 			}
 		}
 		rest := strings.TrimSpace(line[m[1]:])
 		for _, n := range negAfter {
-			if strings.HasPrefix(rest, n) || len(after) > 1 && after[1] == n {
+			if strings.HasPrefix(rest, n) || len(after) > 1 && after[1].low() == n {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// isNumberMark reports whether a "No" is the number sign of "Account No.
+// 123" or "No 123", not a negation.
+func isNumberMark(line string, toks []token, t token) bool {
+	if t.low() != "no" {
+		return false
+	}
+	if strings.HasPrefix(line[t.b1:], ".") {
+		return true
+	}
+	for _, n := range toks {
+		if n.b0 >= t.b1 {
+			r, _ := utf8.DecodeRuneInString(n.text)
+			return unicode.IsDigit(r)
 		}
 	}
 	return false
@@ -306,17 +324,23 @@ func (p Passport) Holder() string {
 }
 
 // cancelWords are the words a cancelled passport is stamped with.
-var cancelWords = set("CANCELLED", "CANCELED", "VOID", "VOIDED", "INVALID", "ANNULÉ", "ANNULÉE", "ANNULE", "UNGÜLTIG", "ENTWERTET", "ANULADO", "CANCELADO", "रद्द", "無効", "失効")
+var cancelWords = set("CANCELLED", "CANCELED", "VOID", "VOIDED", "ANNULÉ", "ANNULÉE", "ANNULE", "UNGÜLTIG", "ENTWERTET", "ANULADO", "CANCELADO", "रद्द", "無効", "失効")
 
-// hasCancelWord reports whether a line carries a cancellation word written
-// as a stamp is: in capitals, or in a script that has none.
+// hasCancelWord reports whether a line is a cancellation stamp: its words,
+// or the value after its label ("Status: VOID"), are cancellation words
+// only, in capitals or in a script that has none. "VOID IF ALTERED" is
+// a warning printed on every passport, not a stamp.
 func hasCancelWord(s string) bool {
-	for _, t := range tokenize(s) {
-		if strings.ToUpper(t.text) == t.text && cancelWords[fold(t.text)] {
-			return true
+	if i := strings.LastIndexAny(s, ":："); i >= 0 {
+		s = s[i+1:]
+	}
+	toks := tokenize(s)
+	for _, t := range toks {
+		if strings.ToUpper(t.text) != t.text || !cancelWords[fold(t.text)] {
+			return false
 		}
 	}
-	return false
+	return len(toks) > 0
 }
 
 // isCurrent: a cancelled passport is not current; otherwise it is current
