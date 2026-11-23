@@ -19,6 +19,7 @@ import {
 	mayBeCertainJoin,
 	mayBeCertainLink,
 	mayBeCertainPassport,
+	nameKey,
 	nameOfKey,
 	ownCodeKey,
 	TIERS
@@ -356,6 +357,12 @@ function parseOutput(output, textSet, entries) {
 				fail(
 					where,
 					`key ${k} is not spelt from the text of a mention on it: a document key is name:<document id>:<the match key of the printed name> (${KEYS_HELP})`
+				);
+			const spellings = mentions.filter((m) => m.org === k).map((m) => m.text);
+			if (nameKey(doc.id, spellings) !== k)
+				fail(
+					where,
+					`key ${k} is spelt from a mention on it, but the key of these mentions is ${nameKey(doc.id, spellings)}: the longest match key among them, ties by code-point order (${KEYS_HELP})`
 				);
 		}
 		const sameOrg = list(doc.same_org, `${where}.same_org`).map((row, i) => {

@@ -10,18 +10,18 @@ import { readLabels } from './lib/labels.mjs';
 import { isMain } from './lib/main.mjs';
 import {
 	CODE_REASONS,
-	documentKey,
 	mayBeCertainIdentifier,
 	mayBeCertainJoin,
 	mayBeCertainLink,
 	mayBeCertainPassport,
+	nameKey,
 	ownCodeKey
 } from './lib/tiers.mjs';
 import { readTextSet, TEXT_SETS } from './text.mjs';
 
 // Keys of its own, so a pass proves the scorer maps keys, not label ids. In
 // each document, a printed name's organisation has a document key spelt from
-// the first name the document prints for it, such as
+// the names the document prints for it (nameKey), such as
 // name:hdfc-statement-sep:hdfcbank; an institution code has its own canonical
 // key, such as IFSC HDFC, and same_org rows join the two.
 const squash = (v) => v.normalize('NFKC').toUpperCase().replace(/\s/gu, '');
@@ -31,9 +31,7 @@ export function reference(labels, textSet, directory, banks) {
 	const organisations = {};
 	// The document's key for each organisation it names, by local id.
 	let nameKeys;
-	const declare = (document, target, name) => {
-		if (!nameKeys.has(target))
-			nameKeys.set(target, documentKey(document, name));
+	const declare = (target, name) => {
 		const key = nameKeys.get(target);
 		if (target.startsWith('directory:'))
 			organisations[key] ??= { name, directory: directory === 'on' ? target.slice(10) : null };
@@ -66,7 +64,6 @@ export function reference(labels, textSet, directory, banks) {
 	const documents = [];
 	for (const label of labels.documents) {
 		if (label.nothing_to_find) continue;
-		nameKeys = new Map();
 		const pages = textSet.docs.get(label.id).pages;
 		// The span of a labelled text in this text set, or null when it is not there.
 		const find = (s, value) => {
@@ -75,8 +72,7 @@ export function reference(labels, textSet, directory, banks) {
 			const at = locate(text, s.text, value);
 			return at && { page: s.page, ...at };
 		};
-		const orgs = [];
-		const mentionTarget = new Map();
+		const found = [];
 		for (const m of label.orgs) {
 			const at = find(m);
 			if (!at) continue;
@@ -86,7 +82,18 @@ export function reference(labels, textSet, directory, banks) {
 				target = dirToLocal.get(m.directory.id) ?? `directory:${m.directory.id}`;
 				settled = 'directory';
 			}
-			const org = target && declare(label.id, target, m.text);
+			found.push({ m, at, target, settled });
+		}
+		nameKeys = new Map();
+		for (const { target } of found)
+			if (target && !nameKeys.has(target)) {
+				const texts = found.filter((f) => f.target === target).map((f) => f.at.text);
+				nameKeys.set(target, nameKey(label.id, texts));
+			}
+		const orgs = [];
+		const mentionTarget = new Map();
+		for (const { m, at, target, settled } of found) {
+			const org = target && declare(target, m.text);
 			mentionTarget.set(m.id, org);
 			orgs.push({ ...at, org, settled_by: settled });
 		}

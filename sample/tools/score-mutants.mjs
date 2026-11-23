@@ -686,6 +686,24 @@ const MUTANTS = [
 		'if (false)'
 	],
 	[
+		'tools/score.mjs',
+		'a key with several printed names on it is spelt one way',
+		'if (nameKey(doc.id, spellings) !== k)',
+		'if (false)'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		"a key's spelling is the longest match key on it",
+		'[...b].length - [...a].length',
+		'[...a].length - [...b].length'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		'match keys of one length are ordered by code point',
+		'|| byCodePoint(a, b)',
+		'|| 0'
+	],
+	[
 		'tools/reference.mjs',
 		'the reference cites the printed expiry',
 		'				expiryAt: seen\n',

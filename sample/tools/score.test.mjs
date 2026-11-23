@@ -16,7 +16,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { SAMPLE } from './generate.mjs';
 import { readLabels } from './lib/labels.mjs';
-import { documentKey, documentOfKey, printedExpiry } from './lib/tiers.mjs';
+import { documentKey, documentOfKey, nameKey, printedExpiry } from './lib/tiers.mjs';
 import { reference } from './reference.mjs';
 import { FormatError, score, table } from './score.mjs';
 import { checkTextSets, readTextSet } from './text.mjs';
@@ -278,12 +278,15 @@ test('one key over two labelled organisations is a merge and fails the run', () 
 	const d = doc(output, 'neft-receipt-tied');
 	const hdfc = keyIn(output, d.id, 'hdfc-bank');
 	const icici = keyIn(output, d.id, 'icici-bank');
-	for (const row of [...d.orgs, ...d.links]) if (row.org === icici) row.org = hdfc;
+	// ICICI Bank is the longest name on the merged key, so it spells the key,
+	// and a key that holds HDFC's names has no certain directory join.
+	for (const row of [...d.orgs, ...d.links]) if (row.org === hdfc) row.org = icici;
 	prune(d);
-	delete output.organisations[icici];
+	for (const row of d.same_org) if (row.keys.includes(icici)) row.tier = 'likely';
+	delete output.organisations[hdfc];
 	const result = run(output);
 	assert.deepEqual(result.merges, [
-		{ key: hdfc, why: 'organisations', organisations: ['hdfc-bank', 'icici-bank'] }
+		{ key: icici, why: 'organisations', organisations: ['hdfc-bank', 'icici-bank'] }
 	]);
 	assert.ok(totals(result, 'same_org').wrong > 0, 'rows on the merged key are wrong');
 	assert.equal(result.failed, true);
@@ -306,15 +309,19 @@ test("a link by a code's own reason to any key but the code's canonical key brea
 	}
 });
 
-// Keys the ICICI Bank mention of neft-receipt-tied to HDFC Bank's key there,
-// as an extractor that merges would.
+// Keys the HDFC Bank mentions of neft-receipt-tied to ICICI Bank's key there,
+// as an extractor that merges would. ICICI Bank, the longest name on the key,
+// still spells it, and a key that holds HDFC's names has no certain
+// directory join.
 const mergeInNeft = (output) => {
 	const d = doc(output, 'neft-receipt-tied');
 	const hdfc = keyIn(output, d.id, 'hdfc-bank');
-	delete output.organisations[keyIn(output, d.id, 'icici-bank')];
-	d.orgs.find((m) => m.text === 'ICICI Bank').org = hdfc;
+	const icici = keyIn(output, d.id, 'icici-bank');
+	delete output.organisations[hdfc];
+	for (const m of d.orgs) if (m.org === hdfc) m.org = icici;
 	prune(d);
-	return hdfc;
+	for (const row of d.same_org) if (row.keys.includes(icici)) row.tier = 'likely';
+	return icici;
 };
 
 test("a printed name, a statement's issuer or a code from another document on a code's key breaks the format", () => {
@@ -356,10 +363,10 @@ test('one labelled organisation over two keys is a split, counted and not wrong'
 	const output = perfect();
 	const d = doc(output, 'neft-receipt-tied');
 	const key = keyIn(output, d.id, 'hdfc-bank');
-	const bank = d.orgs.find((m) => m.text === 'HDFC Bank');
-	const second = documentKey(d.id, bank.text);
+	const short = d.orgs.find((m) => m.text === 'HDFC');
+	const second = documentKey(d.id, short.text);
 	output.organisations[second] = { ...output.organisations[key] };
-	bank.org = second;
+	short.org = second;
 	const result = run(output);
 	assert.deepEqual(result.splits.find((s) => s.organisation === 'hdfc-bank').keys, [
 		'IFSC HDFC',
@@ -702,7 +709,7 @@ for (const directory of ['on', 'off']) {
 			'name:hdfc-statement-aug:hdfcbank',
 			'name:hdfc-statement-jul:hdfcbank',
 			'name:hdfc-statement-sep:hdfcbank',
-			'name:neft-receipt-tied:hdfc'
+			'name:neft-receipt-tied:hdfcbank'
 		]);
 	});
 
@@ -880,6 +887,28 @@ test('a declared document key that no mention of its document has breaks the for
 	}
 });
 
+test('a key with several printed names on it is spelt from the longest, so two extractors spell it alike', () => {
+	assert.equal(nameKey('d', ['HDFC', 'HDFC Bank', 'HDFC']), 'name:d:hdfcbank');
+	assert.equal(nameKey('d', ['HDFC Bank', 'HDFC']), nameKey('d', ['HDFC', 'HDFC Bank']));
+	assert.equal(nameKey('d', ['Bank B', 'Bank A']), 'name:d:banka', 'a tie goes to code-point order');
+	assert.equal(nameKey('d', ['Bank Ä', 'Bank Z']), 'name:d:bankz', 'Z (U+005A) before Ä (U+00C4)');
+	assert.equal(nameKey('d', ['桜銀行株式会社Ltd']), 'name:d:桜銀行', '株式会社 is a word boundary');
+	// The read's case: neft-receipt-tied prints HDFC and HDFC Bank on one key.
+	const output = perfect('off');
+	const d = doc(output, 'neft-receipt-tied');
+	const key = keyIn(output, d.id, 'hdfc-bank');
+	assert.equal(key, 'name:neft-receipt-tied:hdfcbank');
+	const short = documentKey(d.id, 'HDFC');
+	output.organisations[short] = output.organisations[key];
+	delete output.organisations[key];
+	for (const row of [...d.orgs, ...d.links]) if (row.org === key) row.org = short;
+	for (const row of d.same_org) row.keys = row.keys.map((k) => (k === key ? short : k));
+	assert.throws(
+		() => run(output),
+		/key name:neft-receipt-tied:hdfc is spelt from a mention on it, but the key of these mentions is name:neft-receipt-tied:hdfcbank/
+	);
+});
+
 test("a printed name's key is for one document: used in another, it breaks the format", () => {
 	const output = perfect();
 	const ca = doc(output, 'credit-advice-smbk-ca');
@@ -915,8 +944,8 @@ test('the same-name report counts the pairs of document keys whose names are spe
 			/same name, two organisations: name:credit-advice-smbk-ca:smbk \(sample-maple-bank\) and name:payroll-release-smbk-gb:smbk \(sample-moor-bank\)/
 		);
 		const whole = run(perfect(directory));
-		assert.deepEqual([whole.same_name.one_organisation, whole.same_name.two_organisations], [25, 2]);
-		assert.equal(whole.same_name.pairs.length, 27);
+		assert.deepEqual([whole.same_name.one_organisation, whole.same_name.two_organisations], [31, 1]);
+		assert.equal(whole.same_name.pairs.length, 32);
 	}
 });
 
@@ -1014,7 +1043,7 @@ test("the order of an output's rows never changes its score", () => {
 		const merged = mergeInNeft(output);
 		const join = (keys, tier) => ({ keys, reason: 'printed-together', tier });
 		neft.same_org.push(
-			join(['IFSC ICIC', merged], 'likely'),
+			join(['IFSC HDFC', merged], 'likely'),
 			join(['IFSC HDFC', keyIn(output, neft.id, 'sample-traders')], 'likely'),
 			{ ...neft.same_org[0], reason: 'spells-code', tier: 'likely' }
 		);
@@ -1782,7 +1811,7 @@ test('the tools run when started through a symlinked path', () => {
 		writeFileSync(output, JSON.stringify(merged));
 		const failing = node(join(sample, 'tools', 'score.mjs'), output);
 		assert.equal(failing.status, 1);
-		assert.match(failing.stdout, /MERGE: key name:neft-receipt-tied:hdfc covers hdfc-bank, icici-bank/);
+		assert.match(failing.stdout, /MERGE: key name:neft-receipt-tied:icicibank covers hdfc-bank, icici-bank/);
 		const checked = node(join(sample, 'tools', 'text.mjs'), '--check');
 		assert.equal(checked.status, 0, checked.stderr);
 		assert.match(checked.stdout, /match what text.mjs writes/);

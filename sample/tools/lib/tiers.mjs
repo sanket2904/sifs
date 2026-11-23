@@ -42,6 +42,19 @@ export function isCodeKey(key) {
 // documentOfKey gives the document a key names, or null when the key is not
 // spelt as a document key.
 export const documentKey = (document, text) => `name:${document}:${matchKey(text)}`;
+// The one document key for the texts of the mentions on a key: the longest of
+// their match keys, in characters, ties broken by code-point order.
+export function nameKey(document, texts) {
+	const parts = texts.map(matchKey);
+	const [part] = parts.sort((a, b) => [...b].length - [...a].length || byCodePoint(a, b));
+	return `name:${document}:${part}`;
+}
+const byCodePoint = (a, b) => {
+	const [x, y] = [[...a], [...b]];
+	for (let i = 0; i < Math.min(x.length, y.length); i++)
+		if (x[i] !== y[i]) return x[i].codePointAt(0) - y[i].codePointAt(0);
+	return x.length - y.length;
+};
 const DOCUMENT_KEY = /^name:([a-z0-9-]+):([\p{L}\p{M}\p{N}]+)$/u;
 export const documentOfKey = (key) => DOCUMENT_KEY.exec(key)?.[1] ?? null;
 export const nameOfKey = (key) => DOCUMENT_KEY.exec(key)?.[2] ?? null;
