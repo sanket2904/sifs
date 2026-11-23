@@ -99,17 +99,17 @@ Identifier kinds are `iban`, `bic`, `card` (Luhn), `ifsc` (shape), `in_pan` (sha
 
 ### Link reasons
 
-| Reason | Holds when |
-| --- | --- |
-| `iban-bank-code` | The IBAN's bank code is one of the bank's `iban_bank_code` entries. |
-| `bic-institution` | The BIC's first six characters match one of the bank's BICs. |
-| `ifsc-prefix` | The IFSC's first four letters are the bank's prefix. |
-| `paired-code` | An account or IBAN sits on the same line as an IFSC or BIC that is itself linked to the bank, or on the next or previous line when neither line holds a code or an account of its own. `via` names that code. |
-| `inside-iban` | A sort code, French bank code or French branch code is that part of an IBAN in the document that is linked to the bank. |
-| `same-account` | The account is the account part of an IBAN in the document (`same_account_as`) that is linked to the bank. |
-| `statement-header` | The identifier is the statement's account, and the organisation is the statement's issuer, the first organisation the document names. Merchants in the transactions do not count. |
+| Reason | Holds when | Highest tier in an output |
+| --- | --- | --- |
+| `iban-bank-code` | The IBAN's bank code is one of the bank's `iban_bank_code` entries. | `certain` when the IBAN's country is in `iban-registry.json`, its length is that country's and its check digits pass, with the directory on or off; `likely` for a country the table does not have. The scorer also holds it for any such IBAN at the organisation the labels link the IBAN to, whatever reasons the label lists. |
+| `bic-institution` | The BIC's first eight characters, its institution (`FORMAT.md`, "Code keys"), match one of the bank's BICs. | `certain` only with the directory on, when the card's directory entry lists the BIC's first eight characters. Otherwise `likely`. |
+| `ifsc-prefix` | The IFSC's first four letters are the bank's prefix. | `certain` only with the directory on, when the card's directory entry lists the prefix. Otherwise `likely`. |
+| `paired-code` | An account or IBAN sits on the same line as an IFSC or BIC that is itself linked to the bank, or on the next or previous line when neither line holds a code or an account of its own. `via` names that code. | `likely` |
+| `inside-iban` | A sort code, French bank code or French branch code is that part of an IBAN in the document that is linked to the bank. | `likely` |
+| `same-account` | The account is the account part of an IBAN in the document (`same_account_as`) that is linked to the bank. | `likely` |
+| `statement-header` | The identifier is the statement's account, and the organisation is the statement's issuer, the first organisation the document names. Merchants in the transactions do not count. | `likely` |
 
-A link lists every reason that holds. An extractor that gives any one of them is right.
+A link lists every reason that holds. An extractor that gives any one of them is right. The labels have no tiers: the third column is what an extractor's output may claim (`FORMAT.md`, "Tiers").
 
 ### Why codes
 

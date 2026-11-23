@@ -1,0 +1,45 @@
+{
+  "by_run" : {
+    "go-off" : {
+      "all" : {
+        "right_rows" : 125
+      },
+      "link" : {
+        "right_rows" : 49
+      },
+      "mention" : {
+        "right_rows" : 58
+      },
+      "passport" : {
+        "right_rows" : 4
+      },
+      "statement" : {
+        "right_rows" : 14
+      }
+    },
+    "go-on" : {
+      "all" : {
+        "right_rows" : 123
+      },
+      "link" : {
+        "right_rows" : 47
+      },
+      "mention" : {
+        "right_rows" : 58
+      },
+      "passport" : {
+        "right_rows" : 4
+      },
+      "statement" : {
+        "right_rows" : 14
+      }
+    }
+  },
+  "policy" : "statement claim removed when T2 read the page as a kind other than statement; passport claim when other than passport; a link whose only reason is statement-header follows its statement. cannotTell and errors keep the row. Chosen after the outside T2 and T3 runs: a hypothesis, not a held-out result.",
+  "removed" : [
+
+  ],
+  "sets" : [
+    "sample"
+  ]
+}

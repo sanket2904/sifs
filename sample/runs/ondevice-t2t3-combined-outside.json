@@ -1,0 +1,219 @@
+{
+  "by_run" : {
+    "go-off" : {
+      "all" : {
+        "right_rows" : 47,
+        "wrong_removed" : 2,
+        "wrong_rows" : 6
+      },
+      "link" : {
+        "right_rows" : 11,
+        "wrong_removed" : 1,
+        "wrong_rows" : 3
+      },
+      "mention" : {
+        "right_rows" : 20,
+        "wrong_rows" : 2
+      },
+      "passport" : {
+        "right_rows" : 9
+      },
+      "statement" : {
+        "right_rows" : 7,
+        "wrong_removed" : 1,
+        "wrong_rows" : 1
+      }
+    },
+    "go-on" : {
+      "all" : {
+        "right_rows" : 48,
+        "wrong_removed" : 2,
+        "wrong_rows" : 5
+      },
+      "link" : {
+        "right_rows" : 11,
+        "wrong_removed" : 1,
+        "wrong_rows" : 3
+      },
+      "mention" : {
+        "right_rows" : 21,
+        "wrong_rows" : 1
+      },
+      "passport" : {
+        "right_rows" : 9
+      },
+      "statement" : {
+        "right_rows" : 7,
+        "wrong_removed" : 1,
+        "wrong_rows" : 1
+      }
+    },
+    "rust-off" : {
+      "all" : {
+        "right_rows" : 49,
+        "wrong_removed" : 7,
+        "wrong_rows" : 9
+      },
+      "link" : {
+        "right_rows" : 10,
+        "wrong_removed" : 3,
+        "wrong_rows" : 5
+      },
+      "mention" : {
+        "right_rows" : 23
+      },
+      "passport" : {
+        "right_rows" : 8,
+        "wrong_removed" : 1,
+        "wrong_rows" : 1
+      },
+      "statement" : {
+        "right_rows" : 8,
+        "wrong_removed" : 3,
+        "wrong_rows" : 3
+      }
+    },
+    "rust-on" : {
+      "all" : {
+        "right_rows" : 49,
+        "wrong_removed" : 7,
+        "wrong_rows" : 7
+      },
+      "link" : {
+        "right_rows" : 10,
+        "wrong_removed" : 3,
+        "wrong_rows" : 3
+      },
+      "mention" : {
+        "right_rows" : 23
+      },
+      "passport" : {
+        "right_rows" : 8,
+        "wrong_removed" : 1,
+        "wrong_rows" : 1
+      },
+      "statement" : {
+        "right_rows" : 8,
+        "wrong_removed" : 3,
+        "wrong_rows" : 3
+      }
+    }
+  },
+  "policy" : "statement claim removed when T2 read the page as a kind other than statement; passport claim when other than passport; a link whose only reason is statement-header follows its statement. cannotTell and errors keep the row. Chosen after the outside T2 and T3 runs: a hypothesis, not a held-out result.",
+  "removed" : [
+    {
+      "key" : "link|explicitly-not-statement|#1",
+      "page_kind" : "form",
+      "rules_row_wrong" : true,
+      "run" : "go-on"
+    },
+    {
+      "key" : "statement|explicitly-not-statement|#1",
+      "page_kind" : "form",
+      "rules_row_wrong" : true,
+      "run" : "go-on"
+    },
+    {
+      "key" : "link|explicitly-not-statement|#1",
+      "page_kind" : "form",
+      "rules_row_wrong" : true,
+      "run" : "go-off"
+    },
+    {
+      "key" : "statement|explicitly-not-statement|#1",
+      "page_kind" : "form",
+      "rules_row_wrong" : true,
+      "run" : "go-off"
+    },
+    {
+      "key" : "link|eligibility-audit|#1",
+      "page_kind" : "form",
+      "rules_row_wrong" : true,
+      "run" : "rust-on"
+    },
+    {
+      "key" : "statement|eligibility-audit|#1",
+      "page_kind" : "form",
+      "rules_row_wrong" : true,
+      "run" : "rust-on"
+    },
+    {
+      "key" : "link|explicitly-not-statement|#1",
+      "page_kind" : "form",
+      "rules_row_wrong" : true,
+      "run" : "rust-on"
+    },
+    {
+      "key" : "statement|explicitly-not-statement|#1",
+      "page_kind" : "form",
+      "rules_row_wrong" : true,
+      "run" : "rust-on"
+    },
+    {
+      "key" : "link|eligibility-audit|#1",
+      "page_kind" : "form",
+      "rules_row_wrong" : true,
+      "run" : "rust-off"
+    },
+    {
+      "key" : "statement|eligibility-audit|#1",
+      "page_kind" : "form",
+      "rules_row_wrong" : true,
+      "run" : "rust-off"
+    },
+    {
+      "key" : "link|explicitly-not-statement|#1",
+      "page_kind" : "form",
+      "rules_row_wrong" : true,
+      "run" : "rust-off"
+    },
+    {
+      "key" : "statement|explicitly-not-statement|#1",
+      "page_kind" : "form",
+      "rules_row_wrong" : true,
+      "run" : "rust-off"
+    },
+    {
+      "key" : "link|service-invoice|#1",
+      "page_kind" : "invoice",
+      "rules_row_wrong" : true,
+      "run" : "rust-on"
+    },
+    {
+      "key" : "statement|service-invoice|#1",
+      "page_kind" : "invoice",
+      "rules_row_wrong" : true,
+      "run" : "rust-on"
+    },
+    {
+      "key" : "passport|visa-not-passport|#1",
+      "page_kind" : "visa",
+      "rules_row_wrong" : true,
+      "run" : "rust-on"
+    },
+    {
+      "key" : "link|service-invoice|#1",
+      "page_kind" : "invoice",
+      "rules_row_wrong" : true,
+      "run" : "rust-off"
+    },
+    {
+      "key" : "statement|service-invoice|#1",
+      "page_kind" : "invoice",
+      "rules_row_wrong" : true,
+      "run" : "rust-off"
+    },
+    {
+      "key" : "passport|visa-not-passport|#1",
+      "page_kind" : "visa",
+      "rules_row_wrong" : true,
+      "run" : "rust-off"
+    }
+  ],
+  "sets" : [
+    "sol-probe",
+    "sol-diag",
+    "sol-localised",
+    "astra"
+  ]
+}
