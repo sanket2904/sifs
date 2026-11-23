@@ -1,6 +1,6 @@
 # Go M1a extractor
 
-The M1a extractor, round 3. It is rules only, with no model. It reads the sample's page text and writes the run file that `sample/FORMAT.md` describes. The code lives in `engine/`: the package `engine/extract` and the command `engine/cmd/m1a-extract`. The module imports the standard library only.
+The M1a extractor, round 4. It is rules only, with no model. It reads the sample's page text and writes the run file that `sample/FORMAT.md` describes. The code lives in `engine/`: the package `engine/extract` and the command `engine/cmd/m1a-extract`. The module imports the standard library only.
 
 ## Reproduce
 
@@ -9,6 +9,24 @@ sample/tools/go-m1a-runs.sh
 ```
 
 The script builds the command and writes the four runs under `sample/runs/`. Each run gets the scorer's `.score.json` beside it, and the script prints each table. It exits non-zero when any run fails the bar. A run with the directory off is started without `-directory`, so the program never opens `banks.json`. Two runs in a row give byte-identical files.
+
+## Round 4: output format 3
+
+The runs are now in format 3 (`sample/FORMAT.md`, "Changes in round 7"). The extractor recognises the same text as in round 3. Two claims changed:
+
+- A printed name's key belongs to one document: `name:<document id>:<name part>`. The package `engine/extract/orgkey` is the only code that spells a key. Its `Name` takes the document and the texts of the mentions on the key, and spells the name part as the longest of their match keys, ties by code point. The extractor joins no name across documents. With the directory off, a later statement whose account was not read now withholds the latest answer whatever name its issuer prints, because a name no longer says that two issuers are one. Only directory entries tell two issuers apart.
+- An expiry is certain only when the zone's check digits pass and the printed date of expiry, cited in `expiry_at`, has a four-digit year ending in the zone's two digits. The century comes from that printed year. Without a printed date, the expiry is the zone's date in the 2000s and is likely.
+
+The match key now reads 株式会社 as a word break, as FORMAT.md says. `TestKeysAgreeWithTheScorer` spells the match key of every name in the labels and the directory, 2,656 of them, and the key of every labelled organisation in every document, with this package and with the scorer's own functions. All of them agree.
+
+| Run | certain r/w | likely r/w | left out | same-name pairs (one/two) | merges | round 3, format 2 |
+| --- | --- | --- | --- | --- | --- | --- |
+| on, text | 76/0 | 141/3 | 8 | 31 (30/1) | 0 | 73/0, 134/0, 8 |
+| off, text | 26/0 | 178/3 | 16 | 31 (30/1) | 0 | 23/0, 171/0, 16 |
+| on, text-ocr | 69/0 | 143/3 | 8 | 31 (30/1) | 0 | 66/0, 136/0, 8 |
+| off, text-ocr | 22/0 | 178/3 | 15 | 31 (30/1) | 0 | 19/0, 171/0, 15 |
+
+The sample gained three documents in round 7, 46 now, and every difference from round 3 comes from them. On the 43 earlier documents every document entry and every answer is the round 3 output, with each name key spelt `name:<document id>:` instead of `name:`. `credit-advice-smbk-ca` and `payroll-release-smbk-gb` add two mentions, two likely BICs, two likely links and two likely `same_org` rows. Their two `SMBK` keys are the one same-name pair of two organisations. `passport-meera-1988` adds a mention, a certain zone, holder and number, and a likely passport number. It prints its date of expiry on the line after the label, and the passport field rule reads a value only on the label's line. So its expiry rests on the zone alone: 2098, likely and wrong, and its `current` and its current-passport answer are wrong and likely with it. Under format 2 the same expiry would have been certain.
 
 ## Round 3: output format 2
 
@@ -142,8 +160,8 @@ Facts (`facts.go`, `dates.go`):
 
 - **Statement.** A statement needs four things. The document calls itself one (`statement`, `passbook`, `Kontoauszug`, `relevé de compte`, `明細`, `पासबुक`) above a period field. The period field (`Period`, `Zeitraum`, `Période`, `期間`, `अवधि`) holds exactly two dates. The accounts above that field spell one account (one number, or an IBAN with its domestic number). The first organisation the document names has a key. A note such as "your next statement will cover…" is no period field. Without all four, there is no statement. A document that denies the role ("Not a statement") has none; a specimen disclaimer ("not a real statement") denies nothing.
 - **Dates.** The parser reads day-month-year with month names in en, de, fr and hi, month-first with names, `年月日`, ISO, and numeric dates. Two numeric dates in a period must read in the same order. When both day-first and month-first work, the period is left out.
-- **Passport.** A page with a passport zone is a passport. So is a page with no zone at all, titled `PASSPORT`, that gives a passport number. A visa zone means no passport. The holder comes from the `Surname` and `Given names` fields, else from a valid zone. Expiry is the zone's date when the zone is valid and agrees with the printed date. Otherwise it is `cannot-tell`. A page that denies being a passport is none. On a scanned page a field label may have one misread character. `current` is false when a line is a cancellation stamp (`CANCELLED`, `VOID`, `ANNULÉ` and their like, alone on the line or after a label). Otherwise it is true or false when the expiry, or every date the expiry could be, is on one side of the reference date. When the dates fall on both sides, it is null.
-- **Answers.** The latest statement of an account is chosen by the statement's own period, never the file date. Statements are one account when they share a spelling. Two documents with the same latest period give no answer. No latest answer is given when a statement of the same issuer with a later period has no readable account. Of one holder's passports current by their dates, only the one issued last is current; when issue dates cannot order them, none is. A holder's current passport is answered only when exactly one of theirs is current and none is unsettled.
+- **Passport.** A page with a passport zone is a passport. So is a page with no zone at all, titled `PASSPORT`, that gives a passport number. A visa zone means no passport. The holder comes from the `Surname` and `Given names` fields, else from a valid zone. Expiry is the zone's date when the zone is valid and agrees with the printed date, with the printed date's century; with no printed date, the zone's date in the 2000s. Otherwise it is `cannot-tell`. The expiry is certain only when it rests on the printed date's four-digit year. A page that denies being a passport is none. On a scanned page a field label may have one misread character. `current` is false when a line is a cancellation stamp (`CANCELLED`, `VOID`, `ANNULÉ` and their like, alone on the line or after a label). Otherwise it is true or false when the expiry, or every date the expiry could be, is on one side of the reference date. When the dates fall on both sides, it is null.
+- **Answers.** The latest statement of an account is chosen by the statement's own period, never the file date. Statements are one account when they share a spelling. Two documents with the same latest period give no answer. No latest answer is given when a statement with a later period has no readable account, unless the directory gives the two issuers two different entries. Of one holder's passports current by their dates, only the one issued last is current; when issue dates cannot order them, none is. A holder's current passport is answered only when exactly one of theirs is current and none is unsettled.
 
 ## Left out, by cause
 
@@ -188,111 +206,138 @@ At about 1 KB each way and 0.2 ms of work per document, the bytes do not matter.
 
 ## The scorer's tables
 
-These are copied from the scorer's output for the committed runs. Each language column gives right/wrong/left out.
+These are copied from the scorer's output for the committed runs. Each tier column gives right/wrong, and each language column right/wrong/left out.
 
 ```text
 go-m1a, directory on, text set text
-measure                     right  wrong  left out  impossible  de r/w/l  en r/w/l  fr r/w/l  hi r/w/l  ja r/w/l
-mentions                       61      0         5           0     6/0/0    45/0/5     1/0/0     4/0/0     5/0/0
-org_directory                  31      0         1           0                                                  
-identifier:account             24      0         0           0              19/0/0     1/0/0     2/0/0     2/0/0
-identifier:bic                  4      0         0           0     1/0/0     1/0/0     1/0/0               1/0/0
-identifier:card                 3      0         0           0               3/0/0                              
-identifier:fr_bank_code         1      0         0           0                         1/0/0                    
-identifier:fr_branch_code       1      0         0           0                         1/0/0                    
-identifier:fr_rib_key           1      0         0           0                         1/0/0                    
-identifier:gb_sort_code         1      0         0           0               1/0/0                              
-identifier:iban                 7      0         0           0     2/0/0     4/0/0     1/0/0                    
-identifier:ifsc                13      0         0           0              11/0/0               2/0/0          
-identifier:in_pan               2      0         0           0                                   2/0/0          
-identifier:mrz                  5      0         0           0               5/0/0                              
-identifier:passport_number      5      0         0           0               5/0/0                              
-links                          47      0         0           0     2/0/0    33/0/0     5/0/0     4/0/0     3/0/0
-statement_period               14      0         0           0     1/0/0    11/0/0               1/0/0     1/0/0
-statement_account              14      0         0           0     1/0/0    11/0/0               1/0/0     1/0/0
-statement_issuer               14      0         0           0     1/0/0    11/0/0               1/0/0     1/0/0
-passport_holder                 4      0         0           0               4/0/0                              
-passport_number                 4      0         0           0               4/0/0                              
-passport_expiry                 4      0         0           0               4/0/0                              
-passport_current                4      0         0           0               4/0/0                              
-answer_latest_statement        12      0         0           0     1/0/0     9/0/0               1/0/0     1/0/0
-answer_current_passport         3      0         0           0               3/0/0                              
+measure                     right  wrong  left out  impossible  certain r/w  likely r/w  likely precision  de r/w/l  en r/w/l  fr r/w/l  hi r/w/l  ja r/w/l
+mentions                       64      0         5           0                                                6/0/0    47/0/5     2/0/0     4/0/0     5/0/0
+org_directory                  64      0         3           0                                                                                             
+identifier:account             24      0         0           0                     24/0              100%              19/0/0     1/0/0     2/0/0     2/0/0
+identifier:bic                  6      0         0           0          4/0         2/0              100%     1/0/0     2/0/0     2/0/0               1/0/0
+identifier:card                 3      0         0           0                      3/0              100%               3/0/0                              
+identifier:fr_bank_code         1      0         0           0                      1/0              100%                         1/0/0                    
+identifier:fr_branch_code       1      0         0           0                      1/0              100%                         1/0/0                    
+identifier:fr_rib_key           1      0         0           0                      1/0              100%                         1/0/0                    
+identifier:gb_sort_code         1      0         0           0                      1/0              100%               1/0/0                              
+identifier:iban                 7      0         0           0          5/0         2/0              100%     2/0/0     4/0/0     1/0/0                    
+identifier:ifsc                13      0         0           0         13/0                                            11/0/0               2/0/0          
+identifier:in_pan               2      0         0           0                      2/0              100%                                   2/0/0          
+identifier:mrz                  6      0         0           0          5/0         1/0              100%               6/0/0                              
+identifier:passport_number      6      0         0           0                      6/0              100%               6/0/0                              
+links                          49      0         0           0         22/0        27/0              100%     2/0/0    34/0/0     6/0/0     4/0/0     3/0/0
+same_org                       22      0         0           0         16/0         6/0              100%     3/0/0    14/0/0     3/0/0     1/0/0     1/0/0
+statement_period               14      0         0           0                     14/0              100%     1/0/0    11/0/0               1/0/0     1/0/0
+statement_account              14      0         0           0                     14/0              100%     1/0/0    11/0/0               1/0/0     1/0/0
+statement_issuer               14      0         0           0                     14/0              100%     1/0/0    11/0/0               1/0/0     1/0/0
+passport_holder                 5      0         0           0          4/0         1/0              100%               5/0/0                              
+passport_number                 5      0         0           0          4/0         1/0              100%               5/0/0                              
+passport_expiry                 4      1         0           0          3/0         1/1               50%               4/1/0                              
+passport_current                4      1         0           0                      4/1               80%               4/1/0                              
+answer_latest_statement        12      0         0           0                     12/0              100%     1/0/0     9/0/0               1/0/0     1/0/0
+answer_current_passport         3      1         0           0                      3/1               75%               3/1/0                              
+merges                                 0                                                                                                                   
+wrong cards                            0                                                                                                                   
+wrong attachments                      0                                                                                                                   
+splits                         15                                                                                                                          
+cards on likely rows only      39                                                                                                                          
+
 go-m1a, directory off, text set text
-measure                     right  wrong  left out  impossible  de r/w/l  en r/w/l  fr r/w/l  hi r/w/l  ja r/w/l
-mentions                       61      0         5           0     6/0/0    45/0/5     1/0/0     4/0/0     5/0/0
-org_directory                  46      0         0           0                                                  
-identifier:account             24      0         0           0              19/0/0     1/0/0     2/0/0     2/0/0
-identifier:bic                  4      0         0           0     1/0/0     1/0/0     1/0/0               1/0/0
-identifier:card                 3      0         0           0               3/0/0                              
-identifier:fr_bank_code         1      0         0           0                         1/0/0                    
-identifier:fr_branch_code       1      0         0           0                         1/0/0                    
-identifier:fr_rib_key           1      0         0           0                         1/0/0                    
-identifier:gb_sort_code         1      0         0           0               1/0/0                              
-identifier:iban                 7      0         0           0     2/0/0     4/0/0     1/0/0                    
-identifier:ifsc                13      0         0           0              11/0/0               2/0/0          
-identifier:in_pan               2      0         0           0                                   2/0/0          
-identifier:mrz                  5      0         0           0               5/0/0                              
-identifier:passport_number      5      0         0           0               5/0/0                              
-links                          47      0         0           0     2/0/0    33/0/0     5/0/0     4/0/0     3/0/0
-statement_period               14      0         0           0     1/0/0    11/0/0               1/0/0     1/0/0
-statement_account              14      0         0           0     1/0/0    11/0/0               1/0/0     1/0/0
-statement_issuer               14      0         0           0     1/0/0    11/0/0               1/0/0     1/0/0
-passport_holder                 4      0         0           0               4/0/0                              
-passport_number                 4      0         0           0               4/0/0                              
-passport_expiry                 4      0         0           0               4/0/0                              
-passport_current                4      0         0           0               4/0/0                              
-answer_latest_statement        12      0         0           0     1/0/0     9/0/0               1/0/0     1/0/0
-answer_current_passport         3      0         0           0               3/0/0                              
+measure                     right  wrong  left out  impossible  certain r/w  likely r/w  likely precision  de r/w/l  en r/w/l  fr r/w/l  hi r/w/l  ja r/w/l
+mentions                       64      0         5           0                                                6/0/0    47/0/5     2/0/0     4/0/0     5/0/0
+org_directory                  67      0         0           0                                                                                             
+identifier:account             24      0         0           0                     24/0              100%              19/0/0     1/0/0     2/0/0     2/0/0
+identifier:bic                  6      0         0           0                      6/0              100%     1/0/0     2/0/0     2/0/0               1/0/0
+identifier:card                 3      0         0           0                      3/0              100%               3/0/0                              
+identifier:fr_bank_code         1      0         0           0                      1/0              100%                         1/0/0                    
+identifier:fr_branch_code       1      0         0           0                      1/0              100%                         1/0/0                    
+identifier:fr_rib_key           1      0         0           0                      1/0              100%                         1/0/0                    
+identifier:gb_sort_code         1      0         0           0                      1/0              100%               1/0/0                              
+identifier:iban                 7      0         0           0          5/0         2/0              100%     2/0/0     4/0/0     1/0/0                    
+identifier:ifsc                13      0         0           0                     13/0              100%              11/0/0               2/0/0          
+identifier:in_pan               2      0         0           0                      2/0              100%                                   2/0/0          
+identifier:mrz                  6      0         0           0          5/0         1/0              100%               6/0/0                              
+identifier:passport_number      6      0         0           0                      6/0              100%               6/0/0                              
+links                          49      0         0           0          5/0        44/0              100%     2/0/0    34/0/0     6/0/0     4/0/0     3/0/0
+same_org                        9      0        11           0                      9/0              100%     1/0/1     6/0/7     2/0/1     0/0/1     0/0/1
+statement_period               14      0         0           0                     14/0              100%     1/0/0    11/0/0               1/0/0     1/0/0
+statement_account              14      0         0           0                     14/0              100%     1/0/0    11/0/0               1/0/0     1/0/0
+statement_issuer               14      0         0           0                     14/0              100%     1/0/0    11/0/0               1/0/0     1/0/0
+passport_holder                 5      0         0           0          4/0         1/0              100%               5/0/0                              
+passport_number                 5      0         0           0          4/0         1/0              100%               5/0/0                              
+passport_expiry                 4      1         0           0          3/0         1/1               50%               4/1/0                              
+passport_current                4      1         0           0                      4/1               80%               4/1/0                              
+answer_latest_statement        12      0         0           0                     12/0              100%     1/0/0     9/0/0               1/0/0     1/0/0
+answer_current_passport         3      1         0           0                      3/1               75%               3/1/0                              
+merges                                 0                                                                                                                   
+wrong cards                            0                                                                                                                   
+wrong attachments                      0                                                                                                                   
+splits                         15                                                                                                                          
+cards on likely rows only      63                                                                                                                          
+
 go-m1a, directory on, text set text-ocr
-measure                     right  wrong  left out  impossible  de r/w/l  en r/w/l  fr r/w/l  hi r/w/l  ja r/w/l
-mentions                       61      0         5           0     6/0/0    45/0/5     1/0/0     4/0/0     5/0/0
-org_directory                  31      0         1           0                                                  
-identifier:account             24      0         0           0              19/0/0     1/0/0     2/0/0     2/0/0
-identifier:bic                  4      0         0           0     1/0/0     1/0/0     1/0/0               1/0/0
-identifier:card                 3      0         0           0               3/0/0                              
-identifier:fr_bank_code         1      0         0           0                         1/0/0                    
-identifier:fr_branch_code       1      0         0           0                         1/0/0                    
-identifier:fr_rib_key           1      0         0           0                         1/0/0                    
-identifier:gb_sort_code         1      0         0           0               1/0/0                              
-identifier:iban                 7      0         0           0     2/0/0     4/0/0     1/0/0                    
-identifier:ifsc                12      0         0           1              10/0/0               2/0/0          
-identifier:in_pan               2      0         0           0                                   2/0/0          
-identifier:mrz                  4      0         0           1               4/0/0                              
-identifier:passport_number      5      0         0           0               5/0/0                              
-links                          45      0         0           2     2/0/0    31/0/0     5/0/0     4/0/0     3/0/0
-statement_period               14      0         0           0     1/0/0    11/0/0               1/0/0     1/0/0
-statement_account              14      0         0           0     1/0/0    11/0/0               1/0/0     1/0/0
-statement_issuer               14      0         0           0     1/0/0    11/0/0               1/0/0     1/0/0
-passport_holder                 4      0         0           0               4/0/0                              
-passport_number                 4      0         0           0               4/0/0                              
-passport_expiry                 4      0         0           0               4/0/0                              
-passport_current                4      0         0           0               4/0/0                              
-answer_latest_statement        12      0         0           0     1/0/0     9/0/0               1/0/0     1/0/0
-answer_current_passport         3      0         0           0               3/0/0                              
+measure                     right  wrong  left out  impossible  certain r/w  likely r/w  likely precision  de r/w/l  en r/w/l  fr r/w/l  hi r/w/l  ja r/w/l
+mentions                       64      0         5           0                                                6/0/0    47/0/5     2/0/0     4/0/0     5/0/0
+org_directory                  63      0         3           0                                                                                             
+identifier:account             24      0         0           0                     24/0              100%              19/0/0     1/0/0     2/0/0     2/0/0
+identifier:bic                  6      0         0           0          4/0         2/0              100%     1/0/0     2/0/0     2/0/0               1/0/0
+identifier:card                 3      0         0           0                      3/0              100%               3/0/0                              
+identifier:fr_bank_code         1      0         0           0                      1/0              100%                         1/0/0                    
+identifier:fr_branch_code       1      0         0           0                      1/0              100%                         1/0/0                    
+identifier:fr_rib_key           1      0         0           0                      1/0              100%                         1/0/0                    
+identifier:gb_sort_code         1      0         0           0                      1/0              100%               1/0/0                              
+identifier:iban                 7      0         0           0          5/0         2/0              100%     2/0/0     4/0/0     1/0/0                    
+identifier:ifsc                12      0         0           1         12/0                                            10/0/0               2/0/0          
+identifier:in_pan               2      0         0           0                      2/0              100%                                   2/0/0          
+identifier:mrz                  5      0         0           1          4/0         1/0              100%               5/0/0                              
+identifier:passport_number      6      0         0           0                      6/0              100%               6/0/0                              
+links                          47      0         0           2         21/0        26/0              100%     2/0/0    32/0/0     6/0/0     4/0/0     3/0/0
+same_org                       21      0         0           0         15/0         6/0              100%     3/0/0    13/0/0     3/0/0     1/0/0     1/0/0
+statement_period               14      0         0           0                     14/0              100%     1/0/0    11/0/0               1/0/0     1/0/0
+statement_account              14      0         0           0                     14/0              100%     1/0/0    11/0/0               1/0/0     1/0/0
+statement_issuer               14      0         0           0                     14/0              100%     1/0/0    11/0/0               1/0/0     1/0/0
+passport_holder                 5      0         0           0          3/0         2/0              100%               5/0/0                              
+passport_number                 5      0         0           0          3/0         2/0              100%               5/0/0                              
+passport_expiry                 4      1         0           0          2/0         2/1               67%               4/1/0                              
+passport_current                4      1         0           0                      4/1               80%               4/1/0                              
+answer_latest_statement        12      0         0           0                     12/0              100%     1/0/0     9/0/0               1/0/0     1/0/0
+answer_current_passport         3      1         0           0                      3/1               75%               3/1/0                              
+merges                                 0                                                                                                                   
+wrong cards                            0                                                                                                                   
+wrong attachments                      0                                                                                                                   
+splits                         15                                                                                                                          
+cards on likely rows only      40                                                                                                                          
+
 go-m1a, directory off, text set text-ocr
-measure                     right  wrong  left out  impossible  de r/w/l  en r/w/l  fr r/w/l  hi r/w/l  ja r/w/l
-mentions                       61      0         5           0     6/0/0    45/0/5     1/0/0     4/0/0     5/0/0
-org_directory                  45      0         0           0                                                  
-identifier:account             24      0         0           0              19/0/0     1/0/0     2/0/0     2/0/0
-identifier:bic                  4      0         0           0     1/0/0     1/0/0     1/0/0               1/0/0
-identifier:card                 3      0         0           0               3/0/0                              
-identifier:fr_bank_code         1      0         0           0                         1/0/0                    
-identifier:fr_branch_code       1      0         0           0                         1/0/0                    
-identifier:fr_rib_key           1      0         0           0                         1/0/0                    
-identifier:gb_sort_code         1      0         0           0               1/0/0                              
-identifier:iban                 7      0         0           0     2/0/0     4/0/0     1/0/0                    
-identifier:ifsc                12      0         0           1              10/0/0               2/0/0          
-identifier:in_pan               2      0         0           0                                   2/0/0          
-identifier:mrz                  4      0         0           1               4/0/0                              
-identifier:passport_number      5      0         0           0               5/0/0                              
-links                          45      0         0           2     2/0/0    31/0/0     5/0/0     4/0/0     3/0/0
-statement_period               14      0         0           0     1/0/0    11/0/0               1/0/0     1/0/0
-statement_account              14      0         0           0     1/0/0    11/0/0               1/0/0     1/0/0
-statement_issuer               14      0         0           0     1/0/0    11/0/0               1/0/0     1/0/0
-passport_holder                 4      0         0           0               4/0/0                              
-passport_number                 4      0         0           0               4/0/0                              
-passport_expiry                 4      0         0           0               4/0/0                              
-passport_current                4      0         0           0               4/0/0                              
-answer_latest_statement        12      0         0           0     1/0/0     9/0/0               1/0/0     1/0/0
-answer_current_passport         3      0         0           0               3/0/0                              
+measure                     right  wrong  left out  impossible  certain r/w  likely r/w  likely precision  de r/w/l  en r/w/l  fr r/w/l  hi r/w/l  ja r/w/l
+mentions                       64      0         5           0                                                6/0/0    47/0/5     2/0/0     4/0/0     5/0/0
+org_directory                  66      0         0           0                                                                                             
+identifier:account             24      0         0           0                     24/0              100%              19/0/0     1/0/0     2/0/0     2/0/0
+identifier:bic                  6      0         0           0                      6/0              100%     1/0/0     2/0/0     2/0/0               1/0/0
+identifier:card                 3      0         0           0                      3/0              100%               3/0/0                              
+identifier:fr_bank_code         1      0         0           0                      1/0              100%                         1/0/0                    
+identifier:fr_branch_code       1      0         0           0                      1/0              100%                         1/0/0                    
+identifier:fr_rib_key           1      0         0           0                      1/0              100%                         1/0/0                    
+identifier:gb_sort_code         1      0         0           0                      1/0              100%               1/0/0                              
+identifier:iban                 7      0         0           0          5/0         2/0              100%     2/0/0     4/0/0     1/0/0                    
+identifier:ifsc                12      0         0           1                     12/0              100%              10/0/0               2/0/0          
+identifier:in_pan               2      0         0           0                      2/0              100%                                   2/0/0          
+identifier:mrz                  5      0         0           1          4/0         1/0              100%               5/0/0                              
+identifier:passport_number      6      0         0           0                      6/0              100%               6/0/0                              
+links                          47      0         0           2          5/0        42/0              100%     2/0/0    32/0/0     6/0/0     4/0/0     3/0/0
+same_org                        9      0        10           0                      9/0              100%     1/0/1     6/0/6     2/0/1     0/0/1     0/0/1
+statement_period               14      0         0           0                     14/0              100%     1/0/0    11/0/0               1/0/0     1/0/0
+statement_account              14      0         0           0                     14/0              100%     1/0/0    11/0/0               1/0/0     1/0/0
+statement_issuer               14      0         0           0                     14/0              100%     1/0/0    11/0/0               1/0/0     1/0/0
+passport_holder                 5      0         0           0          3/0         2/0              100%               5/0/0                              
+passport_number                 5      0         0           0          3/0         2/0              100%               5/0/0                              
+passport_expiry                 4      1         0           0          2/0         2/1               67%               4/1/0                              
+passport_current                4      1         0           0                      4/1               80%               4/1/0                              
+answer_latest_statement        12      0         0           0                     12/0              100%     1/0/0     9/0/0               1/0/0     1/0/0
+answer_current_passport         3      1         0           0                      3/1               75%               3/1/0                              
+merges                                 0                                                                                                                   
+wrong cards                            0                                                                                                                   
+wrong attachments                      0                                                                                                                   
+splits                         15                                                                                                                          
+cards on likely rows only      62
 ```
