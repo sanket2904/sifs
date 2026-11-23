@@ -308,6 +308,27 @@ const MUTANTS = [
 			}),
 		'is not the date of expiry field'
 	],
+	[
+		"a made-up bank's BIC left out of its label",
+		(l) => delete l.organisations['sample-maple-bank'].bic,
+		'sample-maple-bank is not in the directory'
+	],
+	[
+		'an expiry written with the century the zone does not give',
+		(l) => (doc(l, 'passport-meera-1988').passport.expiry = '2098-06-02'),
+		'expiry_at reads 1998-06-02, not 2098-06-02'
+	],
+	[
+		'an expiry whose printed date is not the one below its label',
+		(l) =>
+			(doc(l, 'passport-meera-1988').passport.expiry_at = {
+				page: 1,
+				start: 0,
+				end: 6,
+				text: 'SAMPLE'
+			}),
+		'is not the date of expiry field'
+	],
 	['generated file changed', null, 'differs from what the generator writes']
 ];
 

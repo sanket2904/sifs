@@ -40,7 +40,9 @@
     "la-banque-postale": {"name":"La Banque Postale","directory":"Q3206431","names":["La Banque Postale"]},
     "axis-bank": {"name":"Axis Bank","directory":"Q2003549","names":["Axis Bank"]},
     "sample-power": {"name":"Sample Power Distribution Ltd","directory":null,"names":["Sample Power Distribution Ltd"]},
-    "utopia-passport-office": {"name":"Utopia Passport Office","directory":null,"names":["UTOPIA PASSPORT OFFICE"]}
+    "utopia-passport-office": {"name":"Utopia Passport Office","directory":null,"names":["UTOPIA PASSPORT OFFICE"]},
+    "sample-maple-bank": {"name":"Sample Maple Bank","directory":null,"names":["Sample Maple Bank"],"bic":["SMBKCAT0XXX"]},
+    "sample-moor-bank": {"name":"Sample Moor Bank","directory":null,"names":["Sample Moor Bank"],"bic":["SMBKGB20XXX"]}
   },
   "documents": [
     {
@@ -865,7 +867,65 @@
       }
     },
     {"id":"recipe-lemon-rice","nothing_to_find":true},
-    {"id":"poem","nothing_to_find":true}
+    {"id":"poem","nothing_to_find":true},
+    {
+      "id": "credit-advice-smbk-ca",
+      "note": "SMBK is settled by the BIC beside it. payroll-release-smbk-gb prints the same SMBK for another bank, so nothing joins the two documents' SMBK.",
+      "orgs": [
+        {"id":"o1","page":1,"start":194,"end":198,"text":"SMBK","resolved_by_document":{"org":"sample-maple-bank","evidence":[{"by":"code","identifier":"i1"}]},"directory":{"lookup":"none"}}
+      ],
+      "not_orgs": [],
+      "identifiers": [
+        {"id":"i1","page":1,"start":209,"end":220,"text":"SMBKCAT0XXX","kind":"bic","value":"SMBKCAT0XXX","valid":true}
+      ],
+      "not_identifiers": [],
+      "links": [
+        {"identifier":"i1","org":"sample-maple-bank","mention":"o1","reasons":["bic-institution"]}
+      ],
+      "not_links": []
+    },
+    {
+      "id": "payroll-release-smbk-gb",
+      "note": "SMBK is settled by the BIC beside it. credit-advice-smbk-ca prints the same SMBK for another bank, so nothing joins the two documents' SMBK.",
+      "orgs": [
+        {"id":"o1","page":1,"start":160,"end":164,"text":"SMBK","resolved_by_document":{"org":"sample-moor-bank","evidence":[{"by":"code","identifier":"i1"}]},"directory":{"lookup":"none"}}
+      ],
+      "not_orgs": [
+        {"page":1,"start":166,"end":169,"text":"BIC","why":"word-not-name","entry":"Q795981"}
+      ],
+      "identifiers": [
+        {"id":"i1","page":1,"start":170,"end":181,"text":"SMBKGB20XXX","kind":"bic","value":"SMBKGB20XXX","valid":true}
+      ],
+      "not_identifiers": [],
+      "links": [
+        {"identifier":"i1","org":"sample-moor-bank","mention":"o1","reasons":["bic-institution"]}
+      ],
+      "not_links": []
+    },
+    {
+      "id": "passport-meera-1988",
+      "note": "The zone gives the expiry as 980602, which proves the day, the month and the year's last two digits. The century is only on the page: 02 JUN 1998, on the line below its label.",
+      "orgs": [
+        {"id":"o1","page":1,"start":367,"end":389,"text":"UTOPIA PASSPORT OFFICE","resolved_by_document":{"org":"utopia-passport-office","evidence":[{"by":"name"}]},"directory":{"lookup":"none"}}
+      ],
+      "not_orgs": [],
+      "identifiers": [
+        {"id":"i1","page":1,"start":173,"end":182,"text":"SMP000088","kind":"passport_number","value":"SMP000088","valid":null},
+        {"id":"i2","page":1,"start":390,"end":479,"text":"P<UTOKALPIT<<MEERA<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0000889UTO6102146F9806021<<<<<<<<<<<<<<<2","kind":"mrz","value":"P<UTOKALPIT<<MEERA<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0000889UTO6102146F9806021<<<<<<<<<<<<<<<2","valid":true}
+      ],
+      "not_identifiers": [],
+      "links": [],
+      "not_links": [],
+      "passport": {
+        "holder": {"surname":"KALPIT","given":"MEERA"},
+        "number": "i1",
+        "mrz": "i2",
+        "issued": "1988-06-03",
+        "expiry": "1998-06-02",
+        "expiry_at": {"page":1,"start":344,"end":355,"text":"02 JUN 1998"},
+        "current": false
+      }
+    }
   ],
   "answers": {
     "latest_statement": [

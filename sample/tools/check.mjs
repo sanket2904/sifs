@@ -61,7 +61,7 @@ const EXPIRY_FIELD = /^Date of expiry: $/iu;
 const FIELDS = {
 	doc: ['id', 'note', 'nothing_to_find', ...LISTS, 'statement', 'passport'],
 	org: ['id', 'page', 'start', 'end', 'text', 'resolved_by_document', 'directory'],
-	organisation: ['name', 'directory', 'names'],
+	organisation: ['name', 'directory', 'names', 'bic'],
 	not_org: ['page', 'start', 'end', 'text', 'entry', 'why'],
 	identifier: ['id', 'page', 'start', 'end', 'text', 'kind', 'value', 'valid', 'same_account_as'],
 	not_identifier: ['page', 'start', 'end', 'text', 'looks_like', 'why'],
@@ -266,6 +266,14 @@ for (const [id, o] of organisations) {
 			fail(at, `directory ${o.directory} is also ${byEntry.get(o.directory)}`);
 		byEntry.set(o.directory, id);
 	}
+	if (
+		o.bic !== undefined &&
+		(o.directory !== null ||
+			!Array.isArray(o.bic) ||
+			!o.bic.length ||
+			!o.bic.every(KINDS.bic.valid))
+	)
+		fail(at, 'bic lists the BICs of an organisation that no directory holds');
 	if (!Array.isArray(o.names) || !o.names.length) fail(at, 'names must be a list');
 	for (const name of o.names ?? []) {
 		const key = matchKey(name);
@@ -561,7 +569,11 @@ for (const doc of labels.documents) {
 		doc.identifiers.some((v) => v !== span && kinds.includes(v.kind) && sameLine(v, span));
 	// Why a reason does not hold for identifier id at org, or null when it holds.
 	const reasonProblem = (reason, id, org, via) => {
-		const entry = entries.get(organisations.get(org)?.directory);
+		// A made-up bank in no directory carries its own BICs in the labels.
+		const own = organisations.get(org)?.bic;
+		const entry =
+			entries.get(organisations.get(org)?.directory) ??
+			(own && { codes: { bic: own, ifsc_prefix: [], iban_bank_code: [] } });
 		if (['iban-bank-code', 'bic-institution', 'ifsc-prefix'].includes(reason) && !entry)
 			return `${org} is not in the directory`;
 		if (reason === 'iban-bank-code') {
@@ -797,14 +809,26 @@ for (const doc of labels.documents) {
 			.map((line) => datesIn(line.replace(ISSUE_FIELD, ''))[0]);
 		if (issueFields.length !== 1 || issueFields[0] !== p.issued)
 			fail(at, `the date of issue field reads ${issueFields.join(' and ') || 'nothing'}, not ${p.issued}`);
+		// The date follows its label on one line, or is the whole line below a
+		// label that stands alone.
 		const expiryPage = pages[p.expiry_at.page - 1] ?? [];
-		const expiryLine = expiryPage.lastIndexOf('\n', p.expiry_at.start - 1) + 1;
-		if (!EXPIRY_FIELD.test(expiryPage.slice(expiryLine, p.expiry_at.start).join('')))
+		const lineStart = expiryPage.lastIndexOf('\n', p.expiry_at.start - 1) + 1;
+		const lines = expiryPage.join('').split('\n');
+		const lineNo = expiryPage.slice(0, lineStart).filter((c) => c === '\n').length;
+		const label = expiryPage.slice(lineStart, p.expiry_at.start).join('');
+		const below =
+			label === '' &&
+			lines[lineNo] === p.expiry_at.text &&
+			EXPIRY_FIELD.test(`${lines[lineNo - 1] ?? ''} `);
+		if (!EXPIRY_FIELD.test(label) && !below)
 			fail(at, `expiry_at ${JSON.stringify(p.expiry_at.text)} is not the date of expiry field`);
 		const printed = datesIn(p.expiry_at.text);
 		const mrz = mrzId && parseMrz(mrzId.value);
-		const mrzExpiry =
-			mrz && `20${mrz.expiry.slice(0, 2)}-${mrz.expiry.slice(2, 4)}-${mrz.expiry.slice(4, 6)}`;
+		// The zone gives the year in two digits: it fixes a date up to its century.
+		const zoneGives = (date) =>
+			Boolean(mrz) && date.slice(2).replaceAll('-', '') === mrz.expiry;
+		const zone = mrz?.expiry ?? '';
+		const mrzExpiry = `..${zone.slice(0, 2)}-${zone.slice(2, 4)}-${zone.slice(4, 6)}`;
 		if (mrz?.type !== 'passport') fail(at, "the machine-readable zone is not a passport's");
 		else if (
 			mrz.surname !== p.holder.surname ||
@@ -818,13 +842,13 @@ for (const doc of labels.documents) {
 				fail(at, 'cannot-tell, but the machine-readable zone passes its checks');
 			if (candidates.length < 2 || !candidates.every(isDate))
 				fail(at, 'cannot-tell needs two or more candidate dates');
-			if (!candidates.includes(printed[0]) || !candidates.includes(mrzExpiry))
+			if (!candidates.includes(printed[0]) || !candidates.some(zoneGives))
 				fail(at, `candidates must hold the printed ${printed[0]} and the zone's ${mrzExpiry}`);
 		} else {
 			if (!isDate(p.expiry) || p.expiry_candidates)
 				fail(at, 'expiry is a date, or cannot-tell with candidates');
 			if (printed[0] !== p.expiry) fail(at, `expiry_at reads ${printed[0]}, not ${p.expiry}`);
-			if (mrzId?.valid !== true || mrzExpiry !== p.expiry)
+			if (mrzId?.valid !== true || !zoneGives(p.expiry))
 				fail(
 					at,
 					`the machine-readable zone gives ${mrzExpiry}${mrzId?.valid ? '' : ' and fails its check'}`

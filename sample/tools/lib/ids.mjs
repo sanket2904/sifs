@@ -13,6 +13,10 @@ const IBAN_REGISTRY = new Map(
 		return [country, { length, bank: [4 + first - 1, 4 + last] }];
 	})
 );
+export const ibanBankCodeLength = (country) => {
+	const [from, to] = IBAN_REGISTRY.get(country)?.bank ?? [];
+	return from === undefined ? null : to - from;
+};
 export const ibanBankCode = (iban) => {
 	const [from, to] = IBAN_REGISTRY.get(iban.slice(0, 2))?.bank ?? [];
 	return { country: iban.slice(0, 2), code: from === undefined ? null : iban.slice(from, to) };
