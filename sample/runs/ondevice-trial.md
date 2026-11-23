@@ -53,11 +53,11 @@ For each link, statement, passport and organisation mention that the rules emitt
 | Rust, directory on | 7 | 1 | 49 | 0 | 6 / 9 |
 | Go on the sample (prompt written here) | 0 | 0 | 125 | 1 | 0 / 38 |
 
-The model almost never says "no". On the "Not a statement" worksheet it answered "cannot tell" while quoting the line that says it is not a statement. It said yes to `LUM` being an organisation. It said yes to `UBS` on the knitting sheet, and it quoted the line with `ü` written as `ue`, so the quote check failed. The only removal was the visa read as a passport (Rust). A stricter policy that keeps a row only on a checked "yes" would remove 5 of Go's 6 wrong rows, and also 11 of its 47 right rows.
+The model almost never says "no". On the "Not a statement" worksheet it answered "cannot tell" while quoting the line that says it is not a statement. It said yes to `LUM` being an organisation. It said yes to `UBS` on the knitting sheet, and it quoted the line with `ü` written as `ue`, so the quote check failed. The only removal was the visa read as a passport (Rust). A stricter policy that keeps a row only on a checked "yes" would remove 5 of Go's 6 wrong rows, and also 11 of its 47 right rows (directory off; with it on, 5 of 5 and 10 of 48).
 
 The answers depend on how the question is put. With the answer field before the quote and a sentence that said when to answer no, the model said no to 100 of the 125 right sample rows. Putting the quote first and dropping that sentence brought it down to 1 of 125.
 
-Combined, without new model calls: a statement or passport claim is dropped when T2 read the page as another kind, and so is a link whose only reason is that statement's header. Outside, this removes 2 of Go's 6 wrong rows (the worksheet's link and statement, with the directory on or off) and 7 of Rust's 9 (off) and 7 of 7 (on), with 0 of 47 to 49 right rows removed. On the sample it removes 0 of 125 right rows. I chose this rule after seeing the outside results, so it is a hypothesis to test on new documents, not a held-out result.
+Combined, without new model calls: a statement or passport claim is dropped when T2 read the page as another kind, and so is a link whose only reason is that statement's header. Outside, this removes 2 of Go's 6 wrong rows with the directory off and 2 of its 5 with it on (the worksheet's link and statement) and 7 of Rust's 9 (off) and 7 of 7 (on), with 0 of 47 to 49 right rows removed. On the sample it removes 0 of 125 right rows. I chose this rule after seeing the outside results, so it is a hypothesis to test on new documents, not a held-out result.
 
 ## T4. Cost and repeatability
 
@@ -78,7 +78,41 @@ The code imports only Foundation, FoundationModels and NaturalLanguage, and make
 
 Give the name tagger no job. It found 4 of 25 organisations outside the sample, and it tags countries and field words as organisations. Do not let the model veto claims one by one: it removed 0 of the Go extractor's wrong rows. The one job worth trying next is "the model reads the page's kind, and a statement or passport claim on a page it reads as another kind is dropped". That removed the worksheet error and the Rust invoice and visa errors, at no cost to right rows here.
 
-The numbers are too small to carry this. There were 6 wrong Go rows and 9 wrong Rust rows, on 41 outside documents. The combined rule was picked after seeing them. And the model read 5 of 21 outside non-statements as statements, so it can also miss a page that the rules get right. The answer would change with a few hundred new labelled pages run once under the combined rule, with Hindi support from Apple (a Hindi page gets no second reader today), and with a fix for refusals, which drop pages without warning.
+The numbers are too small to carry this. There were 6 wrong Go rows and 9 wrong Rust rows with the directory off (5 and 7 with it on), on 41 outside documents. The combined rule was picked after seeing them. And the model read 5 of 21 outside non-statements as statements, so it can also miss a page that the rules get right. The answer would change with a few hundred new labelled pages run once under the combined rule, with Hindi support from Apple (a Hindi page gets no second reader today), and with a fix for refusals, which drop pages without warning.
+
+## The clean test, run afterwards
+
+The write-up above asked for a test on new documents. It was run afterwards by an outside tester. The kind reader and the drop rule were exactly as committed here, run once. They ran on two further sets of 28 made-up documents each (56 documents, 57 pages). Outside reviewers wrote these sets after the Go extractor was frozen. Neither the model's prompt nor the rule had been tried on them.
+
+| Set | Directory | Wrong rows before | Wrong rows removed | Right rows before | Right rows removed |
+| --- | --- | ---: | ---: | ---: | ---: |
+| A | on | 10 | 0 | 101 | 0 |
+| A | off | 12 | 0 | 101 | 0 |
+| B | on | 25 | 4 | 99 | 0 |
+| B | off | 25 | 4 | 101 | 0 |
+
+All four removed rows come from one document. It is a service invoice that the rules had read as a statement. Its wrong "latest statement" answer stayed, because the rule does not reach answers.
+
+The reader gave no usable answer on 7 of 28 pages of set A and 15 of 29 pages of set B. The causes, for set A and set B:
+
+- Language not supported: 1 and 6.
+- The model declined, or a guardrail stopped it: 1 and 6.
+- The quote was not on the page: 5 and 2.
+- The model itself said it cannot tell: 0 and 1.
+
+All eight labelled passports got no usable answer.
+
+The reader also read as a statement 5 of 11 pages of set A and 2 of 13 pages of set B that are neither a statement nor a passport. It read one residence permit as a passport.
+
+Some errors page kind cannot settle, whatever the reader's quality:
+
+- Which of two named parties is the issuer and which is the customer.
+- Sender against receiver in a transfer.
+- Two organisations merged into one.
+- A passport that a later line cancels.
+- A number cut short.
+
+Conclusion. On new documents the page-kind rule is a narrow filter. It removed 8 of 72 wrong rows across the four runs and no right row. It does not bring the rule-based extractor to "no wrong row". With this reader it should not be given that job. The directory-on and directory-off runs are the same documents twice, so they are not independent evidence.
 
 ## Run it
 
