@@ -982,15 +982,15 @@ test('a same_org row joins two keys the document uses, by a known reason, and on
 
 // Scores an output, then the same output with every list of rows reversed,
 // and requires one verdict.
-const inBothOrders = (output) => {
-	const forward = run(output);
+const inBothOrders = (output, scoreIt = run) => {
+	const forward = scoreIt(output);
 	const backward = structuredClone(output);
 	for (const d of backward.documents) {
 		for (const list of ['orgs', 'identifiers', 'links', 'same_org']) d[list].reverse();
 		for (const r of d.same_org) r.keys.reverse();
 	}
 	backward.documents.reverse();
-	assert.deepEqual(run(backward), forward, 'rows reversed');
+	assert.deepEqual(scoreIt(backward), forward, 'rows reversed');
 	return forward;
 };
 
@@ -1080,6 +1080,140 @@ test('an identifier is certain only when its own strong check proves its kind, a
 		assert.deepEqual(byTier(result, 'identifier:iban', tier).wrong, 1, tier);
 		assert.equal(result.failed, tier === 'certain', tier);
 	}
+});
+
+// One invented page that holds one IBAN, which the labels hold at one bank by
+// its bank code. valid is null for a country the registry table does not
+// have, where the scorer cannot say.
+const ibanPage = (value, valid = true) => {
+	const span = { page: 1, start: 0, end: value.length, text: value };
+	const labels = {
+		organisations: { bank: { name: 'Invented Bank', names: [], directory: null } },
+		documents: [
+			{
+				id: 'iban-page',
+				orgs: [],
+				not_orgs: [],
+				identifiers: [{ id: 'i1', ...span, kind: 'iban', value, valid }],
+				not_identifiers: [],
+				links: [{ identifier: 'i1', org: 'bank', reasons: ['iban-bank-code'] }],
+				not_links: []
+			}
+		],
+		answers: { latest_statement: [], current_passport: [] }
+	};
+	const textSet = {
+		index: { text_set: 'text' },
+		docs: new Map([['iban-page', { id: 'iban-page', lang: 'en', pages: [{ text: value, scanned: false }] }]])
+	};
+	const output = (key, identifierTier, linkTier) => ({
+		format: 2,
+		extractor: 'test',
+		directory: 'off',
+		text_set: 'text',
+		organisations: { [key]: { name: null, directory: null } },
+		documents: [
+			{
+				id: 'iban-page',
+				orgs: [],
+				identifiers: [{ id: 'i1', ...span, kind: 'iban', value, valid, tier: identifierTier }],
+				links: [{ identifier: 'i1', org: key, reasons: ['iban-bank-code'], tier: linkTier }],
+				same_org: []
+			}
+		],
+		answers: { latest_statement: [], current_passport: [] }
+	});
+	return { output, run: (o) => score(labels, textSet, o, { entries: [] }) };
+};
+
+test("an IBAN of any country in the registry table is certain, and its link certain to the key spelt from the table's bank identifier", () => {
+	const shapes = [
+		['AT545432100000012345', 'IBAN AT 54321', 'IBAN AT 5432', 'digits at the start'],
+		['BG32ZZZB12345600000001', 'IBAN BG ZZZB', 'IBAN BG ZZZB1', 'letters'],
+		['IT88A9876543210000000000042', 'IBAN IT 98765', 'IBAN IT A9876', 'after a check letter']
+	];
+	for (const [value, key, misplaced, shape] of shapes) {
+		const page = ibanPage(value);
+		const result = inBothOrders(page.output(key, 'certain', 'certain'), page.run);
+		assert.deepEqual(byTier(result, 'identifier:iban', 'certain'), { right: 1, wrong: 0 }, shape);
+		assert.deepEqual(byTier(result, 'links', 'certain'), { right: 1, wrong: 0 }, shape);
+		assert.equal(result.failed, false, shape);
+		assert.throws(
+			() => page.run(page.output(misplaced, 'certain', 'certain')),
+			new RegExp(`goes to its code's key, "${key}"`),
+			shape
+		);
+	}
+});
+
+test('an IBAN of a country the registry table does not have is likely, with a free-form key, and never certain', () => {
+	const page = ibanPage('DZ560001200034000005678901', null);
+	const result = inBothOrders(page.output('name:invented-bank', 'likely', 'likely'), page.run);
+	assert.deepEqual(byTier(result, 'identifier:iban', 'likely'), { right: 1, wrong: 0 });
+	assert.deepEqual(byTier(result, 'links', 'likely'), { right: 1, wrong: 0 });
+	assert.equal(result.failed, false);
+	const why = /country DZ is not in the IBAN registry table/;
+	assert.throws(() => page.run(page.output('name:invented-bank', 'certain', 'likely')), why);
+	assert.throws(() => page.run(page.output('name:invented-bank', 'likely', 'certain')), why);
+});
+
+test('an IBAN whose check digits pass at a length its country does not have is not certain', () => {
+	const page = ibanPage('AT2254321000000123456', false);
+	assert.throws(
+		() => page.run(page.output('IBAN AT 54321', 'certain', 'likely')),
+		/an IBAN of AT has 20 characters, not 21/
+	);
+});
+
+// passport-rohan's zone with another given name, and with another expiry
+// whose check digits pass.
+const ROHAN_ZONE = 'P<UTOKALPIT<<ROHAN<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0029356UTO1609307M2801049<<<<<<<<<<<<<<<8';
+const OTHER_NAME_ZONE = ROHAN_ZONE.replace('KALPIT<<ROHAN<<<<<', 'KALPIT<<OTHER<<<<<');
+const OTHER_EXPIRY_ZONE = ROHAN_ZONE.replace('M2801049<<<<<<<<<<<<<<<8', 'M3001042<<<<<<<<<<<<<<<6');
+const zoneOf = (o, id) => {
+	const d = doc(o, id);
+	return d.identifiers.find((i) => i.id === d.passport.mrz);
+};
+
+test('a certain passport fact rests on a certain zone and equals what that zone says', () => {
+	const refused = [
+		['a likely zone', (o) => (zoneOf(o, 'passport-rohan').tier = 'likely'), 'holder'],
+		['a zone naming another holder', (o) => (zoneOf(o, 'passport-rohan').value = OTHER_NAME_ZONE), 'holder'],
+		[
+			'a likely zone naming another holder',
+			(o) => Object.assign(zoneOf(o, 'passport-rohan'), { value: OTHER_NAME_ZONE, tier: 'likely' }),
+			'holder'
+		],
+		['a zone with another expiry', (o) => (zoneOf(o, 'passport-rohan').value = OTHER_EXPIRY_ZONE), 'expiry'],
+		[
+			'an invalid page zone given the value of another passport',
+			(o) => {
+				const p = doc(o, 'passport-bad-mrz').passport;
+				Object.assign(zoneOf(o, 'passport-bad-mrz'), { value: ROHAN_ZONE, valid: true, tier: 'likely' });
+				p.tiers.holder = 'certain';
+			},
+			'holder'
+		]
+	];
+	for (const [what, change, fact] of refused) {
+		const output = perfect('on');
+		assert.equal(doc(output, 'passport-rohan').passport.tiers[fact === 'expiry' ? 'expiry' : 'holder'], 'certain');
+		change(output);
+		assert.throws(() => run(output), new RegExp(`passport\\.tiers\\.${fact}: cannot be certain`), what);
+	}
+	// Called certain, the borrowed zone is a wrong certain identifier: it is
+	// not the zone on the page, so the run fails.
+	const borrowed = perfect('on');
+	const p = doc(borrowed, 'passport-bad-mrz').passport;
+	Object.assign(zoneOf(borrowed, 'passport-bad-mrz'), { value: ROHAN_ZONE, valid: true, tier: 'certain' });
+	Object.assign(p, { holder: { surname: 'KALPIT', given: 'ROHAN' } });
+	p.tiers.holder = 'certain';
+	const result = inBothOrders(borrowed);
+	assert.equal(byTier(result, 'identifier:mrz', 'certain').wrong, 1);
+	assert.equal(result.failed, true);
+	const honest = inBothOrders(perfect('on'));
+	assert.equal(byTier(honest, 'passport_holder', 'certain').wrong, 0);
+	assert.ok(byTier(honest, 'passport_expiry', 'certain').right > 0);
 });
 
 test("a code linked to a printed name's key by layout alone gives the key no code and does not remap it", () => {
