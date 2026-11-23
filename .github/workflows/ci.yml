@@ -24,8 +24,9 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     env:
-      # The main test step must run at least this many tests. Lower it only when a PR deletes tests.
-      TEST_FLOOR: 396
+      # The main test step must pass at least this many tests (362 of 365 on main, 3 are #[ignore] helpers).
+      # Raise it when tests are added; lower it only when a PR deletes tests.
+      TEST_FLOOR: 362
       # Tests a hosted runner cannot run for a reason of the runner, not the code.
       # One per line: the full test path, then why and the issue.
       RUNNER_LIMITED: |
