@@ -1,6 +1,6 @@
 # Go M1a extractor
 
-The M1a extractor, round 4. It is rules only, with no model. It reads the sample's page text and writes the run file that `sample/FORMAT.md` describes. The code lives in `engine/`: the package `engine/extract` and the command `engine/cmd/m1a-extract`. The module imports the standard library only.
+The M1a extractor, round 5. It is rules only, with no model. It reads the sample's page text and writes the run file that `sample/FORMAT.md` describes. The code lives in `engine/`: the package `engine/extract` and the command `engine/cmd/m1a-extract`. The module imports the standard library and `golang.org/x/text`, for Unicode normalisation and case.
 
 ## Reproduce
 
@@ -9,6 +9,25 @@ sample/tools/go-m1a-runs.sh
 ```
 
 The script builds the command and writes the four runs under `sample/runs/`. Each run gets the scorer's `.score.json` beside it, and the script prints each table. It exits non-zero when any run fails the bar. A run with the directory off is started without `-directory`, so the program never opens `banks.json`. Two runs in a row give byte-identical files.
+
+## Round 5: keys the scorer spells, and no certain name
+
+Two outside sets of documents found five faults. The extractor recognises the same text as in round 4, except that a name ending in 銀行 now keeps the legal forms printed after it.
+
+- A key is spelt as the scorer spells it, for any text. `orgkey.Fold` is NFKC from `golang.org/x/text/unicode/norm`, not a table of the characters the sample needed, and `orgkey.Lower` is JavaScript's `toLowerCase`, which Go's `strings.ToLower` is not: JavaScript writes a capital sigma that ends a word as ς and a dotted capital I as i with a combining dot above. A name with a decomposed accent, conjoining jamo, Arabic presentation forms, half-width katakana or Thai SARA AM used to get a key the scorer refused. A passport holder is compared with the zone, and a printed date's digits read, through the same folding. `TestGeneratedKeysAgreeWithTheScorer` spells 5,000 generated names over twelve scripts, each composed, decomposed and with compatibility characters, with this package and with the scorer's `matchKey`, and prints its seed.
+- A printed name's key is spelt from every mention on it, once all are on it, in one place, `spellNames`. A document that printed `T Q Limited` and `TQ N.V.` used to spell the key from the first, `tq`, where the scorer wants the longer `tqnv`.
+- An IBAN's key comes from `iban-registry.json` for every country in it, and an IBAN, a BIC or an IFSC is linked only to its own code's key: `heldAt`, the one way to place an identifier at another key, refuses them. A Portuguese IBAN used to have no key of its own, and a correspondent's BIC on the next line took it by `paired-code`, which put two banks' papers on one key.
+- A `same_org` row with the reason `directory` is likely, and a printed name's card carries the name as printed and no directory id. The directory lists banks, not everyone who prints a name: an insurer's brand that the directory holds as a bank's short name was joined to the bank's BIC for certain. A code's own card still carries its entry, and its links stay certain.
+- A mention's span is the whole name as printed: `白浜銀行株式会社Ltd`, not `白浜銀行`. Its key is still `白浜銀行`.
+
+| Run | certain r/w | likely r/w | left out | `same_org` certain, likely r/w | directory ids r/w/l | merges |
+| --- | --- | --- | --- | --- | --- | --- |
+| on, text | 60/0 (76/0) | 157/3 (141/3) | 45 (8) | 0/0, 22/0 (16/0, 6/0) | 27/0/40 (64/0/3) | 0 |
+| off, text | 26/0 | 178/3 | 16 | 0/0, 9/0 | 67/0/0 | 0 |
+| on, text-ocr | 54/0 (69/0) | 158/3 (143/3) | 45 (8) | 0/0, 21/0 (15/0, 6/0) | 26/0/40 (63/0/3) | 0 |
+| off, text-ocr | 22/0 | 178/3 | 15 | 0/0, 9/0 | 66/0/0 | 0 |
+
+Round 4's numbers are in brackets where they differ. With the directory on, the 16 certain directory rows (15 on `text-ocr`) are now likely, and the 37 printed names' cards that gave a directory id leave it out. The one other change is a likely `statement-header` link from the ABN AMRO statement's IBAN to its printed name, which is gone; the IBAN's certain link to `IBAN NL ABNA` is the same link and still scores. Answers, mentions, identifiers and every other link are as in round 4. The three wrong likely rows are `passport-meera-1988`'s, as in round 4.
 
 ## Round 4: output format 3
 

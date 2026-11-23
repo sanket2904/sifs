@@ -851,14 +851,6 @@
       "iban-bank-code"
      ],
      "tier": "certain"
-    },
-    {
-     "identifier": "i1",
-     "org": "name:abn-amro-statement:abnamrobanknv",
-     "reasons": [
-      "statement-header"
-     ],
-     "tier": "likely"
     }
    ],
    "statement": {

@@ -47,9 +47,9 @@
 		},
 		"org_directory": {
 			"total": {
-				"right": 63,
+				"right": 26,
 				"wrong": 0,
-				"left_out": 3,
+				"left_out": 40,
 				"impossible": 0
 			},
 			"by_lang": {},
@@ -475,12 +475,8 @@
 				}
 			},
 			"by_tier": {
-				"certain": {
-					"right": 15,
-					"wrong": 0
-				},
 				"likely": {
-					"right": 6,
+					"right": 21,
 					"wrong": 0
 				}
 			}
@@ -1214,6 +1210,9 @@
 	"likely_only_cards": [
 		"BIC SMBKCAT0",
 		"BIC SMBKGB20",
+		"name:abn-amro-statement:abnamrobanknv",
+		"name:axis-statement-scanned-annex:axisbank",
+		"name:commerzbank-kontoauszug:commerzbank",
 		"name:credit-advice-smbk-ca:smbk",
 		"name:credit-union-statement:sampletoncreditunion",
 		"name:deutsche-bank-brief:deutschebank",
@@ -1224,6 +1223,9 @@
 		"name:hdfc-letter-hindi:एचडीएफसीबैंक",
 		"name:hdfc-life-receipt:hdfclifeinsurancecompany",
 		"name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation",
+		"name:hdfc-statement-aug:hdfcbank",
+		"name:hdfc-statement-jul:hdfcbank",
+		"name:hdfc-statement-sep:hdfcbank",
 		"name:icici-lombard-notice:icicibank",
 		"name:icici-lombard-notice:icicilombardgeneralinsurancecompany",
 		"name:invoice-lookalike-numbers:samplesupplies",
@@ -1231,7 +1233,10 @@
 		"name:mizuho-statement-ja:みずほ銀行",
 		"name:mufg-remittance-ja:abnamro",
 		"name:mufg-remittance-ja:三菱ufj信託銀行",
+		"name:mufg-remittance-ja:三菱ufj銀行",
+		"name:natwest-statement:nationalwestminsterbank",
 		"name:neft-receipt-tied:hdfcbank",
+		"name:neft-receipt-tied:icicibank",
 		"name:pan-form-hindi:सैंपलटेक्नोलॉजीज़प्राइवेटलिमिटेड",
 		"name:passport-asha-current:utopiapassportoffice",
 		"name:passport-meera-1988:utopiapassportoffice",
@@ -1239,7 +1244,10 @@
 		"name:payroll-release-smbk-gb:smbk",
 		"name:rechnung-falsche-iban:commerzbank",
 		"name:rechnung-falsche-iban:musterfirmaschreinereigmbh",
+		"name:rib-fr:labanquepostale",
 		"name:sahakari-statement:samplenagarsahakaribank",
+		"name:sbi-passbook-hindi:स्टेटबैंकऑफ़इंडिया",
+		"name:scan-bob-letter:bankofbaroda",
 		"name:scan-pnb-deposit:punjabnationalbank",
 		"name:school-fee-banks:bankofbaroda",
 		"name:school-fee-banks:bankofindia",
@@ -1250,6 +1258,7 @@
 		"name:school-fee-banks:statebankofindia",
 		"name:school-fee-banks:unionbankofindia",
 		"name:transfer-untied:bnpparibas",
+		"name:transfer-untied:commerzbank",
 		"name:transfer-untied:mizuhobank",
 		"name:utility-bill:samplepowerdistribution"
 	],
@@ -1283,13 +1292,235 @@
 		{
 			"measure": "org_directory",
 			"document": null,
+			"what": "name:abn-amro-statement:abnamrobanknv (abn-amro) directory none, labels Q287471",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:axis-statement-scanned-annex:axisbank (axis-bank) directory none, labels Q2003549",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:commerzbank-kontoauszug:commerzbank (commerzbank) directory none, labels Q157617",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:deutsche-bank-brief:deutschebank (deutsche-bank) directory none, labels Q66048",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
 			"what": "name:deutsche-bank-brief:deutschenbundesbank (bundesbank) directory none, labels Q162222",
 			"tier": null
 		},
 		{
 			"measure": "org_directory",
 			"document": null,
+			"what": "name:email-fee-payment:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-branch-letter:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-card-statement:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-letter-hindi:एचडीएफसीबैंक (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
 			"what": "name:hdfc-life-receipt:hdfclifeinsurancecompany (hdfc-life) directory none, labels Q5629189",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation (hdfc-ltd) directory none, labels Q1446319",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-statement-aug:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-statement-jul:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-statement-sep:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:icici-lombard-notice:icicibank (icici-bank) directory none, labels Q1653258",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:icici-lombard-notice:icicilombardgeneralinsurancecompany (icici-lombard) directory none, labels Q5969591",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:kotak-statement:kotakmahindrabank (kotak) directory none, labels Q2040404",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:mizuho-statement-ja:みずほ銀行 (mizuho-bank) directory none, labels Q2882956",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:mufg-remittance-ja:abnamro (abn-amro) directory none, labels Q287471",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:mufg-remittance-ja:三菱ufj信託銀行 (mufg-trust) directory none, labels Q6883178",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:mufg-remittance-ja:三菱ufj銀行 (mufg-bank) directory none, labels Q988284",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:natwest-statement:nationalwestminsterbank (natwest) directory none, labels Q2740021",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:neft-receipt-tied:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:neft-receipt-tied:icicibank (icici-bank) directory none, labels Q1653258",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:rechnung-falsche-iban:commerzbank (commerzbank) directory none, labels Q157617",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:rib-fr:labanquepostale (la-banque-postale) directory none, labels Q3206431",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:sbi-passbook-hindi:स्टेटबैंकऑफ़इंडिया (sbi) directory none, labels Q1340361",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:scan-bob-letter:bankofbaroda (bank-of-baroda) directory none, labels Q2003797",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:scan-pnb-deposit:punjabnationalbank (pnb) directory none, labels Q2743499",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:bankofbaroda (bank-of-baroda) directory none, labels Q2003797",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:bankofindia (bank-of-india) directory none, labels Q2004439",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:centralbankofindia (central-bank-of-india) directory none, labels Q2007090",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:punjabnationalbank (pnb) directory none, labels Q2743499",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:punjabsindbank (punjab-sind-bank) directory none, labels Q2003302",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:statebankofindia (sbi) directory none, labels Q1340361",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:unionbankofindia (union-bank-of-india) directory none, labels Q2004078",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:transfer-untied:bnpparibas (bnp-paribas) directory none, labels Q499707",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:transfer-untied:commerzbank (commerzbank) directory none, labels Q157617",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:transfer-untied:mizuhobank (mizuho-bank) directory none, labels Q2882956",
 			"tier": null
 		},
 		{
