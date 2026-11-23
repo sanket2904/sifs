@@ -1,4 +1,5 @@
 pub mod extract;
+pub mod findings;
 pub mod index;
 
 #[cfg(feature = "app")]
