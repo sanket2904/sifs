@@ -7,7 +7,7 @@
 	"created": "2026-09-02T06:00:00Z",
 	"pages": [
 		{
-			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real STATEMent.\nABN AMRO Bank N.V.\nAccount statement (English copy)\nAccount holder: Pieter Voorbeeld\nIBAN: NL91 ABNA 0417 1643 00\nPeriod: 01-08-2026 to 31-08-2026\nOpening balance EUR 640.00\n12-08-2026 Rent share received 450.00 1,090.00\n28-08-2026 Bicycle repair 75.50 1,014.50\nClosing balance EUR 1,014.50",
+			"text": "SAMPLE DOCUMENT. Made up for testing. Not a real statement.\nABN AMRO Bank N.V.\nAccount statement (English copy)\nAccount holder: Pieter Voorbeeld\nIBAN: NL91 ABNA 0417 1643 00\nPeriod: 01-08-2026 to 31-08-2026\nOpening balance EUR 640.00\n12-08-2026 Rent share received 450.00 1,090.00\n28-08-2026 Bicycle repair 75.50 1,014.50\nClosing balance EUR 1,014.50",
 			"scanned": false
 		}
 	]
