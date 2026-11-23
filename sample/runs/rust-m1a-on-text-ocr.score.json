@@ -1,0 +1,618 @@
+{
+	"extractor": "rust-m1a",
+	"directory": "on",
+	"text_set": "text-ocr",
+	"failed": false,
+	"measures": {
+		"mentions": {
+			"total": {
+				"right": 61,
+				"wrong": 0,
+				"left_out": 5,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 45,
+					"wrong": 0,
+					"left_out": 5,
+					"impossible": 0
+				},
+				"de": {
+					"right": 6,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 5,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"org_directory": {
+			"total": {
+				"right": 31,
+				"wrong": 0,
+				"left_out": 1,
+				"impossible": 0
+			},
+			"by_lang": {}
+		},
+		"identifier:account": {
+			"total": {
+				"right": 24,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 19,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:bic": {
+			"total": {
+				"right": 4,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:card": {
+			"total": {
+				"right": 3,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 3,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:fr_bank_code": {
+			"total": {
+				"right": 1,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:fr_branch_code": {
+			"total": {
+				"right": 1,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:fr_rib_key": {
+			"total": {
+				"right": 1,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:gb_sort_code": {
+			"total": {
+				"right": 1,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:iban": {
+			"total": {
+				"right": 7,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:ifsc": {
+			"total": {
+				"right": 12,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 1
+			},
+			"by_lang": {
+				"en": {
+					"right": 10,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 1
+				},
+				"hi": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:in_pan": {
+			"total": {
+				"right": 2,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"hi": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"identifier:mrz": {
+			"total": {
+				"right": 4,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 1
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 1
+				}
+			}
+		},
+		"identifier:passport_number": {
+			"total": {
+				"right": 5,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 5,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"links": {
+			"total": {
+				"right": 45,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 2
+			},
+			"by_lang": {
+				"en": {
+					"right": 31,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 2
+				},
+				"de": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 3,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 5,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"statement_period": {
+			"total": {
+				"right": 14,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 11,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"statement_account": {
+			"total": {
+				"right": 14,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 11,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"statement_issuer": {
+			"total": {
+				"right": 14,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 11,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"passport_holder": {
+			"total": {
+				"right": 4,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"passport_number": {
+			"total": {
+				"right": 4,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"passport_expiry": {
+			"total": {
+				"right": 4,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"passport_current": {
+			"total": {
+				"right": 4,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"answer_latest_statement": {
+			"total": {
+				"right": 12,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 9,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		},
+		"answer_current_passport": {
+			"total": {
+				"right": 3,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 3,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			}
+		}
+	},
+	"merges": [],
+	"wrong_cards": [],
+	"wrong_attachments": [],
+	"splits": [],
+	"wrong": [],
+	"left_out": [
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "org-9 (bundesbank) directory none, labels Q162222"
+		},
+		{
+			"measure": "mentions",
+			"document": "natwest-statement",
+			"what": "Example Cafe at 1:339 is example-cafe"
+		},
+		{
+			"measure": "mentions",
+			"document": "neft-receipt-tied",
+			"what": "Sample Traders at 1:250 is sample-traders"
+		},
+		{
+			"measure": "mentions",
+			"document": "transfer-rows",
+			"what": "Sample Traders at 1:192 is sample-traders"
+		},
+		{
+			"measure": "mentions",
+			"document": "hdfc-card-statement",
+			"what": "Sample Grocers at 1:299 is sample-grocers"
+		},
+		{
+			"measure": "mentions",
+			"document": "hdfc-card-statement",
+			"what": "Example Books at 1:341 is example-books"
+		}
+	],
+	"impossible": [
+		{
+			"measure": "identifier:ifsc",
+			"document": "scan-pnb-deposit",
+			"what": "ifsc PUNB0SAMPL7"
+		},
+		{
+			"measure": "links",
+			"document": "scan-pnb-deposit",
+			"what": "account 0123000100456789 at pnb"
+		},
+		{
+			"measure": "links",
+			"document": "scan-pnb-deposit",
+			"what": "ifsc PUNB0SAMPL7 at pnb"
+		},
+		{
+			"measure": "identifier:mrz",
+			"document": "passport-asha-expired",
+			"what": "mrz P<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0004175UTO8804215F1906095<<<<<<<<<<<<<<<0"
+		}
+	]
+}
