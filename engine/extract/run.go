@@ -137,6 +137,7 @@ func Run(docs []Document, dir *Directory, ref Date) Output {
 	for i, d := range docs {
 		results[i] = Extract(d, ref)
 	}
+	supersede(results)
 	u := newUnion()
 	if dir != nil {
 		for i := range results {
@@ -395,6 +396,45 @@ func laterThan(ds []Date, d Date) bool {
 		}
 	}
 	return false
+}
+
+// supersede applies renewal: of one holder's passports that are current
+// by their dates, only the one issued last is current. When the issue
+// dates cannot order them, none of them can be told current.
+func supersede(results []DocResult) {
+	live := map[string][]*Passport{}
+	for _, r := range results {
+		if p := r.Passport; p != nil && p.Current != nil && *p.Current {
+			live[p.Holder()] = append(live[p.Holder()], p)
+		}
+	}
+	for _, ps := range live {
+		if len(ps) < 2 {
+			continue
+		}
+		var last *Passport
+		ordered := true
+		for _, p := range ps {
+			if p.Issued == nil {
+				ordered = false
+			} else if last == nil || last.Issued.before(*p.Issued) {
+				last = p
+			}
+		}
+		for _, p := range ps {
+			if ordered && p != last && *p.Issued == *last.Issued {
+				ordered = false
+			}
+		}
+		for _, p := range ps {
+			switch {
+			case !ordered:
+				p.Current = nil
+			case p != last:
+				p.Current = ptr(false)
+			}
+		}
+	}
 }
 
 // currentPassports answers, for every holder, which passport is current:

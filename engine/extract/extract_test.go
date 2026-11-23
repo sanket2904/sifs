@@ -454,6 +454,60 @@ func TestPassports(t *testing.T) {
 	}
 }
 
+func TestRenewalSupersedes(t *testing.T) {
+	pp := func(id, issued, expiry string, extra ...string) Document {
+		lines := []string{"PASSPORT", "Passport No.: " + strings.ToUpper(id) + "0001", "Surname: DOE", "Given names: JANE"}
+		if issued != "" {
+			lines = append(lines, "Date of issue: "+issued)
+		}
+		return doc(id, append(append(lines, "Date of expiry: "+expiry), extra...)...)
+	}
+	current := func(o Output) map[string]string {
+		out := map[string]string{}
+		for _, d := range o.Documents {
+			if p := d.Passport; p != nil {
+				out[d.ID] = "null"
+				if p.Current != nil {
+					out[d.ID] = map[bool]string{true: "true", false: "false"}[*p.Current]
+				}
+			}
+		}
+		return out
+	}
+	for _, c := range []struct {
+		name   string
+		docs   []Document
+		want   map[string]string
+		answer string
+	}{
+		{"the later issue is current", []Document{pp("aa", "01 Jan 2020", "01 Jan 2030"), pp("bb", "01 Sep 2026", "01 Sep 2036"), pp("cc", "01 Jan 2020", "01 Jan 2030")},
+			map[string]string{"aa": "false", "bb": "true", "cc": "false"}, "bb"},
+		{"issue dates cannot order them", []Document{pp("aa", "01 Jan 2020", "01 Jan 2030"), pp("bb", "", "01 Sep 2036")},
+			map[string]string{"aa": "null", "bb": "null"}, ""},
+		{"same issue date", []Document{pp("aa", "01 Jan 2020", "01 Jan 2030"), pp("bb", "01 Jan 2020", "01 Sep 2036")},
+			map[string]string{"aa": "null", "bb": "null"}, ""},
+		{"a stamped cancellation", []Document{pp("aa", "01 Jan 2020", "01 Jan 2030", "*** VOID ***"), pp("bb", "01 Jan 2021", "01 Jan 2031", "STATUS: ANNULÉ")},
+			map[string]string{"aa": "false", "bb": "false"}, ""},
+		{"the word in prose is no stamp", []Document{pp("aa", "01 Jan 2020", "01 Jan 2030", "Altered pages make it void.")},
+			map[string]string{"aa": "true"}, "aa"},
+	} {
+		o := Run(c.docs, nil, ref)
+		got := current(o)
+		for id, w := range c.want {
+			if got[id] != w {
+				t.Errorf("%s: %s current %s, want %s", c.name, id, got[id], w)
+			}
+		}
+		ans := ""
+		if len(o.Answers.CurrentPassport) == 1 {
+			ans = o.Answers.CurrentPassport[0].Document
+		}
+		if ans != c.answer || len(o.Answers.CurrentPassport) > 1 {
+			t.Errorf("%s: answer %+v, want %q", c.name, o.Answers.CurrentPassport, c.answer)
+		}
+	}
+}
+
 func TestLatestStatementByPeriodNotFile(t *testing.T) {
 	mk := func(id, period string) Document {
 		return doc(id, "Riverside Bank", "Statement of account", "Account number: 111122223333", "Period: "+period)

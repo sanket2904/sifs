@@ -175,7 +175,6 @@ var (
 	reGiven     = regexp.MustCompile(`(?i)^\s*(?:given\s+names?|pr[ée]noms?|vornamen?)\s*:\s*(.+?)\s*$`)
 	reIssued    = regexp.MustCompile(`(?i)\b(?:date\s+of\s+issue|date\s+de\s+d[ée]livrance|ausstellungsdatum)\s*:\s*`)
 	reExpiry    = regexp.MustCompile(`(?i)\b(?:date\s+of\s+expiry|date\s+d'expiration|gültig\s+bis)\s*:\s*`)
-	reCancelled = regexp.MustCompile(`^(?:CANCELLED|CANCELED|VOID|ANNULÉ|ANNULE|UNGÜLTIG|ENTWERTET)$`)
 	rePassTitle = regexp.MustCompile(`^(?:PASSPORT|PASSEPORT|REISEPASS)$`)
 	rePassWord  = regexp.MustCompile(`(?i)\bpass(?:port|eport)\b|reisepass|旅券|पासपोर्ट`)
 )
@@ -205,7 +204,7 @@ func findPassport(lines []Line, ids []Identifier, ref Date) *Passport {
 	for _, l := range lines {
 		t := strings.ToUpper(strings.TrimSpace(l.Text))
 		titled = titled || rePassTitle.MatchString(t)
-		cancelled = cancelled || reCancelled.MatchString(t)
+		cancelled = cancelled || hasCancelWord(l.Text)
 		if m := reSurname.FindStringSubmatch(l.Text); m != nil && p.Surname == "" {
 			p.Surname = m[1]
 		}
@@ -259,6 +258,20 @@ func findPassport(lines []Line, ids []Identifier, ref Date) *Passport {
 // Holder is the answer key for a holder: SURNAME, GIVEN NAMES.
 func (p Passport) Holder() string {
 	return strings.ToUpper(strings.Join(strings.Fields(p.Surname), " ") + ", " + strings.Join(strings.Fields(p.Given), " "))
+}
+
+// cancelWords are the words a cancelled passport is stamped with.
+var cancelWords = set("CANCELLED", "CANCELED", "VOID", "VOIDED", "INVALID", "ANNULÉ", "ANNULÉE", "ANNULE", "UNGÜLTIG", "ENTWERTET", "ANULADO", "CANCELADO", "रद्द", "無効", "失効")
+
+// hasCancelWord reports whether a line carries a cancellation word written
+// as a stamp is: in capitals, or in a script that has none.
+func hasCancelWord(s string) bool {
+	for _, t := range tokenize(s) {
+		if strings.ToUpper(t.text) == t.text && cancelWords[fold(t.text)] {
+			return true
+		}
+	}
+	return false
 }
 
 // isCurrent: a cancelled passport is not current; otherwise it is current
