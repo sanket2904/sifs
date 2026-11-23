@@ -197,7 +197,7 @@ func tokens(r DocResult) []string {
 }
 
 func render(results []DocResult, u *union, dir *Directory, ref Date) Output {
-	out := Output{Format: 1, Directory: "off", Organisations: map[string]Card{}, Answers: Answers{LatestStatement: []AccountAnswer{}, CurrentPassport: []HolderAnswer{}}}
+	out := Output{Format: 1, Directory: "off", Organisations: map[string]Card{}, Documents: []DocOut{}, Answers: Answers{LatestStatement: []AccountAnswer{}, CurrentPassport: []HolderAnswer{}}}
 	if dir != nil {
 		out.Directory = "on"
 	}
