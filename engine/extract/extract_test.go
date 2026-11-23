@@ -129,6 +129,38 @@ func TestNamesInOtherScripts(t *testing.T) {
 	}
 }
 
+func TestBareFieldWord(t *testing.T) {
+	alias := entry("Q9", "Example Bank", "examplebank", "")
+	alias.Names = append(alias.Names, struct {
+		Text string `json:"text"`
+		Key  string `json:"key"`
+	}{"EXB", "exb"})
+	dir := NewDirectory([]DirEntry{alias})
+	for _, d := range []*Directory{nil, dir} {
+		for _, lines := range [][]string{
+			{"Bank: EXB", "Ask which one this is."},
+			{"Bank: EXB", "EXB stands for our blue pattern here."},
+			{"Kreditinstitut: Beispielkasse"},
+		} {
+			o, e := runOne(t, doc("d", lines...), d)
+			for _, m := range e.Orgs {
+				if m.Org != nil {
+					t.Errorf("%q: a bare word in a bank field is no organisation by the label alone: %+v %+v", lines, m, o.Organisations[*m.Org])
+				}
+			}
+		}
+	}
+	// a tie in the document still settles it
+	_, e := runOne(t, doc("d", "Bank: EXMB", "Account: 1234567890 IFSC: EXMB0123456"), nil)
+	if len(e.Orgs) != 1 || e.Orgs[0].Org == nil || *e.Orgs[0].SettledBy != "code" {
+		t.Errorf("a bare word that is the code beside it is settled by the code: %+v", e.Orgs)
+	}
+	_, e = runOne(t, doc("d", "Example Bureau Bank", "Bank: Example"), nil)
+	if len(e.Orgs) != 2 || e.Orgs[1].Org == nil || *e.Orgs[1].Org != *e.Orgs[0].Org {
+		t.Errorf("a bare word that leads a full name in the document is that name: %+v", e.Orgs)
+	}
+}
+
 func TestShortFormTies(t *testing.T) {
 	o, e := runOne(t, doc("d",
 		"ACME Life Assurance Company Limited",

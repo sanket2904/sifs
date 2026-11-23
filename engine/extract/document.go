@@ -57,7 +57,7 @@ func Extract(doc Document, ref Date) DocResult {
 		names = append(names, findFieldBanks(l, names)...)
 	}
 	for i := range names {
-		if !names[i].weak {
+		if names[i].kind == wholeName {
 			if k := matchKey(names[i].Text); k != "" {
 				names[i].Token, names[i].SettledBy = "name:"+k, "name"
 			}
@@ -65,7 +65,7 @@ func Extract(doc Document, ref Date) DocResult {
 	}
 	r.Ties = codeTies(names, r.Identifiers)
 	for _, n := range names {
-		if !n.weak {
+		if n.kind == wholeName {
 			r.Mentions = append(r.Mentions, n)
 		}
 	}
@@ -279,7 +279,7 @@ func shortForms(lines []Line, names []Mention, ids []Identifier, ties []Tie) []M
 		return m, true
 	}
 	for _, n := range names {
-		if n.weak {
+		if n.kind != wholeName {
 			m, _ := settle(n, n.words)
 			out = append(out, m)
 		}

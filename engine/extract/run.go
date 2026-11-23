@@ -143,7 +143,7 @@ func Run(docs []Document, dir *Directory, ref Date) Output {
 			r := &results[i]
 			for j := range r.Mentions {
 				m := &r.Mentions[j]
-				if m.Token == "" && m.weak {
+				if m.Token == "" && m.kind == acronymName {
 					if id, ok := dir.lookupName(m.Text); ok {
 						m.Token, m.SettledBy = "dir:"+id, "directory"
 					}

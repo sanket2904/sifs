@@ -13,9 +13,25 @@ type Mention struct {
 	Token     string // the organisation's token; "" when nothing settles it
 	SettledBy string // name, mention, code, directory, or ""
 	words     []string
-	weak      bool // an acronym with only a legal form: a name only by a tie
+	kind      nameKind
 	bank      bool // holds a word that says bank
 }
+
+// nameKind says how far a mention's own words settle who it is.
+type nameKind int
+
+const (
+	// wholeName holds an organisation word: its words settle it.
+	wholeName nameKind = iota
+	// acronymName is an acronym with only a legal form, such as "XYZ Ltd":
+	// an organisation, but only a tie in the document or the directory
+	// says which.
+	acronymName
+	// bareWord is one word with no organisation word in a bank field, such
+	// as "Bank: XYZ": only a tie in the document makes it an organisation.
+	// The field label alone does not, and neither does the directory.
+	bareWord
+)
 
 // Organisation-shaped words. They are words of a kind of organisation in
 // each language, never names of organisations.
@@ -297,7 +313,9 @@ func findNames(l Line) []Mention {
 			continue // a field label such as "Bank:" or "Remitting Bank:"
 		}
 		m := Mention{Span: l.span(toks[lo].b0, toks[hi].b1), words: words, bank: bank}
-		m.weak = !typed && names == 1 && toks[lo].allCaps() && utf8.RuneCountInString(toks[lo].text) <= 6
+		if !typed && names == 1 && toks[lo].allCaps() && utf8.RuneCountInString(toks[lo].text) <= 6 {
+			m.kind = acronymName
+		}
 		out = appendMention(out, m)
 	}
 	return append(out, findCJKNames(l)...)
@@ -361,8 +379,9 @@ func findCJKNames(l Line) []Mention {
 }
 
 // findFieldBanks reads the value of a field whose label says bank, such as
-// "Kreditinstitut: Commerzbank" or "Banks involved: A, B, C": each listed
-// item that is shaped like a name is a name of an organisation.
+// "Banks involved: Alpha Paribas, Beta Group": each listed item of two or
+// more words shaped like a name is a name of an organisation. A one-word
+// item is a bare word: the label may be wrong about it.
 func findFieldBanks(l Line, have []Mention) []Mention {
 	var out []Mention
 	t := l.Text
@@ -387,6 +406,9 @@ func findFieldBanks(l Line, have []Mention) []Mention {
 		}
 		for _, item := range splitItems(t, c+sep, end) {
 			m := Mention{Span: l.span(item[0], item[1]), words: strings.Fields(t[item[0]:item[1]])}
+			if len(m.words) == 1 {
+				m.kind = bareWord
+			}
 			if nameShaped(t[item[0]:item[1]]) && !overlapsMention(m.Span, have) && !overlapsMention(m.Span, out) {
 				out = append(out, m)
 			}
