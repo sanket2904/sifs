@@ -443,64 +443,64 @@
 		},
 		"passport_holder": {
 			"total": {
-				"right": 3,
+				"right": 4,
 				"wrong": 0,
-				"left_out": 1,
+				"left_out": 0,
 				"impossible": 0
 			},
 			"by_lang": {
 				"en": {
-					"right": 3,
+					"right": 4,
 					"wrong": 0,
-					"left_out": 1,
+					"left_out": 0,
 					"impossible": 0
 				}
 			}
 		},
 		"passport_number": {
 			"total": {
-				"right": 3,
+				"right": 4,
 				"wrong": 0,
-				"left_out": 1,
+				"left_out": 0,
 				"impossible": 0
 			},
 			"by_lang": {
 				"en": {
-					"right": 3,
+					"right": 4,
 					"wrong": 0,
-					"left_out": 1,
+					"left_out": 0,
 					"impossible": 0
 				}
 			}
 		},
 		"passport_expiry": {
 			"total": {
-				"right": 3,
+				"right": 4,
 				"wrong": 0,
-				"left_out": 1,
+				"left_out": 0,
 				"impossible": 0
 			},
 			"by_lang": {
 				"en": {
-					"right": 3,
+					"right": 4,
 					"wrong": 0,
-					"left_out": 1,
+					"left_out": 0,
 					"impossible": 0
 				}
 			}
 		},
 		"passport_current": {
 			"total": {
-				"right": 3,
+				"right": 4,
 				"wrong": 0,
-				"left_out": 1,
+				"left_out": 0,
 				"impossible": 0
 			},
 			"by_lang": {
 				"en": {
-					"right": 3,
+					"right": 4,
 					"wrong": 0,
-					"left_out": 1,
+					"left_out": 0,
 					"impossible": 0
 				}
 			}
@@ -666,26 +666,6 @@
 			"measure": "mentions",
 			"document": "hdfc-card-statement",
 			"what": "Example Books at 1:341 is example-books"
-		},
-		{
-			"measure": "passport_holder",
-			"document": "passport-asha-expired",
-			"what": "KALPIT, ASHA"
-		},
-		{
-			"measure": "passport_number",
-			"document": "passport-asha-expired",
-			"what": "SMP000417"
-		},
-		{
-			"measure": "passport_expiry",
-			"document": "passport-asha-expired",
-			"what": "2019-06-09"
-		},
-		{
-			"measure": "passport_current",
-			"document": "passport-asha-expired",
-			"what": "false"
 		}
 	],
 	"impossible": [

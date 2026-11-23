@@ -2004,7 +2004,24 @@
      "valid": null
     }
    ],
-   "links": []
+   "links": [],
+   "passport": {
+    "holder": {
+     "surname": "KALPIT",
+     "given": "ASHA"
+    },
+    "number": "i1",
+    "mrz": null,
+    "issued": "2009-06-10",
+    "expiry": "2019-06-09",
+    "expiry_at": {
+     "page": 1,
+     "start": 268,
+     "end": 279,
+     "text": "09 JUN 2019"
+    },
+    "current": false
+   }
   },
   {
    "id": "passport-rohan",
