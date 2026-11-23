@@ -74,14 +74,22 @@ export function mayBeCertainLink({ identifier, reasons, card }, mode, entries) {
 	});
 }
 
-// A passport's holder, number and expiry may be certain when they come with a
-// passport machine-readable zone whose check digits all pass. The number rests
-// on the zone, not on the printed number, so it must be the zone's number.
-export function mayBeCertainPassport(fact, { mrz, number }) {
+// A passport's holder, number and expiry may be certain when each is what the
+// passport's machine-readable zone says, and the zone is a certain passport
+// zone whose check digits all pass. A certain zone that is not the page's own
+// fails the run as a wrong identifier, so only the page's zone proves a fact.
+// The number rests on the zone, not on the printed number. A name ignores case
+// and spacing; an expiry's year is the zone's two digits of it.
+const name = (v) => v.normalize('NFKC').toUpperCase().replace(/\s+/gu, ' ').trim();
+export function mayBeCertainPassport(fact, { mrz, number, holder, expiry }) {
 	if (fact === 'current') return false;
-	const zone = mrz?.kind === 'mrz' ? parseMrz(mrz.value) : null;
+	if (mrz?.tier !== 'certain') return false;
+	const zone = mrz.kind === 'mrz' ? parseMrz(mrz.value) : null;
 	if (zone?.type !== 'passport' || zone.failed.length) return false;
-	return fact !== 'number' || number?.value === zone.number;
+	if (fact === 'number') return number?.value === zone.number;
+	if (fact === 'holder')
+		return name(holder.surname) === name(zone.surname) && name(holder.given) === name(zone.given);
+	return /^\d{4}-\d\d-\d\d$/.test(expiry) && expiry.slice(2).replaceAll('-', '') === zone.expiry;
 }
 
 // A same_org row may be certain when its reason is directory, the directory is

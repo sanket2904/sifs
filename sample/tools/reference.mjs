@@ -147,7 +147,12 @@ export function reference(labels, textSet, directory, banks) {
 				expiry_at: seen,
 				current: seen ? p.current : null
 			};
-			const zone = { mrz: byId.get(mrz), number: byId.get(doc.passport.number) };
+			const zone = {
+				mrz: byId.get(mrz),
+				number: byId.get(doc.passport.number),
+				holder: doc.passport.holder,
+				expiry: doc.passport.expiry
+			};
 			doc.passport.tiers = Object.fromEntries(
 				['holder', 'number', 'expiry', 'current']
 					.filter((f) => doc.passport[f] !== null)

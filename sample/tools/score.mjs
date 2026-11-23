@@ -6,7 +6,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SAMPLE } from './generate.mjs';
-import { KINDS } from './lib/ids.mjs';
+import { ibanProblem, KINDS } from './lib/ids.mjs';
 import { locate, readsBack } from './lib/find.mjs';
 import { readLabels } from './lib/labels.mjs';
 import { isMain } from './lib/main.mjs';
@@ -139,6 +139,11 @@ function parseOutput(output, textSet, entries) {
 			at.set(k, i);
 		});
 	};
+	// Why an IBAN cannot be certain, for the message that refuses it.
+	const ibanWhy = ({ kind, value }) => {
+		const problem = kind === 'iban' ? ibanProblem(value) : null;
+		return problem ? `: ${problem}` : '';
+	};
 	const tierOf = (v, where) =>
 		TIERS.has(v) ? v : fail(where, `needs a tier, "certain" or "likely" (${TIERS_HELP})`);
 	// The tiers of the facts an entry gives: one for each fact that is not null.
@@ -189,7 +194,10 @@ function parseOutput(output, textSet, entries) {
 				tier
 			};
 			if (tier === 'certain' && !mayBeCertainIdentifier(identifier, output.directory, entries))
-				fail(`${w}.tier`, `kind ${id.kind} cannot be certain here (${TIERS_HELP})`);
+				fail(
+					`${w}.tier`,
+					`kind ${id.kind} cannot be certain here${ibanWhy(identifier)} (${TIERS_HELP})`
+				);
 			identifiers.set(id.id, identifier);
 		});
 		oneRowPerSpan([...identifiers.values()], `${where}.identifiers`);
@@ -219,7 +227,10 @@ function parseOutput(output, textSet, entries) {
 			const tier = tierOf(link.tier, `${w}.tier`);
 			const test = { identifier, reasons: link.reasons, card: cards.get(org) };
 			if (tier === 'certain' && !mayBeCertainLink(test, output.directory, entries))
-				fail(`${w}.tier`, `no reason passes its test for certain (${TIERS_HELP})`);
+				fail(
+					`${w}.tier`,
+					`no reason passes its test for certain${ibanWhy(identifier)} (${TIERS_HELP})`
+				);
 			return { identifier, org, reasons: link.reasons, via: optionalIdent(link.via, w), tier };
 		});
 		let statement = null;
@@ -269,7 +280,7 @@ function parseOutput(output, textSet, entries) {
 			const given = { holder, number, expiry, current };
 			const facts = Object.keys(given).filter((f) => given[f] !== null);
 			const tiers = factTiers(p.tiers, facts, w, (fact) =>
-				mayBeCertainPassport(fact, { mrz, number })
+				mayBeCertainPassport(fact, { mrz, number, holder, expiry })
 			);
 			passport = {
 				holder,

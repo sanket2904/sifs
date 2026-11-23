@@ -196,8 +196,50 @@ const MUTANTS = [
 	[
 		'tools/lib/tiers.mjs',
 		"a certain passport number is the zone's number",
-		"return fact !== 'number' || number?.value === zone.number;",
+		"if (fact === 'number') return number?.value === zone.number;",
+		"if (fact === 'number') return true;"
+	],
+	[
+		'tools/lib/tiers.mjs',
+		'a certain passport fact rests on a certain zone',
+		"if (mrz?.tier !== 'certain') return false;",
+		''
+	],
+	[
+		'tools/lib/tiers.mjs',
+		"a certain passport holder is the zone's holder",
+		'return name(holder.surname) === name(zone.surname) && name(holder.given) === name(zone.given);',
 		'return true;'
+	],
+	[
+		'tools/lib/tiers.mjs',
+		"a certain passport expiry is the zone's expiry",
+		"return /^\\d{4}-\\d\\d-\\d\\d$/.test(expiry) && expiry.slice(2).replaceAll('-', '') === zone.expiry;",
+		'return true;'
+	],
+	[
+		'iban-registry.json',
+		'an IBAN of a country in the registry table is certain',
+		'\t\t"AT": {"length": 20, "bank_identifier": "1-5"},\n',
+		''
+	],
+	[
+		'tools/lib/ids.mjs',
+		"an IBAN's bank code sits where the registry table puts it",
+		'bank: [4 + first - 1, 4 + last]',
+		'bank: [4, 4 + last - first + 1]'
+	],
+	[
+		'tools/lib/ids.mjs',
+		"an IBAN has its country's length",
+		'if (country.length !== v.length)',
+		'if (false)'
+	],
+	[
+		'tools/score.mjs',
+		'refusing a certain IBAN says why',
+		"return problem ? `: ${problem}` : '';",
+		"return '';"
 	],
 	[
 		'tools/score.mjs',

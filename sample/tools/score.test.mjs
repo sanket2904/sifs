@@ -269,7 +269,8 @@ test('a missed link is left out and does not fail the run', () => {
 
 test('a wrong passport expiry is wrong, and a date where the labels cannot tell is wrong', () => {
 	const output = perfect();
-	doc(output, 'passport-rohan').passport.expiry = '2028-01-05';
+	// Its zone says 2028-01-04, so the wrong date can only be likely.
+	Object.assign(doc(output, 'passport-rohan').passport, { expiry: '2028-01-05' }).tiers.expiry = 'likely';
 	doc(output, 'passport-bad-mrz').passport.expiry = '2031-04-15';
 	const result = run(output);
 	assert.equal(totals(result, 'passport_expiry').wrong, 2);

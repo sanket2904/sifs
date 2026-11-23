@@ -1,18 +1,20 @@
+import { readFileSync } from 'node:fs';
+
 // Identifier kinds: how a value is written down (normalize) and whether it
 // passes its own check (valid). A kind with valid === null has no check.
-const IBAN_LENGTH = { CH: 21, DE: 22, ES: 24, FR: 27, GB: 22, IE: 22, NL: 18 };
-// Where the bank code sits in each country's IBAN.
-const IBAN_BANK_CODE = {
-	CH: [4, 9],
-	DE: [4, 12],
-	ES: [4, 8],
-	FR: [4, 9],
-	GB: [4, 8],
-	IE: [4, 8],
-	NL: [4, 8]
-};
+
+// Each country's IBAN length and where its bank identifier sits in the IBAN,
+// from the IBAN registry.
+const IBAN_REGISTRY = new Map(
+	Object.entries(
+		JSON.parse(readFileSync(new URL('../../iban-registry.json', import.meta.url), 'utf8')).countries
+	).map(([country, { length, bank_identifier }]) => {
+		const [first, last] = bank_identifier.split('-').map(Number);
+		return [country, { length, bank: [4 + first - 1, 4 + last] }];
+	})
+);
 export const ibanBankCode = (iban) => {
-	const [from, to] = IBAN_BANK_CODE[iban.slice(0, 2)] ?? [];
+	const [from, to] = IBAN_REGISTRY.get(iban.slice(0, 2))?.bank ?? [];
 	return { country: iban.slice(0, 2), code: from === undefined ? null : iban.slice(from, to) };
 };
 
@@ -24,13 +26,18 @@ export function ibanCheckDigits(country, bban) {
 	return String(98 - mod97(ibanDigits(bban + country + '00'))).padStart(2, '0');
 }
 
-function validIban(v) {
-	return (
-		/^[A-Z]{2}\d{2}[A-Z0-9]+$/.test(v) &&
-		IBAN_LENGTH[v.slice(0, 2)] === v.length &&
-		mod97(ibanDigits(v.slice(4) + v.slice(0, 4))) === 1
-	);
+// Why v is not an IBAN the registry table proves, or null when it is one.
+export function ibanProblem(v) {
+	if (!/^[A-Z]{2}\d{2}[A-Z0-9]+$/.test(v)) return 'it does not have the shape of an IBAN';
+	const country = IBAN_REGISTRY.get(v.slice(0, 2));
+	if (!country)
+		return `country ${v.slice(0, 2)} is not in the IBAN registry table, sample/iban-registry.json`;
+	if (country.length !== v.length)
+		return `an IBAN of ${v.slice(0, 2)} has ${country.length} characters, not ${v.length}`;
+	if (mod97(ibanDigits(v.slice(4) + v.slice(0, 4))) !== 1) return 'its check digits do not pass';
+	return null;
 }
+const validIban = (v) => ibanProblem(v) === null;
 
 export function luhnOk(digits) {
 	let sum = 0;

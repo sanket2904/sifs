@@ -138,18 +138,18 @@ A claim is `certain` only when the characters of an identifier prove it, or when
 
 | Claim | Certain when |
 | --- | --- |
-| Link with `iban-bank-code` | The identifier is an IBAN whose check digits pass. The scorer computes them again from `value`. An IBAN that passes is held at the institution that has its bank code in its country, so the link goes to that code's key. The directory is not needed. |
+| Link with `iban-bank-code` | The identifier is an IBAN that may be certain ("Identifier tiers"): its country is in the IBAN registry table, `iban-registry.json`, it has that country's length, and its check digits pass. The scorer checks all three again from `value`. Such an IBAN is held at the institution that has its bank code in its country, the bank identifier the table places, so the link goes to that code's key. The directory is not needed. For a country the table does not have, the link is likely, and its key is free-form. |
 | Link with `ifsc-prefix` | The IFSC may be certain ("Identifier tiers"), and the directory entry that the key's card gives lists its first four letters. An IFSC has no check digit, so with the directory off the link is likely. |
 | Link with `bic-institution` | The BIC may be certain ("Identifier tiers"), and the directory entry that the key's card gives lists a BIC with the same first eight characters, the institution ("Code keys"). A BIC has no check digit, so with the directory off the link is likely. |
 | Link with `paired-code`, `same-account`, `inside-iban` or `statement-header` alone | Never. These reasons are read from the page's layout. |
 | Statement `period`, `accounts`, `issuer` | Never. |
-| Passport `holder`, `number`, `expiry` | The passport's `mrz` is a passport machine-readable zone (it starts with `P`) whose check digits all pass. A visa's zone makes no passport fact certain. `number` is certain only when its identifier's value is the zone's document number. |
+| Passport `holder`, `number`, `expiry` | The passport's `mrz` is a certain identifier that is a passport machine-readable zone (it starts with `P`) whose check digits all pass, and the fact is what that zone says: `number` is the zone's document number, `holder` the zone's surname and given names (case and spacing ignored), and `expiry` the zone's date of expiry, whose year the zone gives in two digits. A visa's zone makes no passport fact certain. |
 | Passport `current` | Never. It depends on other documents and on the reference date. |
 | `same_org` row | Its reason is `directory` ("Same organisation" gives the test). |
 
 A link with several reasons is certain when one of them passes its test. An output that calls a claim certain where a table here does not allow it breaks the format. Mentions and cards carry no tier: they are what the extractor read, and the claims above are built on them. The answers carry no tier and are always likely, because "latest" and "current" are judgements over many documents.
 
-A claim is never certain when the identifier it rests on is only likely, except where the claim's own test proves the identifier. These are the exceptions, and the only ones. `iban-bank-code`, `ifsc-prefix` and `bic-institution` each include the identifier's own test, so a certain link's identifier always passes it, whatever tier the output gives the identifier. A passport's `holder`, `number` and `expiry` rest on the machine-readable zone, not on the printed number, whose kind has no check: the zone's check digits prove them, and `number` must be the zone's number. No statement fact is certain.
+A claim is never certain when the identifier it rests on is only likely, except where the claim's own test proves the identifier. These are the exceptions, and the only ones. `iban-bank-code`, `ifsc-prefix` and `bic-institution` each include the identifier's own test, so a certain link's identifier always passes it, whatever tier the output gives the identifier. A passport's `holder`, `number` and `expiry` rest on the machine-readable zone, not on the printed number, whose kind has no check: a certain passport fact names the zone it rests on, that zone is itself certain, so a zone that is not the page's own fails the run as a wrong certain identifier, and the fact equals what the zone says. No statement fact is certain.
 
 ### Identifier tiers
 
@@ -157,7 +157,7 @@ An identifier's tier is the tier of its kind: "this text is an IBAN", "this numb
 
 | Kind | Certain when |
 | --- | --- |
-| `iban` | Its check digits pass (mod 97). The scorer computes them again from `value`. |
+| `iban` | Its country is in the IBAN registry table, `iban-registry.json`, it has that country's length, and its check digits pass (mod 97). The scorer checks all three again from `value`. An IBAN of a country the table does not have is likely, however its check digits come out. |
 | `mrz` | It is a passport or visa zone whose check digits all pass. |
 | `ifsc`, `bic` | It has the code's shape, the directory is on, and a directory entry holds its institution code exactly ("Code keys"). Neither code has a check digit. |
 | `card` | Never. One string of digits in ten passes the Luhn check digit, so a pass proves little. |
@@ -186,11 +186,11 @@ A key that stands for an institution code is spelt one way, the same in every do
 | --- | --- | --- |
 | IFSC | Its first four letters, the bank. | `IFSC HDFC` |
 | BIC | Its first eight characters: the institution's four letters, its country and its two-character suffix. The three characters after them name a branch. | `BIC COBADEFF` |
-| IBAN | Its country and its bank code. | `IBAN DE 37040044` |
+| IBAN | Its country and its bank code, the bank identifier at the place `iban-registry.json` gives for the country. | `IBAN DE 37040044` |
 
 A BIC's institution is its first eight characters because in ISO 9362 those eight (the party prefix, the country and the party suffix) identify one business party, and the last three a branch of it. The two characters after the country belong to the party's identifier, not to a place inside it, so two parties can share the first six. Eight characters never put two institutions on one key; at worst one bank with two such codes has two keys, a split, which `same_org` rows join.
 
-A link by an identifier's own code reason (`ifsc-prefix` for an IFSC, `bic-institution` for a BIC, `iban-bank-code` for an IBAN) goes to that identifier's code key, or the output breaks the format. The scorer knows where the bank code sits in an IBAN for CH, DE, ES, FR, GB, IE and NL, the countries whose IBAN it can check; for an IBAN of another country it reads no code, checks no key, and only the labels can find a merge.
+A link by an identifier's own code reason (`ifsc-prefix` for an IFSC, `bic-institution` for a BIC, `iban-bank-code` for an IBAN) goes to that identifier's code key, or the output breaks the format. `iban-registry.json` holds, for every country of the IBAN registry that SWIFT publishes as the ISO 13616 registration authority, the IBAN's length and where its bank identifier sits; its header names the source and the release. For an IBAN of a country the table does not have, the scorer reads no code and checks no key: the IBAN and its link are likely, the key is free-form like a printed name's, and only the labels can find a merge.
 
 A key that stands for a printed name is free-form, but it is spelt from the name's text, such as `name:hdfcbank`, never from a counter or a position in the file. A claim's id is made from its keys ("Ids"), and a person's confirmation is kept by that id, so a key must come out the same when the extractor runs again over the same files.
 
@@ -213,7 +213,7 @@ Each claim can be named without its position in the file, so that a person's con
 
 ### What the tiers settle
 
-- A code-based link reason with the directory off: `iban-bank-code` is certain when the check digits pass, and the link goes to the IBAN's code key. `ifsc-prefix` and `bic-institution` are likely, because nothing has checked that the code is a bank's.
+- A code-based link reason with the directory off: `iban-bank-code` is certain when the IBAN's country is in `iban-registry.json`, its length is that country's and its check digits pass, and the link goes to the IBAN's code key. `ifsc-prefix` and `bic-institution` are likely, because nothing has checked that the code is a bank's.
 - A code that names no organisation printed in the document makes a key of its own, with `name` `null` when the directory is off. Its links are likely unless the table above makes them certain. A link from that code to a printed name's key is not allowed: the join is a `same_org` row.
 
 ## How the scorer decides
@@ -239,7 +239,7 @@ Each claim can be named without its position in the file, so that a person's con
 
 **Identifiers.** A matched identifier is right when its `kind` and `value` equal the label's, and its `valid` too unless the label's `valid` is `null`. The label gives `null` for a kind with no check, and for the PAN `ABCPK0000F`, which a shape check accepts and a strict check rejects; there either answer is right. An output identifier that matches no label is wrong. When it sits on a `not_identifiers` entry it is reported as a decoy. Each identifier is counted under the tier the output gives it.
 
-**Links.** A link is its identifier's kind and value and the organisation its key maps to. A link's identifier counts only when it matched a labelled identifier with the same kind and value. Rows in one document for the same link are one link: it holds the union of their reasons and `via` codes and is scored once, whatever order the rows are in. That includes rows at two keys of one organisation, such as an account held at a bank's name and at its code. The link is certain when one of its rows is certain. A link is right when the labels have that link and at least one of its reasons holds: it is among the label's reasons, or it is `iban-bank-code` on an IBAN whose check digits pass. Such an IBAN is held at the institution with its bank code, whatever reasons the label lists, so its link to its code key is right exactly when that key is the organisation the labels link the IBAN to. `paired-code` holds only when a `via` is an output identifier that matched the labelled `via` code. Every other link is wrong, with the first cause that applies: a merged, wrong-card or unmapped key, no such identifier in the labels, a labelled link with no reason that holds, a `not_links` entry, an identifier the labels mark invalid, an organisation the document does not settle, or nothing that ties them. A labelled link with no right output link is left out.
+**Links.** A link is its identifier's kind and value and the organisation its key maps to. A link's identifier counts only when it matched a labelled identifier with the same kind and value. Rows in one document for the same link are one link: it holds the union of their reasons and `via` codes and is scored once, whatever order the rows are in. That includes rows at two keys of one organisation, such as an account held at a bank's name and at its code. The link is certain when one of its rows is certain. A link is right when the labels have that link and at least one of its reasons holds: it is among the label's reasons, or it is `iban-bank-code` on an IBAN whose kind may be certain ("Identifier tiers"): its country is in `iban-registry.json`, it has that country's length, and its check digits pass. Such an IBAN is held at the institution with its bank code, whatever reasons the label lists, so its link to its code key is right exactly when that key is the organisation the labels link the IBAN to. `paired-code` holds only when a `via` is an output identifier that matched the labelled `via` code. Every other link is wrong, with the first cause that applies: a merged, wrong-card or unmapped key, no such identifier in the labels, a labelled link with no reason that holds, a `not_links` entry, an identifier the labels mark invalid, an organisation the document does not settle, or nothing that ties them. A labelled link with no right output link is left out.
 
 **Same organisation.** A `same_org` claim is right when both keys map to one labelled organisation. It is wrong when they map to two, or when either key maps to none, merges two organisations or has a wrong card. The labels have no `same_org` rows: they are scored against the labels' organisations. In each document, the keys that the document uses and that map to one labelled organisation must be joined by right claims, directly or through each other. Each join that is missing is left out. With the directory off, some of these joins only the directory could make, such as Commerzbank and the IBAN in `transfer-untied`, where three banks are named in one line; leaving them out is the right answer.
 
@@ -312,3 +312,8 @@ Each claim can be named without its position in the file, so that a person's con
 - A certain passport `number` must be the zone's document number.
 - The scorer keys every pair it groups by in a form no two different pairs share.
 - The table prints how many cards rest on likely rows only.
+
+## Changes in round 6
+
+- `iban-registry.json` gives every IBAN registry country's length and bank identifier place. An IBAN of any of them may be certain, and its key is spelt from that bank identifier. An IBAN of a country the table does not have is likely, with its link, and its key is free-form.
+- A certain passport `holder`, `number` or `expiry` needs a certain zone, and must be what that zone says.
