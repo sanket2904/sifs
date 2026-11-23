@@ -175,10 +175,41 @@ jobs:
       - run: node sample/tools/text.mjs --check
       - run: node sample/tools/check.mjs
 
+  go:
+    name: Go extractor
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: engine/go.mod
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Vet
+        working-directory: engine
+        run: go version && go vet ./...
+      - name: Tests
+        working-directory: engine
+        run: go test -race ./...
+      # The script rebuilds the four sample runs, scores each, and exits
+      # non-zero when any score fails; a run that differs from its
+      # committed file fails here too.
+      - name: Sample runs
+        run: |
+          sample/tools/go-m1a-runs.sh
+          git status --porcelain -- sample/runs
+          git diff --exit-code -- sample/runs
+          test -z "$(git status --porcelain -- sample/runs)"
+
   ci:
     name: ci
     if: ${{ always() }}
-    needs: [rust-tests, clippy, svelte-check, sample-tools]
+    needs: [rust-tests, clippy, svelte-check, sample-tools, go]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -187,4 +218,4 @@ jobs:
           RESULTS: ${{ toJSON(needs) }}
         run: |
           echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$RESULTS" | jq -e 'length == 4 and all(.[]; .result == "success")' > /dev/null
+          echo "$RESULTS" | jq -e 'length == 5 and all(.[]; .result == "success")' > /dev/null

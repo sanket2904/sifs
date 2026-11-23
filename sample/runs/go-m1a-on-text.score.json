@@ -1,0 +1,1559 @@
+{
+	"extractor": "go-m1a",
+	"directory": "on",
+	"text_set": "text",
+	"failed": false,
+	"measures": {
+		"mentions": {
+			"total": {
+				"right": 64,
+				"wrong": 0,
+				"left_out": 5,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 47,
+					"wrong": 0,
+					"left_out": 5,
+					"impossible": 0
+				},
+				"de": {
+					"right": 6,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 5,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {}
+		},
+		"org_directory": {
+			"total": {
+				"right": 27,
+				"wrong": 0,
+				"left_out": 40,
+				"impossible": 0
+			},
+			"by_lang": {},
+			"by_tier": {}
+		},
+		"identifier:account": {
+			"total": {
+				"right": 24,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 19,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 24,
+					"wrong": 0
+				}
+			}
+		},
+		"identifier:bic": {
+			"total": {
+				"right": 6,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"certain": {
+					"right": 4,
+					"wrong": 0
+				},
+				"likely": {
+					"right": 2,
+					"wrong": 0
+				}
+			}
+		},
+		"identifier:card": {
+			"total": {
+				"right": 3,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 3,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 3,
+					"wrong": 0
+				}
+			}
+		},
+		"identifier:fr_bank_code": {
+			"total": {
+				"right": 1,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 1,
+					"wrong": 0
+				}
+			}
+		},
+		"identifier:fr_branch_code": {
+			"total": {
+				"right": 1,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 1,
+					"wrong": 0
+				}
+			}
+		},
+		"identifier:fr_rib_key": {
+			"total": {
+				"right": 1,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 1,
+					"wrong": 0
+				}
+			}
+		},
+		"identifier:gb_sort_code": {
+			"total": {
+				"right": 1,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 1,
+					"wrong": 0
+				}
+			}
+		},
+		"identifier:iban": {
+			"total": {
+				"right": 7,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"certain": {
+					"right": 5,
+					"wrong": 0
+				},
+				"likely": {
+					"right": 2,
+					"wrong": 0
+				}
+			}
+		},
+		"identifier:ifsc": {
+			"total": {
+				"right": 13,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 11,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"certain": {
+					"right": 13,
+					"wrong": 0
+				}
+			}
+		},
+		"identifier:in_pan": {
+			"total": {
+				"right": 2,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"hi": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 2,
+					"wrong": 0
+				}
+			}
+		},
+		"identifier:mrz": {
+			"total": {
+				"right": 6,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 6,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"certain": {
+					"right": 5,
+					"wrong": 0
+				},
+				"likely": {
+					"right": 1,
+					"wrong": 0
+				}
+			}
+		},
+		"identifier:passport_number": {
+			"total": {
+				"right": 6,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 6,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 6,
+					"wrong": 0
+				}
+			}
+		},
+		"links": {
+			"total": {
+				"right": 49,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 34,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 2,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 4,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 3,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 6,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 27,
+					"wrong": 0
+				},
+				"certain": {
+					"right": 22,
+					"wrong": 0
+				}
+			}
+		},
+		"same_org": {
+			"total": {
+				"right": 22,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 14,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 3,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"fr": {
+					"right": 3,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 22,
+					"wrong": 0
+				}
+			}
+		},
+		"statement_period": {
+			"total": {
+				"right": 14,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 11,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 14,
+					"wrong": 0
+				}
+			}
+		},
+		"statement_account": {
+			"total": {
+				"right": 14,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 11,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 14,
+					"wrong": 0
+				}
+			}
+		},
+		"statement_issuer": {
+			"total": {
+				"right": 14,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 11,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 14,
+					"wrong": 0
+				}
+			}
+		},
+		"passport_holder": {
+			"total": {
+				"right": 5,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 5,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"certain": {
+					"right": 4,
+					"wrong": 0
+				},
+				"likely": {
+					"right": 1,
+					"wrong": 0
+				}
+			}
+		},
+		"passport_number": {
+			"total": {
+				"right": 5,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 5,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"certain": {
+					"right": 4,
+					"wrong": 0
+				},
+				"likely": {
+					"right": 1,
+					"wrong": 0
+				}
+			}
+		},
+		"passport_expiry": {
+			"total": {
+				"right": 4,
+				"wrong": 1,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 1,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"certain": {
+					"right": 3,
+					"wrong": 0
+				},
+				"likely": {
+					"right": 1,
+					"wrong": 1
+				}
+			}
+		},
+		"passport_current": {
+			"total": {
+				"right": 4,
+				"wrong": 1,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 4,
+					"wrong": 1,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 4,
+					"wrong": 1
+				}
+			}
+		},
+		"answer_latest_statement": {
+			"total": {
+				"right": 12,
+				"wrong": 0,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 9,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"de": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"hi": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				},
+				"ja": {
+					"right": 1,
+					"wrong": 0,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 12,
+					"wrong": 0
+				}
+			}
+		},
+		"answer_current_passport": {
+			"total": {
+				"right": 3,
+				"wrong": 1,
+				"left_out": 0,
+				"impossible": 0
+			},
+			"by_lang": {
+				"en": {
+					"right": 3,
+					"wrong": 1,
+					"left_out": 0,
+					"impossible": 0
+				}
+			},
+			"by_tier": {
+				"likely": {
+					"right": 3,
+					"wrong": 1
+				}
+			}
+		}
+	},
+	"merges": [],
+	"wrong_cards": [],
+	"wrong_attachments": [],
+	"splits": [
+		{
+			"organisation": "abn-amro",
+			"keys": [
+				"IBAN NL ABNA",
+				"name:abn-amro-statement:abnamrobanknv",
+				"name:mufg-remittance-ja:abnamro"
+			]
+		},
+		{
+			"organisation": "axis-bank",
+			"keys": [
+				"IFSC UTIB",
+				"name:axis-statement-scanned-annex:axisbank"
+			]
+		},
+		{
+			"organisation": "bank-of-baroda",
+			"keys": [
+				"IFSC BARB",
+				"name:scan-bob-letter:bankofbaroda",
+				"name:school-fee-banks:bankofbaroda"
+			]
+		},
+		{
+			"organisation": "commerzbank",
+			"keys": [
+				"BIC COBADEFF",
+				"IBAN DE 37040044",
+				"name:commerzbank-kontoauszug:commerzbank",
+				"name:rechnung-falsche-iban:commerzbank",
+				"name:transfer-untied:commerzbank"
+			]
+		},
+		{
+			"organisation": "hdfc-bank",
+			"keys": [
+				"IFSC HDFC",
+				"name:email-fee-payment:hdfcbank",
+				"name:hdfc-branch-letter:hdfcbank",
+				"name:hdfc-card-statement:hdfcbank",
+				"name:hdfc-letter-hindi:एचडीएफसीबैंक",
+				"name:hdfc-statement-aug:hdfcbank",
+				"name:hdfc-statement-jul:hdfcbank",
+				"name:hdfc-statement-sep:hdfcbank",
+				"name:neft-receipt-tied:hdfcbank"
+			]
+		},
+		{
+			"organisation": "icici-bank",
+			"keys": [
+				"IFSC ICIC",
+				"name:icici-lombard-notice:icicibank",
+				"name:neft-receipt-tied:icicibank"
+			]
+		},
+		{
+			"organisation": "la-banque-postale",
+			"keys": [
+				"BIC PSSTFRPP",
+				"IBAN FR 20041",
+				"name:rib-fr:labanquepostale"
+			]
+		},
+		{
+			"organisation": "mizuho-bank",
+			"keys": [
+				"name:mizuho-statement-ja:みずほ銀行",
+				"name:transfer-untied:mizuhobank"
+			]
+		},
+		{
+			"organisation": "mufg-bank",
+			"keys": [
+				"BIC BOTKJPJT",
+				"name:mufg-remittance-ja:三菱ufj銀行"
+			]
+		},
+		{
+			"organisation": "natwest",
+			"keys": [
+				"BIC NWBKGB2L",
+				"IBAN GB NWBK",
+				"name:natwest-statement:nationalwestminsterbank"
+			]
+		},
+		{
+			"organisation": "pnb",
+			"keys": [
+				"IFSC PUNB",
+				"name:scan-pnb-deposit:punjabnationalbank",
+				"name:school-fee-banks:punjabnationalbank"
+			]
+		},
+		{
+			"organisation": "sample-maple-bank",
+			"keys": [
+				"BIC SMBKCAT0",
+				"name:credit-advice-smbk-ca:smbk"
+			]
+		},
+		{
+			"organisation": "sample-moor-bank",
+			"keys": [
+				"BIC SMBKGB20",
+				"name:payroll-release-smbk-gb:smbk"
+			]
+		},
+		{
+			"organisation": "sbi",
+			"keys": [
+				"IFSC SBIN",
+				"name:sbi-passbook-hindi:स्टेटबैंकऑफ़इंडिया",
+				"name:school-fee-banks:statebankofindia"
+			]
+		},
+		{
+			"organisation": "utopia-passport-office",
+			"keys": [
+				"name:passport-asha-current:utopiapassportoffice",
+				"name:passport-meera-1988:utopiapassportoffice",
+				"name:passport-rohan:utopiapassportoffice"
+			]
+		}
+	],
+	"same_name": {
+		"one_organisation": 30,
+		"two_organisations": 1,
+		"pairs": [
+			{
+				"keys": [
+					"name:commerzbank-kontoauszug:commerzbank",
+					"name:rechnung-falsche-iban:commerzbank"
+				],
+				"organisations": [
+					"commerzbank",
+					"commerzbank"
+				]
+			},
+			{
+				"keys": [
+					"name:commerzbank-kontoauszug:commerzbank",
+					"name:transfer-untied:commerzbank"
+				],
+				"organisations": [
+					"commerzbank",
+					"commerzbank"
+				]
+			},
+			{
+				"keys": [
+					"name:credit-advice-smbk-ca:smbk",
+					"name:payroll-release-smbk-gb:smbk"
+				],
+				"organisations": [
+					"sample-maple-bank",
+					"sample-moor-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:email-fee-payment:hdfcbank",
+					"name:hdfc-branch-letter:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:email-fee-payment:hdfcbank",
+					"name:hdfc-card-statement:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:email-fee-payment:hdfcbank",
+					"name:hdfc-statement-aug:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:email-fee-payment:hdfcbank",
+					"name:hdfc-statement-jul:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:email-fee-payment:hdfcbank",
+					"name:hdfc-statement-sep:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:email-fee-payment:hdfcbank",
+					"name:neft-receipt-tied:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-branch-letter:hdfcbank",
+					"name:hdfc-card-statement:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-branch-letter:hdfcbank",
+					"name:hdfc-statement-aug:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-branch-letter:hdfcbank",
+					"name:hdfc-statement-jul:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-branch-letter:hdfcbank",
+					"name:hdfc-statement-sep:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-branch-letter:hdfcbank",
+					"name:neft-receipt-tied:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-card-statement:hdfcbank",
+					"name:hdfc-statement-aug:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-card-statement:hdfcbank",
+					"name:hdfc-statement-jul:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-card-statement:hdfcbank",
+					"name:hdfc-statement-sep:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-card-statement:hdfcbank",
+					"name:neft-receipt-tied:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-statement-aug:hdfcbank",
+					"name:hdfc-statement-jul:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-statement-aug:hdfcbank",
+					"name:hdfc-statement-sep:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-statement-aug:hdfcbank",
+					"name:neft-receipt-tied:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-statement-jul:hdfcbank",
+					"name:hdfc-statement-sep:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-statement-jul:hdfcbank",
+					"name:neft-receipt-tied:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:hdfc-statement-sep:hdfcbank",
+					"name:neft-receipt-tied:hdfcbank"
+				],
+				"organisations": [
+					"hdfc-bank",
+					"hdfc-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:icici-lombard-notice:icicibank",
+					"name:neft-receipt-tied:icicibank"
+				],
+				"organisations": [
+					"icici-bank",
+					"icici-bank"
+				]
+			},
+			{
+				"keys": [
+					"name:passport-asha-current:utopiapassportoffice",
+					"name:passport-meera-1988:utopiapassportoffice"
+				],
+				"organisations": [
+					"utopia-passport-office",
+					"utopia-passport-office"
+				]
+			},
+			{
+				"keys": [
+					"name:passport-asha-current:utopiapassportoffice",
+					"name:passport-rohan:utopiapassportoffice"
+				],
+				"organisations": [
+					"utopia-passport-office",
+					"utopia-passport-office"
+				]
+			},
+			{
+				"keys": [
+					"name:passport-meera-1988:utopiapassportoffice",
+					"name:passport-rohan:utopiapassportoffice"
+				],
+				"organisations": [
+					"utopia-passport-office",
+					"utopia-passport-office"
+				]
+			},
+			{
+				"keys": [
+					"name:rechnung-falsche-iban:commerzbank",
+					"name:transfer-untied:commerzbank"
+				],
+				"organisations": [
+					"commerzbank",
+					"commerzbank"
+				]
+			},
+			{
+				"keys": [
+					"name:scan-bob-letter:bankofbaroda",
+					"name:school-fee-banks:bankofbaroda"
+				],
+				"organisations": [
+					"bank-of-baroda",
+					"bank-of-baroda"
+				]
+			},
+			{
+				"keys": [
+					"name:scan-pnb-deposit:punjabnationalbank",
+					"name:school-fee-banks:punjabnationalbank"
+				],
+				"organisations": [
+					"pnb",
+					"pnb"
+				]
+			}
+		]
+	},
+	"likely_only_cards": [
+		"BIC SMBKCAT0",
+		"BIC SMBKGB20",
+		"name:abn-amro-statement:abnamrobanknv",
+		"name:axis-statement-scanned-annex:axisbank",
+		"name:commerzbank-kontoauszug:commerzbank",
+		"name:credit-advice-smbk-ca:smbk",
+		"name:credit-union-statement:sampletoncreditunion",
+		"name:deutsche-bank-brief:deutschebank",
+		"name:deutsche-bank-brief:deutschenbundesbank",
+		"name:email-fee-payment:hdfcbank",
+		"name:hdfc-branch-letter:hdfcbank",
+		"name:hdfc-card-statement:hdfcbank",
+		"name:hdfc-letter-hindi:एचडीएफसीबैंक",
+		"name:hdfc-life-receipt:hdfclifeinsurancecompany",
+		"name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation",
+		"name:hdfc-statement-aug:hdfcbank",
+		"name:hdfc-statement-jul:hdfcbank",
+		"name:hdfc-statement-sep:hdfcbank",
+		"name:icici-lombard-notice:icicibank",
+		"name:icici-lombard-notice:icicilombardgeneralinsurancecompany",
+		"name:invoice-lookalike-numbers:samplesupplies",
+		"name:kotak-statement:kotakmahindrabank",
+		"name:mizuho-statement-ja:みずほ銀行",
+		"name:mufg-remittance-ja:abnamro",
+		"name:mufg-remittance-ja:三菱ufj信託銀行",
+		"name:mufg-remittance-ja:三菱ufj銀行",
+		"name:natwest-statement:nationalwestminsterbank",
+		"name:neft-receipt-tied:hdfcbank",
+		"name:neft-receipt-tied:icicibank",
+		"name:pan-form-hindi:सैंपलटेक्नोलॉजीज़प्राइवेटलिमिटेड",
+		"name:passport-asha-current:utopiapassportoffice",
+		"name:passport-meera-1988:utopiapassportoffice",
+		"name:passport-rohan:utopiapassportoffice",
+		"name:payroll-release-smbk-gb:smbk",
+		"name:rechnung-falsche-iban:commerzbank",
+		"name:rechnung-falsche-iban:musterfirmaschreinereigmbh",
+		"name:rib-fr:labanquepostale",
+		"name:sahakari-statement:samplenagarsahakaribank",
+		"name:sbi-passbook-hindi:स्टेटबैंकऑफ़इंडिया",
+		"name:scan-bob-letter:bankofbaroda",
+		"name:scan-pnb-deposit:punjabnationalbank",
+		"name:school-fee-banks:bankofbaroda",
+		"name:school-fee-banks:bankofindia",
+		"name:school-fee-banks:centralbankofindia",
+		"name:school-fee-banks:punjabnationalbank",
+		"name:school-fee-banks:punjabsindbank",
+		"name:school-fee-banks:samplepublicschool",
+		"name:school-fee-banks:statebankofindia",
+		"name:school-fee-banks:unionbankofindia",
+		"name:transfer-untied:bnpparibas",
+		"name:transfer-untied:commerzbank",
+		"name:transfer-untied:mizuhobank",
+		"name:utility-bill:samplepowerdistribution"
+	],
+	"wrong": [
+		{
+			"measure": "passport_expiry",
+			"document": "passport-meera-1988",
+			"what": "2098-06-02, labels 1998-06-02",
+			"tier": "likely"
+		},
+		{
+			"measure": "passport_current",
+			"document": "passport-meera-1988",
+			"what": "true, labels false",
+			"tier": "likely"
+		},
+		{
+			"measure": "answer_current_passport",
+			"document": "passport-meera-1988",
+			"what": "KALPIT, MEERA: not in the answers",
+			"tier": "likely"
+		}
+	],
+	"left_out": [
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "IBAN FR 20041 (la-banque-postale) directory none, labels Q3206431",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:abn-amro-statement:abnamrobanknv (abn-amro) directory none, labels Q287471",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:axis-statement-scanned-annex:axisbank (axis-bank) directory none, labels Q2003549",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:commerzbank-kontoauszug:commerzbank (commerzbank) directory none, labels Q157617",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:deutsche-bank-brief:deutschebank (deutsche-bank) directory none, labels Q66048",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:deutsche-bank-brief:deutschenbundesbank (bundesbank) directory none, labels Q162222",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:email-fee-payment:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-branch-letter:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-card-statement:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-letter-hindi:एचडीएफसीबैंक (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-life-receipt:hdfclifeinsurancecompany (hdfc-life) directory none, labels Q5629189",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation (hdfc-ltd) directory none, labels Q1446319",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-statement-aug:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-statement-jul:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:hdfc-statement-sep:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:icici-lombard-notice:icicibank (icici-bank) directory none, labels Q1653258",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:icici-lombard-notice:icicilombardgeneralinsurancecompany (icici-lombard) directory none, labels Q5969591",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:kotak-statement:kotakmahindrabank (kotak) directory none, labels Q2040404",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:mizuho-statement-ja:みずほ銀行 (mizuho-bank) directory none, labels Q2882956",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:mufg-remittance-ja:abnamro (abn-amro) directory none, labels Q287471",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:mufg-remittance-ja:三菱ufj信託銀行 (mufg-trust) directory none, labels Q6883178",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:mufg-remittance-ja:三菱ufj銀行 (mufg-bank) directory none, labels Q988284",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:natwest-statement:nationalwestminsterbank (natwest) directory none, labels Q2740021",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:neft-receipt-tied:hdfcbank (hdfc-bank) directory none, labels Q631047",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:neft-receipt-tied:icicibank (icici-bank) directory none, labels Q1653258",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:rechnung-falsche-iban:commerzbank (commerzbank) directory none, labels Q157617",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:rib-fr:labanquepostale (la-banque-postale) directory none, labels Q3206431",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:sbi-passbook-hindi:स्टेटबैंकऑफ़इंडिया (sbi) directory none, labels Q1340361",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:scan-bob-letter:bankofbaroda (bank-of-baroda) directory none, labels Q2003797",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:scan-pnb-deposit:punjabnationalbank (pnb) directory none, labels Q2743499",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:bankofbaroda (bank-of-baroda) directory none, labels Q2003797",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:bankofindia (bank-of-india) directory none, labels Q2004439",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:centralbankofindia (central-bank-of-india) directory none, labels Q2007090",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:punjabnationalbank (pnb) directory none, labels Q2743499",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:punjabsindbank (punjab-sind-bank) directory none, labels Q2003302",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:statebankofindia (sbi) directory none, labels Q1340361",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:school-fee-banks:unionbankofindia (union-bank-of-india) directory none, labels Q2004078",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:transfer-untied:bnpparibas (bnp-paribas) directory none, labels Q499707",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:transfer-untied:commerzbank (commerzbank) directory none, labels Q157617",
+			"tier": null
+		},
+		{
+			"measure": "org_directory",
+			"document": null,
+			"what": "name:transfer-untied:mizuhobank (mizuho-bank) directory none, labels Q2882956",
+			"tier": null
+		},
+		{
+			"measure": "mentions",
+			"document": "natwest-statement",
+			"what": "Example Cafe at 1:339 is example-cafe",
+			"tier": null
+		},
+		{
+			"measure": "mentions",
+			"document": "neft-receipt-tied",
+			"what": "Sample Traders at 1:250 is sample-traders",
+			"tier": null
+		},
+		{
+			"measure": "mentions",
+			"document": "transfer-rows",
+			"what": "Sample Traders at 1:192 is sample-traders",
+			"tier": null
+		},
+		{
+			"measure": "mentions",
+			"document": "hdfc-card-statement",
+			"what": "Sample Grocers at 1:299 is sample-grocers",
+			"tier": null
+		},
+		{
+			"measure": "mentions",
+			"document": "hdfc-card-statement",
+			"what": "Example Books at 1:341 is example-books",
+			"tier": null
+		}
+	],
+	"impossible": []
+}
