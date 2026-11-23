@@ -1,0 +1,2229 @@
+{
+  "answers": {
+    "current_passport": [
+      {
+        "document": "passport-bad-mrz",
+        "holder": "ERIKSSON, ANNA MARIA"
+      },
+      {
+        "document": "passport-asha-current",
+        "holder": "KALPIT, ASHA"
+      },
+      {
+        "document": "passport-rohan",
+        "holder": "KALPIT, ROHAN"
+      }
+    ],
+    "latest_statement": [
+      {
+        "account": "50100417263958",
+        "document": "hdfc-statement-sep"
+      },
+      {
+        "account": "1234567890",
+        "document": "kotak-statement"
+      },
+      {
+        "account": "004512000789",
+        "document": "sahakari-statement"
+      },
+      {
+        "account": "88120457",
+        "document": "credit-union-statement"
+      },
+      {
+        "account": "GB29NWBK60161331926819",
+        "document": "natwest-statement"
+      },
+      {
+        "account": "NL91ABNA0417164300",
+        "document": "abn-amro-statement"
+      },
+      {
+        "account": "DE89370400440532013000",
+        "document": "commerzbank-kontoauszug"
+      },
+      {
+        "account": "4242424242424242",
+        "document": "hdfc-card-statement"
+      },
+      {
+        "account": "30123456789",
+        "document": "sbi-passbook-hindi"
+      },
+      {
+        "account": "12345678",
+        "document": "mizuho-statement-ja"
+      },
+      {
+        "account": "917010012345678",
+        "document": "axis-statement-scanned-annex"
+      },
+      {
+        "account": "612345678",
+        "document": "hdfc-ltd-loan-2019"
+      }
+    ]
+  },
+  "directory": "off",
+  "documents": [
+    {
+      "id": "hdfc-statement-sep",
+      "identifiers": [
+        {
+          "end": 207,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 193,
+          "text": "50100417263958",
+          "valid": null,
+          "value": "50100417263958"
+        },
+        {
+          "end": 225,
+          "id": "i2",
+          "kind": "ifsc",
+          "page": 1,
+          "start": 214,
+          "text": "HDFC0SAMPL1",
+          "valid": true,
+          "value": "HDFC0SAMPL1"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-1",
+          "reasons": [
+            "paired-code",
+            "statement-header"
+          ],
+          "via": "i2"
+        },
+        {
+          "identifier": "i2",
+          "org": "org-1",
+          "reasons": [
+            "ifsc-prefix"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 73,
+          "org": "org-1",
+          "page": 1,
+          "settled_by": "name",
+          "start": 60,
+          "text": "HDFC Bank Ltd"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1"
+        ],
+        "from": "2026-09-01",
+        "issuer": "org-1",
+        "to": "2026-09-30"
+      }
+    },
+    {
+      "id": "hdfc-statement-jul",
+      "identifiers": [
+        {
+          "end": 207,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 193,
+          "text": "50100417263958",
+          "valid": null,
+          "value": "50100417263958"
+        },
+        {
+          "end": 225,
+          "id": "i2",
+          "kind": "ifsc",
+          "page": 1,
+          "start": 214,
+          "text": "HDFC0SAMPL1",
+          "valid": true,
+          "value": "HDFC0SAMPL1"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-1",
+          "reasons": [
+            "paired-code",
+            "statement-header"
+          ],
+          "via": "i2"
+        },
+        {
+          "identifier": "i2",
+          "org": "org-1",
+          "reasons": [
+            "ifsc-prefix"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 73,
+          "org": "org-1",
+          "page": 1,
+          "settled_by": "name",
+          "start": 60,
+          "text": "HDFC Bank Ltd"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1"
+        ],
+        "from": "2026-07-01",
+        "issuer": "org-1",
+        "to": "2026-07-31"
+      }
+    },
+    {
+      "id": "hdfc-statement-aug",
+      "identifiers": [
+        {
+          "end": 207,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 193,
+          "text": "50100417263958",
+          "valid": null,
+          "value": "50100417263958"
+        },
+        {
+          "end": 225,
+          "id": "i2",
+          "kind": "ifsc",
+          "page": 1,
+          "start": 214,
+          "text": "HDFC0SAMPL1",
+          "valid": true,
+          "value": "HDFC0SAMPL1"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-1",
+          "reasons": [
+            "paired-code",
+            "statement-header"
+          ],
+          "via": "i2"
+        },
+        {
+          "identifier": "i2",
+          "org": "org-1",
+          "reasons": [
+            "ifsc-prefix"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 73,
+          "org": "org-1",
+          "page": 1,
+          "settled_by": "name",
+          "start": 60,
+          "text": "HDFC Bank Ltd"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1"
+        ],
+        "from": "2026-08-01",
+        "issuer": "org-1",
+        "to": "2026-08-31"
+      }
+    },
+    {
+      "id": "kotak-statement",
+      "identifiers": [
+        {
+          "end": 152,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 142,
+          "text": "1234567890",
+          "valid": null,
+          "value": "1234567890"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-2",
+          "reasons": [
+            "statement-header"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 79,
+          "org": "org-2",
+          "page": 1,
+          "settled_by": "name",
+          "start": 60,
+          "text": "Kotak Mahindra Bank"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1"
+        ],
+        "from": "2026-10-01",
+        "issuer": "org-2",
+        "to": "2026-10-31"
+      }
+    },
+    {
+      "id": "sahakari-statement",
+      "identifiers": [
+        {
+          "end": 165,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 153,
+          "text": "004512000789",
+          "valid": null,
+          "value": "004512000789"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-3",
+          "reasons": [
+            "statement-header"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 90,
+          "org": "org-3",
+          "page": 1,
+          "settled_by": "name",
+          "start": 60,
+          "text": "Sample Nagar Sahakari Bank Ltd"
+        },
+        {
+          "end": 370,
+          "org": "org-3",
+          "page": 1,
+          "settled_by": "name",
+          "start": 344,
+          "text": "Sample Nagar Sahakari Bank"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1"
+        ],
+        "from": "2026-10-01",
+        "issuer": "org-3",
+        "to": "2026-10-31"
+      }
+    },
+    {
+      "id": "credit-union-statement",
+      "identifiers": [
+        {
+          "end": 155,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 147,
+          "text": "88120457",
+          "valid": null,
+          "value": "88120457"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-4",
+          "reasons": [
+            "statement-header"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 82,
+          "org": "org-4",
+          "page": 1,
+          "settled_by": "name",
+          "start": 60,
+          "text": "Sampleton Credit Union"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1"
+        ],
+        "from": "2026-10-01",
+        "issuer": "org-4",
+        "to": "2026-10-31"
+      }
+    },
+    {
+      "id": "natwest-statement",
+      "identifiers": [
+        {
+          "end": 156,
+          "id": "i1",
+          "kind": "gb_sort_code",
+          "page": 1,
+          "start": 148,
+          "text": "60-16-13",
+          "valid": true,
+          "value": "601613"
+        },
+        {
+          "end": 181,
+          "id": "i2",
+          "kind": "account",
+          "page": 1,
+          "start": 173,
+          "text": "31926819",
+          "valid": null,
+          "value": "31926819"
+        },
+        {
+          "end": 215,
+          "id": "i3",
+          "kind": "iban",
+          "page": 1,
+          "start": 188,
+          "text": "GB29 NWBK 6016 1331 9268 19",
+          "valid": true,
+          "value": "GB29NWBK60161331926819"
+        },
+        {
+          "end": 229,
+          "id": "i4",
+          "kind": "bic",
+          "page": 1,
+          "start": 221,
+          "text": "NWBKGB2L",
+          "valid": true,
+          "value": "NWBKGB2L"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-5",
+          "reasons": [
+            "inside-iban"
+          ]
+        },
+        {
+          "identifier": "i2",
+          "org": "org-5",
+          "reasons": [
+            "same-account",
+            "statement-header"
+          ]
+        },
+        {
+          "identifier": "i3",
+          "org": "org-5",
+          "reasons": [
+            "iban-bank-code",
+            "paired-code",
+            "statement-header"
+          ],
+          "via": "i4"
+        },
+        {
+          "identifier": "i4",
+          "org": "org-5",
+          "reasons": [
+            "bic-institution"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 89,
+          "org": "org-5",
+          "page": 1,
+          "settled_by": "name",
+          "start": 60,
+          "text": "National Westminster Bank Plc"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i2",
+          "i3"
+        ],
+        "from": "2026-09-01",
+        "issuer": "org-5",
+        "to": "2026-09-30"
+      }
+    },
+    {
+      "id": "abn-amro-statement",
+      "identifiers": [
+        {
+          "end": 173,
+          "id": "i1",
+          "kind": "iban",
+          "page": 1,
+          "start": 151,
+          "text": "NL91 ABNA 0417 1643 00",
+          "valid": true,
+          "value": "NL91ABNA0417164300"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-6",
+          "reasons": [
+            "iban-bank-code",
+            "statement-header"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 78,
+          "org": "org-6",
+          "page": 1,
+          "settled_by": "name",
+          "start": 60,
+          "text": "ABN AMRO Bank N.V."
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1"
+        ],
+        "from": "2026-08-01",
+        "issuer": "org-6",
+        "to": "2026-08-31"
+      }
+    },
+    {
+      "id": "commerzbank-kontoauszug",
+      "identifiers": [
+        {
+          "end": 241,
+          "id": "i1",
+          "kind": "iban",
+          "page": 1,
+          "start": 214,
+          "text": "DE89 3704 0044 0532 0130 00",
+          "valid": true,
+          "value": "DE89370400440532013000"
+        },
+        {
+          "end": 258,
+          "id": "i2",
+          "kind": "bic",
+          "page": 1,
+          "start": 247,
+          "text": "COBADEFFXXX",
+          "valid": true,
+          "value": "COBADEFFXXX"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-7",
+          "reasons": [
+            "iban-bank-code",
+            "paired-code",
+            "statement-header"
+          ],
+          "via": "i2"
+        },
+        {
+          "identifier": "i2",
+          "org": "org-7",
+          "reasons": [
+            "bic-institution"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 113,
+          "org": "org-7",
+          "page": 1,
+          "settled_by": "name",
+          "start": 99,
+          "text": "Commerzbank AG"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1"
+        ],
+        "from": "2026-10-01",
+        "issuer": "org-7",
+        "to": "2026-10-31"
+      }
+    },
+    {
+      "id": "deutsche-bank-brief",
+      "identifiers": [],
+      "links": [],
+      "orgs": [
+        {
+          "end": 106,
+          "org": "org-8",
+          "page": 1,
+          "settled_by": "name",
+          "start": 93,
+          "text": "Deutsche Bank"
+        },
+        {
+          "end": 224,
+          "org": "org-9",
+          "page": 1,
+          "settled_by": "name",
+          "start": 204,
+          "text": "Deutschen Bundesbank"
+        },
+        {
+          "end": 373,
+          "org": "org-8",
+          "page": 1,
+          "settled_by": "name",
+          "start": 357,
+          "text": "Deutsche Bank AG"
+        }
+      ]
+    },
+    {
+      "id": "rechnung-falsche-iban",
+      "identifiers": [
+        {
+          "end": 363,
+          "id": "i1",
+          "kind": "iban",
+          "page": 1,
+          "start": 336,
+          "text": "DE88 3704 0044 0532 0130 00",
+          "valid": false,
+          "value": "DE88370400440532013000"
+        }
+      ],
+      "links": [],
+      "orgs": [
+        {
+          "end": 124,
+          "org": "org-10",
+          "page": 1,
+          "settled_by": "name",
+          "start": 96,
+          "text": "Musterfirma Schreinerei GmbH"
+        },
+        {
+          "end": 391,
+          "org": "org-7",
+          "page": 1,
+          "settled_by": "name",
+          "start": 380,
+          "text": "Commerzbank"
+        }
+      ]
+    },
+    {
+      "id": "invoice-lookalike-numbers",
+      "identifiers": [
+        {
+          "end": 257,
+          "id": "i1",
+          "kind": "iban",
+          "page": 1,
+          "start": 230,
+          "text": "GB28 NWBK 6016 1331 9268 19",
+          "valid": false,
+          "value": "GB28NWBK60161331926819"
+        },
+        {
+          "end": 291,
+          "id": "i2",
+          "kind": "card",
+          "page": 1,
+          "start": 272,
+          "text": "4111 1111 1111 1112",
+          "valid": false,
+          "value": "4111111111111112"
+        }
+      ],
+      "links": [],
+      "orgs": [
+        {
+          "end": 77,
+          "org": "org-11",
+          "page": 1,
+          "settled_by": "name",
+          "start": 58,
+          "text": "Sample Supplies Ltd"
+        }
+      ]
+    },
+    {
+      "id": "neft-receipt-tied",
+      "identifiers": [
+        {
+          "end": 211,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 197,
+          "text": "50100417263958",
+          "valid": null,
+          "value": "50100417263958"
+        },
+        {
+          "end": 229,
+          "id": "i2",
+          "kind": "ifsc",
+          "page": 1,
+          "start": 218,
+          "text": "HDFC0SAMPL1",
+          "valid": true,
+          "value": "HDFC0SAMPL1"
+        },
+        {
+          "end": 293,
+          "id": "i3",
+          "kind": "account",
+          "page": 1,
+          "start": 281,
+          "text": "002101234567",
+          "valid": null,
+          "value": "002101234567"
+        },
+        {
+          "end": 311,
+          "id": "i4",
+          "kind": "ifsc",
+          "page": 1,
+          "start": 300,
+          "text": "ICIC0SAMPL2",
+          "valid": true,
+          "value": "ICIC0SAMPL2"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-1",
+          "reasons": [
+            "paired-code"
+          ],
+          "via": "i2"
+        },
+        {
+          "identifier": "i2",
+          "org": "org-1",
+          "reasons": [
+            "ifsc-prefix"
+          ]
+        },
+        {
+          "identifier": "i3",
+          "org": "org-13",
+          "reasons": [
+            "paired-code"
+          ],
+          "via": "i4"
+        },
+        {
+          "identifier": "i4",
+          "org": "org-13",
+          "reasons": [
+            "ifsc-prefix"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 62,
+          "org": "org-1",
+          "page": 1,
+          "settled_by": "code",
+          "start": 58,
+          "text": "HDFC"
+        },
+        {
+          "end": 245,
+          "org": "org-1",
+          "page": 1,
+          "settled_by": "name",
+          "start": 236,
+          "text": "HDFC Bank"
+        },
+        {
+          "end": 328,
+          "org": "org-12",
+          "page": 1,
+          "settled_by": "name",
+          "start": 318,
+          "text": "ICICI Bank"
+        }
+      ]
+    },
+    {
+      "id": "transfer-untied",
+      "identifiers": [
+        {
+          "end": 217,
+          "id": "i1",
+          "kind": "iban",
+          "page": 1,
+          "start": 190,
+          "text": "DE89 3704 0044 0532 0130 00",
+          "valid": true,
+          "value": "DE89370400440532013000"
+        },
+        {
+          "end": 276,
+          "id": "i2",
+          "kind": "account",
+          "page": 1,
+          "start": 266,
+          "text": "7730194522",
+          "valid": null,
+          "value": "7730194522"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-7",
+          "reasons": [
+            "iban-bank-code"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 345,
+          "org": "org-7",
+          "page": 1,
+          "settled_by": "name",
+          "start": 334,
+          "text": "Commerzbank"
+        },
+        {
+          "end": 358,
+          "org": "org-14",
+          "page": 1,
+          "settled_by": "name",
+          "start": 347,
+          "text": "BNP Paribas"
+        },
+        {
+          "end": 371,
+          "org": "org-15",
+          "page": 1,
+          "settled_by": "name",
+          "start": 360,
+          "text": "Mizuho Bank"
+        }
+      ]
+    },
+    {
+      "id": "transfer-rows",
+      "identifiers": [
+        {
+          "end": 114,
+          "id": "i1",
+          "kind": "ifsc",
+          "page": 1,
+          "start": 103,
+          "text": "HDFC0SAMPL1",
+          "valid": true,
+          "value": "HDFC0SAMPL1"
+        },
+        {
+          "end": 177,
+          "id": "i2",
+          "kind": "account",
+          "page": 1,
+          "start": 163,
+          "text": "50100417263958",
+          "valid": null,
+          "value": "50100417263958"
+        },
+        {
+          "end": 191,
+          "id": "i3",
+          "kind": "ifsc",
+          "page": 1,
+          "start": 180,
+          "text": "ICIC0SAMPL2",
+          "valid": true,
+          "value": "ICIC0SAMPL2"
+        },
+        {
+          "end": 256,
+          "id": "i4",
+          "kind": "account",
+          "page": 1,
+          "start": 244,
+          "text": "002101234567",
+          "valid": null,
+          "value": "002101234567"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-1",
+          "reasons": [
+            "ifsc-prefix"
+          ]
+        },
+        {
+          "identifier": "i2",
+          "org": "org-1",
+          "reasons": [
+            "paired-code"
+          ],
+          "via": "i1"
+        },
+        {
+          "identifier": "i3",
+          "org": "org-13",
+          "reasons": [
+            "ifsc-prefix"
+          ]
+        },
+        {
+          "identifier": "i4",
+          "org": "org-13",
+          "reasons": [
+            "paired-code"
+          ],
+          "via": "i3"
+        }
+      ],
+      "orgs": []
+    },
+    {
+      "id": "hdfc-branch-letter",
+      "identifiers": [],
+      "links": [],
+      "orgs": [
+        {
+          "end": 74,
+          "org": "org-1",
+          "page": 1,
+          "settled_by": "name",
+          "start": 57,
+          "text": "HDFC Bank Limited"
+        },
+        {
+          "end": 289,
+          "org": "org-1",
+          "page": 1,
+          "settled_by": "name",
+          "start": 280,
+          "text": "HDFC Bank"
+        }
+      ]
+    },
+    {
+      "id": "hdfc-letter-hindi",
+      "identifiers": [],
+      "links": [],
+      "orgs": [
+        {
+          "end": 110,
+          "org": "org-16",
+          "page": 1,
+          "settled_by": "name",
+          "start": 97,
+          "text": "एचडीएफसी बैंक"
+        },
+        {
+          "end": 304,
+          "org": "org-16",
+          "page": 1,
+          "settled_by": "name",
+          "start": 291,
+          "text": "एचडीएफसी बैंक"
+        }
+      ]
+    },
+    {
+      "id": "rent-receipt",
+      "identifiers": [
+        {
+          "end": 253,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 239,
+          "text": "33445566778899",
+          "valid": null,
+          "value": "33445566778899"
+        }
+      ],
+      "links": [],
+      "orgs": []
+    },
+    {
+      "id": "email-fee-payment",
+      "identifiers": [],
+      "links": [],
+      "orgs": [
+        {
+          "end": 242,
+          "org": "org-1",
+          "page": 1,
+          "settled_by": "name",
+          "start": 234,
+          "text": "hdfcbank"
+        },
+        {
+          "end": 268,
+          "org": "org-1",
+          "page": 1,
+          "settled_by": "name",
+          "start": 259,
+          "text": "HDFC BANK"
+        }
+      ]
+    },
+    {
+      "id": "hdfc-card-statement",
+      "identifiers": [
+        {
+          "end": 149,
+          "id": "i1",
+          "kind": "card",
+          "page": 1,
+          "start": 130,
+          "text": "4242 4242 4242 4242",
+          "valid": true,
+          "value": "4242424242424242"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-1",
+          "reasons": [
+            "statement-header"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 69,
+          "org": "org-1",
+          "page": 1,
+          "settled_by": "name",
+          "start": 60,
+          "text": "HDFC Bank"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1"
+        ],
+        "from": "2026-08-16",
+        "issuer": "org-1",
+        "to": "2026-09-15"
+      }
+    },
+    {
+      "id": "hdfc-life-receipt",
+      "identifiers": [
+        {
+          "end": 241,
+          "id": "i1",
+          "kind": "card",
+          "page": 1,
+          "start": 222,
+          "text": "5555 5555 5555 4444",
+          "valid": true,
+          "value": "5555555555554444"
+        }
+      ],
+      "links": [],
+      "orgs": [
+        {
+          "end": 93,
+          "org": "org-17",
+          "page": 1,
+          "settled_by": "name",
+          "start": 58,
+          "text": "HDFC Life Insurance Company Limited"
+        },
+        {
+          "end": 274,
+          "org": "org-17",
+          "page": 1,
+          "settled_by": "mention",
+          "start": 265,
+          "text": "HDFC Life"
+        }
+      ]
+    },
+    {
+      "id": "icici-lombard-notice",
+      "identifiers": [],
+      "links": [],
+      "orgs": [
+        {
+          "end": 104,
+          "org": "org-18",
+          "page": 1,
+          "settled_by": "name",
+          "start": 57,
+          "text": "ICICI Lombard General Insurance Company Limited"
+        },
+        {
+          "end": 283,
+          "org": "org-12",
+          "page": 1,
+          "settled_by": "name",
+          "start": 273,
+          "text": "ICICI Bank"
+        }
+      ]
+    },
+    {
+      "id": "school-fee-banks",
+      "identifiers": [],
+      "links": [],
+      "orgs": [
+        {
+          "end": 77,
+          "org": "org-19",
+          "page": 1,
+          "settled_by": "name",
+          "start": 57,
+          "text": "Sample Public School"
+        },
+        {
+          "end": 157,
+          "org": "org-20",
+          "page": 1,
+          "settled_by": "name",
+          "start": 138,
+          "text": "State Bank of India"
+        },
+        {
+          "end": 171,
+          "org": "org-21",
+          "page": 1,
+          "settled_by": "name",
+          "start": 158,
+          "text": "Bank of India"
+        },
+        {
+          "end": 193,
+          "org": "org-22",
+          "page": 1,
+          "settled_by": "name",
+          "start": 172,
+          "text": "Central Bank of India"
+        },
+        {
+          "end": 213,
+          "org": "org-23",
+          "page": 1,
+          "settled_by": "name",
+          "start": 194,
+          "text": "Union Bank of India"
+        },
+        {
+          "end": 228,
+          "org": "org-24",
+          "page": 1,
+          "settled_by": "name",
+          "start": 214,
+          "text": "Bank of Baroda"
+        },
+        {
+          "end": 249,
+          "org": "org-25",
+          "page": 1,
+          "settled_by": "name",
+          "start": 229,
+          "text": "Punjab National Bank"
+        },
+        {
+          "end": 268,
+          "org": "org-26",
+          "page": 1,
+          "settled_by": "name",
+          "start": 250,
+          "text": "Punjab & Sind Bank"
+        }
+      ]
+    },
+    {
+      "id": "household-notes",
+      "identifiers": [],
+      "links": [],
+      "orgs": []
+    },
+    {
+      "id": "sbi-passbook-hindi",
+      "identifiers": [
+        {
+          "end": 182,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 171,
+          "text": "30123456789",
+          "valid": null,
+          "value": "30123456789"
+        },
+        {
+          "end": 204,
+          "id": "i2",
+          "kind": "ifsc",
+          "page": 1,
+          "start": 193,
+          "text": "SBIN0SAMPL4",
+          "valid": true,
+          "value": "SBIN0SAMPL4"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-27",
+          "reasons": [
+            "paired-code",
+            "statement-header"
+          ],
+          "via": "i2"
+        },
+        {
+          "identifier": "i2",
+          "org": "org-27",
+          "reasons": [
+            "ifsc-prefix"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 120,
+          "org": "org-27",
+          "page": 1,
+          "settled_by": "name",
+          "start": 99,
+          "text": "स्टेट बैंक ऑफ़ इंडिया"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1"
+        ],
+        "from": "2026-07-01",
+        "issuer": "org-27",
+        "to": "2026-09-30"
+      }
+    },
+    {
+      "id": "pan-form-hindi",
+      "identifiers": [
+        {
+          "end": 263,
+          "id": "i1",
+          "kind": "in_pan",
+          "page": 1,
+          "start": 253,
+          "text": "ABCPK0000F",
+          "valid": false,
+          "value": "ABCPK0000F"
+        },
+        {
+          "end": 289,
+          "id": "i2",
+          "kind": "account",
+          "page": 1,
+          "start": 275,
+          "text": "50100417263958",
+          "valid": null,
+          "value": "50100417263958"
+        },
+        {
+          "end": 308,
+          "id": "i3",
+          "kind": "ifsc",
+          "page": 1,
+          "start": 297,
+          "text": "HDFC0SAMPL1",
+          "valid": true,
+          "value": "HDFC0SAMPL1"
+        },
+        {
+          "end": 381,
+          "id": "i4",
+          "kind": "in_pan",
+          "page": 1,
+          "start": 371,
+          "text": "ABCDK0000F",
+          "valid": false,
+          "value": "ABCDK0000F"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i2",
+          "org": "org-1",
+          "reasons": [
+            "paired-code"
+          ],
+          "via": "i3"
+        },
+        {
+          "identifier": "i3",
+          "org": "org-1",
+          "reasons": [
+            "ifsc-prefix"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 186,
+          "org": "org-28",
+          "page": 1,
+          "settled_by": "name",
+          "start": 151,
+          "text": "सैंपल टेक्नोलॉजीज़ प्राइवेट लिमिटेड"
+        }
+      ]
+    },
+    {
+      "id": "recipe-hindi",
+      "identifiers": [],
+      "links": [],
+      "orgs": []
+    },
+    {
+      "id": "mizuho-statement-ja",
+      "identifiers": [
+        {
+          "end": 115,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 107,
+          "text": "12345678",
+          "valid": null,
+          "value": "12345678"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-29",
+          "reasons": [
+            "statement-header"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 77,
+          "org": "org-29",
+          "page": 1,
+          "settled_by": "name",
+          "start": 72,
+          "text": "みずほ銀行"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1"
+        ],
+        "from": "2026-08-01",
+        "issuer": "org-29",
+        "to": "2026-08-31"
+      }
+    },
+    {
+      "id": "mufg-remittance-ja",
+      "identifiers": [
+        {
+          "end": 102,
+          "id": "i1",
+          "kind": "bic",
+          "page": 1,
+          "start": 94,
+          "text": "BOTKJPJT",
+          "valid": true,
+          "value": "BOTKJPJT"
+        },
+        {
+          "end": 119,
+          "id": "i2",
+          "kind": "account",
+          "page": 1,
+          "start": 112,
+          "text": "0123456",
+          "valid": null,
+          "value": "0123456"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-33",
+          "reasons": [
+            "bic-institution"
+          ]
+        },
+        {
+          "identifier": "i2",
+          "org": "org-33",
+          "reasons": [
+            "paired-code"
+          ],
+          "via": "i1"
+        }
+      ],
+      "orgs": [
+        {
+          "end": 83,
+          "org": "org-30",
+          "page": 1,
+          "settled_by": "name",
+          "start": 76,
+          "text": "三菱UFJ銀行"
+        },
+        {
+          "end": 169,
+          "org": "org-31",
+          "page": 1,
+          "settled_by": "name",
+          "start": 161,
+          "text": "ABN AMRO"
+        },
+        {
+          "end": 201,
+          "org": "org-32",
+          "page": 1,
+          "settled_by": "name",
+          "start": 192,
+          "text": "三菱UFJ信託銀行"
+        },
+        {
+          "end": 213,
+          "org": "org-30",
+          "page": 1,
+          "settled_by": "name",
+          "start": 206,
+          "text": "三菱UFJ銀行"
+        }
+      ]
+    },
+    {
+      "id": "essay-ja",
+      "identifiers": [],
+      "links": [],
+      "orgs": []
+    },
+    {
+      "id": "rib-fr",
+      "identifiers": [
+        {
+          "end": 229,
+          "id": "i1",
+          "kind": "iban",
+          "page": 1,
+          "start": 196,
+          "text": "FR14 2004 1010 0505 0001 3M02 606",
+          "valid": true,
+          "value": "FR1420041010050500013M02606"
+        },
+        {
+          "end": 247,
+          "id": "i2",
+          "kind": "bic",
+          "page": 1,
+          "start": 236,
+          "text": "PSSTFRPPXXX",
+          "valid": true,
+          "value": "PSSTFRPPXXX"
+        },
+        {
+          "end": 267,
+          "id": "i3",
+          "kind": "fr_bank_code",
+          "page": 1,
+          "start": 262,
+          "text": "20041",
+          "valid": true,
+          "value": "20041"
+        },
+        {
+          "end": 288,
+          "id": "i4",
+          "kind": "fr_branch_code",
+          "page": 1,
+          "start": 283,
+          "text": "01005",
+          "valid": true,
+          "value": "01005"
+        },
+        {
+          "end": 319,
+          "id": "i5",
+          "kind": "account",
+          "page": 1,
+          "start": 308,
+          "text": "0500013M026",
+          "valid": null,
+          "value": "0500013M026"
+        },
+        {
+          "end": 332,
+          "id": "i6",
+          "kind": "fr_rib_key",
+          "page": 1,
+          "start": 330,
+          "text": "06",
+          "valid": true,
+          "value": "06"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-35",
+          "reasons": [
+            "iban-bank-code",
+            "paired-code"
+          ],
+          "via": "i2"
+        },
+        {
+          "identifier": "i2",
+          "org": "org-35",
+          "reasons": [
+            "bic-institution"
+          ]
+        },
+        {
+          "identifier": "i3",
+          "org": "org-35",
+          "reasons": [
+            "inside-iban"
+          ]
+        },
+        {
+          "identifier": "i4",
+          "org": "org-35",
+          "reasons": [
+            "inside-iban"
+          ]
+        },
+        {
+          "identifier": "i5",
+          "org": "org-35",
+          "reasons": [
+            "paired-code",
+            "same-account"
+          ],
+          "via": "i2"
+        }
+      ],
+      "orgs": [
+        {
+          "end": 188,
+          "org": "org-34",
+          "page": 1,
+          "settled_by": "name",
+          "start": 171,
+          "text": "La Banque Postale"
+        }
+      ]
+    },
+    {
+      "id": "scan-bob-letter",
+      "identifiers": [
+        {
+          "end": 192,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 178,
+          "text": "12340100005678",
+          "valid": null,
+          "value": "12340100005678"
+        },
+        {
+          "end": 210,
+          "id": "i2",
+          "kind": "ifsc",
+          "page": 1,
+          "start": 199,
+          "text": "BARBØSAMPL6",
+          "valid": true,
+          "value": "BARB0SAMPL6"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-36",
+          "reasons": [
+            "paired-code"
+          ],
+          "via": "i2"
+        },
+        {
+          "identifier": "i2",
+          "org": "org-36",
+          "reasons": [
+            "ifsc-prefix"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 69,
+          "org": "org-24",
+          "page": 1,
+          "settled_by": "name",
+          "start": 55,
+          "text": "BANK OF BARODA"
+        }
+      ]
+    },
+    {
+      "id": "scan-pnb-deposit",
+      "identifiers": [
+        {
+          "end": 151,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 135,
+          "text": "0123000100456789",
+          "valid": null,
+          "value": "0123000100456789"
+        }
+      ],
+      "links": [],
+      "orgs": [
+        {
+          "end": 73,
+          "org": "org-25",
+          "page": 1,
+          "settled_by": "name",
+          "start": 53,
+          "text": "PUNJAB NATIONAL BANK"
+        }
+      ]
+    },
+    {
+      "id": "axis-statement-scanned-annex",
+      "identifiers": [
+        {
+          "end": 179,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 164,
+          "text": "917010012345678",
+          "valid": null,
+          "value": "917010012345678"
+        },
+        {
+          "end": 197,
+          "id": "i2",
+          "kind": "ifsc",
+          "page": 1,
+          "start": 186,
+          "text": "UTIB0SAMPL5",
+          "valid": true,
+          "value": "UTIB0SAMPL5"
+        },
+        {
+          "end": 104,
+          "id": "i3",
+          "kind": "account",
+          "page": 2,
+          "start": 89,
+          "text": "917010012345678",
+          "valid": null,
+          "value": "917010012345678"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-37",
+          "reasons": [
+            "paired-code",
+            "statement-header"
+          ],
+          "via": "i2"
+        },
+        {
+          "identifier": "i2",
+          "org": "org-37",
+          "reasons": [
+            "ifsc-prefix"
+          ]
+        },
+        {
+          "identifier": "i3",
+          "org": "org-37",
+          "reasons": [
+            "statement-header"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 73,
+          "org": "org-37",
+          "page": 1,
+          "settled_by": "name",
+          "start": 60,
+          "text": "Axis Bank Ltd"
+        },
+        {
+          "end": 47,
+          "org": "org-37",
+          "page": 2,
+          "settled_by": "name",
+          "start": 38,
+          "text": "AXIS BANK"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1",
+          "i3"
+        ],
+        "from": "2026-04-01",
+        "issuer": "org-37",
+        "to": "2026-06-30"
+      }
+    },
+    {
+      "id": "utility-bill",
+      "identifiers": [
+        {
+          "end": 336,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 322,
+          "text": "57500000123456",
+          "valid": null,
+          "value": "57500000123456"
+        },
+        {
+          "end": 354,
+          "id": "i2",
+          "kind": "ifsc",
+          "page": 1,
+          "start": 343,
+          "text": "HDFC0SAMPL3",
+          "valid": true,
+          "value": "HDFC0SAMPL3"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-1",
+          "reasons": [
+            "paired-code"
+          ],
+          "via": "i2"
+        },
+        {
+          "identifier": "i2",
+          "org": "org-1",
+          "reasons": [
+            "ifsc-prefix"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 84,
+          "org": "org-38",
+          "page": 1,
+          "settled_by": "name",
+          "start": 55,
+          "text": "Sample Power Distribution Ltd"
+        }
+      ]
+    },
+    {
+      "id": "hdfc-ltd-loan-2019",
+      "identifiers": [
+        {
+          "end": 197,
+          "id": "i1",
+          "kind": "account",
+          "page": 1,
+          "start": 188,
+          "text": "612345678",
+          "valid": null,
+          "value": "612345678"
+        }
+      ],
+      "links": [
+        {
+          "identifier": "i1",
+          "org": "org-39",
+          "reasons": [
+            "statement-header"
+          ]
+        }
+      ],
+      "orgs": [
+        {
+          "end": 68,
+          "org": "org-39",
+          "page": 1,
+          "settled_by": "mention",
+          "start": 60,
+          "text": "HDFC Ltd"
+        },
+        {
+          "end": 116,
+          "org": "org-39",
+          "page": 1,
+          "settled_by": "name",
+          "start": 69,
+          "text": "Housing Development Finance Corporation Limited"
+        }
+      ],
+      "statement": {
+        "accounts": [
+          "i1"
+        ],
+        "from": "2018-04-01",
+        "issuer": "org-39",
+        "to": "2019-03-31"
+      }
+    },
+    {
+      "id": "passport-asha-current",
+      "identifiers": [
+        {
+          "end": 182,
+          "id": "i1",
+          "kind": "passport_number",
+          "page": 1,
+          "start": 173,
+          "text": "SMP001826",
+          "valid": null,
+          "value": "SMP001826"
+        },
+        {
+          "end": 478,
+          "id": "i2",
+          "kind": "mrz",
+          "page": 1,
+          "start": 389,
+          "text": "P<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0018266UTO8804215F3403174<<<<<<<<<<<<<<<2",
+          "valid": true,
+          "value": "P<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0018266UTO8804215F3403174<<<<<<<<<<<<<<<2"
+        }
+      ],
+      "links": [],
+      "orgs": [
+        {
+          "end": 388,
+          "org": "org-40",
+          "page": 1,
+          "settled_by": "name",
+          "start": 366,
+          "text": "UTOPIA PASSPORT OFFICE"
+        }
+      ],
+      "passport": {
+        "current": true,
+        "expiry": "2034-03-17",
+        "expiry_at": {
+          "end": 354,
+          "page": 1,
+          "start": 343,
+          "text": "17 MAR 2034"
+        },
+        "holder": {
+          "given": "ASHA",
+          "surname": "KALPIT"
+        },
+        "issued": "2024-03-18",
+        "mrz": "i2",
+        "number": "i1"
+      }
+    },
+    {
+      "id": "passport-asha-expired",
+      "identifiers": [
+        {
+          "end": 160,
+          "id": "i1",
+          "kind": "passport_number",
+          "page": 1,
+          "start": 151,
+          "text": "SMP000417",
+          "valid": null,
+          "value": "SMP000417"
+        }
+      ],
+      "links": [],
+      "orgs": [],
+      "passport": {
+        "current": false,
+        "expiry": "2019-06-09",
+        "expiry_at": {
+          "end": 279,
+          "page": 1,
+          "start": 268,
+          "text": "09 JUN 2019"
+        },
+        "holder": {
+          "given": "ASHA",
+          "surname": "KALPIT"
+        },
+        "issued": "2009-06-10",
+        "mrz": null,
+        "number": "i1"
+      }
+    },
+    {
+      "id": "passport-rohan",
+      "identifiers": [
+        {
+          "end": 182,
+          "id": "i1",
+          "kind": "passport_number",
+          "page": 1,
+          "start": 173,
+          "text": "SMP002935",
+          "valid": null,
+          "value": "SMP002935"
+        },
+        {
+          "end": 479,
+          "id": "i2",
+          "kind": "mrz",
+          "page": 1,
+          "start": 390,
+          "text": "P<UTOKALPIT<<ROHAN<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0029356UTO1609307M2801049<<<<<<<<<<<<<<<8",
+          "valid": true,
+          "value": "P<UTOKALPIT<<ROHAN<<<<<<<<<<<<<<<<<<<<<<<<<<\nSMP0029356UTO1609307M2801049<<<<<<<<<<<<<<<8"
+        }
+      ],
+      "links": [],
+      "orgs": [
+        {
+          "end": 389,
+          "org": "org-40",
+          "page": 1,
+          "settled_by": "name",
+          "start": 367,
+          "text": "UTOPIA PASSPORT OFFICE"
+        }
+      ],
+      "passport": {
+        "current": true,
+        "expiry": "2028-01-04",
+        "expiry_at": {
+          "end": 355,
+          "page": 1,
+          "start": 344,
+          "text": "04 JAN 2028"
+        },
+        "holder": {
+          "given": "ROHAN",
+          "surname": "KALPIT"
+        },
+        "issued": "2023-01-05",
+        "mrz": "i2",
+        "number": "i1"
+      }
+    },
+    {
+      "id": "visa-asha",
+      "identifiers": [
+        {
+          "end": 225,
+          "id": "i1",
+          "kind": "passport_number",
+          "page": 1,
+          "start": 216,
+          "text": "SMP001826",
+          "valid": null,
+          "value": "SMP001826"
+        },
+        {
+          "end": 395,
+          "id": "i2",
+          "kind": "mrz",
+          "page": 1,
+          "start": 306,
+          "text": "V<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nVS00077317UTO8804215F2701312<<<<<<<<<<<<<<<<",
+          "valid": true,
+          "value": "V<UTOKALPIT<<ASHA<<<<<<<<<<<<<<<<<<<<<<<<<<<\nVS00077317UTO8804215F2701312<<<<<<<<<<<<<<<<"
+        }
+      ],
+      "links": [],
+      "orgs": []
+    },
+    {
+      "id": "passport-bad-mrz",
+      "identifiers": [
+        {
+          "end": 196,
+          "id": "i1",
+          "kind": "passport_number",
+          "page": 1,
+          "start": 187,
+          "text": "L898902C3",
+          "valid": null,
+          "value": "L898902C3"
+        },
+        {
+          "end": 417,
+          "id": "i2",
+          "kind": "mrz",
+          "page": 1,
+          "start": 328,
+          "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F3105140<<<<<<<<<<<<<<<2",
+          "valid": false,
+          "value": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F3105140<<<<<<<<<<<<<<<2"
+        }
+      ],
+      "links": [],
+      "orgs": [],
+      "passport": {
+        "current": true,
+        "expiry": "cannot-tell",
+        "expiry_at": {
+          "end": 327,
+          "page": 1,
+          "start": 316,
+          "text": "15 APR 2031"
+        },
+        "holder": {
+          "given": "ANNA MARIA",
+          "surname": "ERIKSSON"
+        },
+        "issued": "2021-04-16",
+        "mrz": "i2",
+        "number": "i1"
+      }
+    },
+    {
+      "id": "recipe-lemon-rice",
+      "identifiers": [],
+      "links": [],
+      "orgs": []
+    },
+    {
+      "id": "poem",
+      "identifiers": [],
+      "links": [],
+      "orgs": []
+    }
+  ],
+  "extractor": "rust-m1a",
+  "format": 1,
+  "organisations": {
+    "org-1": {
+      "directory": null,
+      "name": "HDFC Bank Ltd"
+    },
+    "org-10": {
+      "directory": null,
+      "name": "Musterfirma Schreinerei GmbH"
+    },
+    "org-11": {
+      "directory": null,
+      "name": "Sample Supplies Ltd"
+    },
+    "org-12": {
+      "directory": null,
+      "name": "ICICI Bank"
+    },
+    "org-13": {
+      "directory": null,
+      "name": null
+    },
+    "org-14": {
+      "directory": null,
+      "name": "BNP Paribas"
+    },
+    "org-15": {
+      "directory": null,
+      "name": "Mizuho Bank"
+    },
+    "org-16": {
+      "directory": null,
+      "name": "एचडीएफसी बैंक"
+    },
+    "org-17": {
+      "directory": null,
+      "name": "HDFC Life Insurance Company Limited"
+    },
+    "org-18": {
+      "directory": null,
+      "name": "ICICI Lombard General Insurance Company Limited"
+    },
+    "org-19": {
+      "directory": null,
+      "name": "Sample Public School"
+    },
+    "org-2": {
+      "directory": null,
+      "name": "Kotak Mahindra Bank"
+    },
+    "org-20": {
+      "directory": null,
+      "name": "State Bank of India"
+    },
+    "org-21": {
+      "directory": null,
+      "name": "Bank of India"
+    },
+    "org-22": {
+      "directory": null,
+      "name": "Central Bank of India"
+    },
+    "org-23": {
+      "directory": null,
+      "name": "Union Bank of India"
+    },
+    "org-24": {
+      "directory": null,
+      "name": "Bank of Baroda"
+    },
+    "org-25": {
+      "directory": null,
+      "name": "Punjab National Bank"
+    },
+    "org-26": {
+      "directory": null,
+      "name": "Punjab & Sind Bank"
+    },
+    "org-27": {
+      "directory": null,
+      "name": "स्टेट बैंक ऑफ़ इंडिया"
+    },
+    "org-28": {
+      "directory": null,
+      "name": "सैंपल टेक्नोलॉजीज़ प्राइवेट लिमिटेड"
+    },
+    "org-29": {
+      "directory": null,
+      "name": "みずほ銀行"
+    },
+    "org-3": {
+      "directory": null,
+      "name": "Sample Nagar Sahakari Bank Ltd"
+    },
+    "org-30": {
+      "directory": null,
+      "name": "三菱UFJ銀行"
+    },
+    "org-31": {
+      "directory": null,
+      "name": "ABN AMRO"
+    },
+    "org-32": {
+      "directory": null,
+      "name": "三菱UFJ信託銀行"
+    },
+    "org-33": {
+      "directory": null,
+      "name": null
+    },
+    "org-34": {
+      "directory": null,
+      "name": "La Banque Postale"
+    },
+    "org-35": {
+      "directory": null,
+      "name": null
+    },
+    "org-36": {
+      "directory": null,
+      "name": null
+    },
+    "org-37": {
+      "directory": null,
+      "name": "Axis Bank Ltd"
+    },
+    "org-38": {
+      "directory": null,
+      "name": "Sample Power Distribution Ltd"
+    },
+    "org-39": {
+      "directory": null,
+      "name": "Housing Development Finance Corporation Limited"
+    },
+    "org-4": {
+      "directory": null,
+      "name": "Sampleton Credit Union"
+    },
+    "org-40": {
+      "directory": null,
+      "name": "UTOPIA PASSPORT OFFICE"
+    },
+    "org-5": {
+      "directory": null,
+      "name": "National Westminster Bank Plc"
+    },
+    "org-6": {
+      "directory": null,
+      "name": "ABN AMRO Bank N.V."
+    },
+    "org-7": {
+      "directory": null,
+      "name": "Commerzbank AG"
+    },
+    "org-8": {
+      "directory": null,
+      "name": "Deutsche Bank"
+    },
+    "org-9": {
+      "directory": null,
+      "name": "Deutschen Bundesbank"
+    }
+  },
+  "text_set": "text-ocr"
+}
