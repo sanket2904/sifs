@@ -1,0 +1,189 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Overrides rust-toolchain.toml's "stable" so a new Rust release cannot change a verdict.
+  RUSTUP_TOOLCHAIN: 1.99.1
+  CARGO_TERM_COLOR: never
+  NODE_VERSION: '26'
+
+jobs:
+  rust-tests:
+    name: Rust tests
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      # The main test step must run at least this many tests. Lower it only when a PR deletes tests.
+      TEST_FLOOR: 396
+      # Tests a hosted runner cannot run for a reason of the runner, not the code.
+      # One per line: the full test path, then why and the issue.
+      RUNNER_LIMITED: |
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Runner image
+        run: |
+          sw_vers
+          xcodebuild -version
+          sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize
+          {
+            echo "### Runner"
+            echo "macOS $(sw_vers -productVersion) ($(sw_vers -buildVersion)), $(xcodebuild -version | head -1), $(sysctl -n machdep.cpu.brand_string), $(sysctl -n hw.ncpu) cores"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Install Rust
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal && rustc --version
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          key: cargo-test-${{ runner.os }}-${{ runner.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+      - name: Build tests
+        run: cargo test --no-default-features --lib --no-run
+      - name: Tests
+        run: |
+          set -o pipefail
+          skips=()
+          while read -r name _; do
+            [ -n "$name" ] && skips+=(--skip "$name")
+          done <<< "$RUNNER_LIMITED"
+          cargo test --no-default-features --lib -- --exact "${skips[@]}" 2>&1 | tee "$RUNNER_TEMP/tests.log"
+      - name: Runner-limited tests (allowed to fail)
+        id: limited
+        if: ${{ !cancelled() && env.RUNNER_LIMITED != '' }}
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          names=()
+          while read -r name _; do
+            [ -n "$name" ] && names+=("$name")
+          done <<< "$RUNNER_LIMITED"
+          cargo test --no-default-features --lib -- --exact "${names[@]}" 2>&1 | tee "$RUNNER_TEMP/limited.log"
+      - name: Summary and floor
+        if: ${{ !cancelled() }}
+        env:
+          LIMITED_OUTCOME: ${{ steps.limited.outcome }}
+        run: |
+          line=$(grep -E '^test result: ' "$RUNNER_TEMP/tests.log" | tail -1 || true)
+          passed=$(sed -nE 's/.* ([0-9]+) passed;.*/\1/p' <<< "$line")
+          failed=$(sed -nE 's/.* ([0-9]+) failed;.*/\1/p' <<< "$line")
+          ignored=$(sed -nE 's/.* ([0-9]+) ignored;.*/\1/p' <<< "$line")
+          {
+            echo "### Rust tests"
+            echo "Main step: ${passed:-?} passed, ${failed:-?} failed, ${ignored:-?} ignored (floor $TEST_FLOOR)."
+            if [ -n "$RUNNER_LIMITED" ]; then
+              echo "Runner-limited step: **${LIMITED_OUTCOME:-not run}**, not counted in the verdict."
+              echo '```'
+              grep -E '^test |^test result: ' "$RUNNER_TEMP/limited.log" 2>/dev/null || echo "no output"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$passed" ]; then echo "::error::no test result line in the main test step"; exit 1; fi
+          if [ "$failed" != 0 ]; then echo "::error::$failed tests failed"; exit 1; fi
+          if [ "$passed" -lt "$TEST_FLOOR" ]; then
+            echo "::error::the main test step ran $passed tests, fewer than the floor of $TEST_FLOOR"
+            exit 1
+          fi
+
+  clippy:
+    name: Clippy (${{ matrix.features }})
+    runs-on: macos-26
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - features: default
+            flags: ''
+          - features: no-default-features
+            flags: --no-default-features
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component clippy && cargo clippy --version
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          key: cargo-clippy-${{ matrix.features }}-${{ runner.os }}-${{ runner.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+      # The app's tauri::generate_context! needs frontendDist to exist; clippy checks Rust only.
+      - name: Empty frontend folder
+        if: ${{ matrix.flags == '' }}
+        run: mkdir -p ../build
+      - name: Clippy
+        run: cargo clippy --all-targets ${{ matrix.flags }} -- -D warnings
+
+  svelte-check:
+    name: Svelte check
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      # The most errors npm run check may report. Main had 20 on 2026-11-22.
+      SVELTE_ERROR_CEILING: 24
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Svelte check
+        run: |
+          npm run check 2>&1 | tee "$RUNNER_TEMP/check.log" || true
+          errors=$(sed -nE 's/.*svelte-check found ([0-9]+) errors?.*/\1/p' "$RUNNER_TEMP/check.log" | tail -1)
+          if [ -z "$errors" ]; then echo "::error::svelte-check printed no error count"; exit 1; fi
+          echo "### Svelte check" >> "$GITHUB_STEP_SUMMARY"
+          echo "$errors errors (ceiling $SVELTE_ERROR_CEILING)." >> "$GITHUB_STEP_SUMMARY"
+          if [ "$errors" -gt "$SVELTE_ERROR_CEILING" ]; then
+            echo "::error::svelte-check found $errors errors, more than the ceiling of $SVELTE_ERROR_CEILING"
+            exit 1
+          fi
+
+  sample-tools:
+    name: Sample tools
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: node --test sample/tools/score.test.mjs
+      - run: node sample/tools/score-mutants.mjs
+      - run: node sample/tools/text.mjs --check
+      - run: node sample/tools/check.mjs
+
+  ci:
+    name: ci
+    if: ${{ always() }}
+    needs: [rust-tests, clippy, svelte-check, sample-tools]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$RESULTS" | jq -e 'length == 4 and all(.[]; .result == "success")' > /dev/null
