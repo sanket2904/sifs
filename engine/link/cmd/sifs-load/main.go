@@ -5,7 +5,9 @@
 //	sifs-load --data-dir <dir> --counts
 //
 // It prints one line of JSON. It exits 1 when the engine turned a record
-// down (the others still load) and 2 when it could not run.
+// down (the others still load) and 2 when it could not run. Rows the
+// loader leaves out by design are counted in left_out and do not change
+// the exit code.
 package main
 
 import (
@@ -23,6 +25,7 @@ import (
 type loaded struct {
 	Documents  documents       `json:"documents"`
 	TurnedDown []load.TurnDown `json:"turned_down"`
+	LeftOut    load.LeftOut    `json:"left_out"`
 	load.Counts
 	LoadMS int64 `json:"load_ms"`
 }
@@ -89,7 +92,7 @@ func do(ctx context.Context, runPath, dataDir string, countsOnly bool) (any, int
 	if err != nil {
 		return nil, 0, err
 	}
-	out := loaded{Documents: documents{rep.Written, rep.Unchanged, rep.Removed}, TurnedDown: rep.TurnedDown, Counts: c, LoadMS: elapsed.Milliseconds()}
+	out := loaded{Documents: documents{rep.Written, rep.Unchanged, rep.Removed}, TurnedDown: rep.TurnedDown, LeftOut: rep.LeftOut, Counts: c, LoadMS: elapsed.Milliseconds()}
 	if len(rep.TurnedDown) > 0 {
 		return out, 1, nil
 	}

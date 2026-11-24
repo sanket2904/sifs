@@ -185,9 +185,11 @@ type claim struct {
 	tiers    []extract.Tier
 }
 
-// tier is certain when one row is. A tier format 3 does not have is passed
-// on as given, so the schema refuses the record rather than the loader
-// choosing for it.
+// tier is certain when one row is, as sample/FORMAT.md says under "Tiers":
+// "A link with several reasons is certain when one of them passes its
+// test." Its "Ids" section makes rows with one id one claim. A tier format
+// 3 does not have is passed on as given, so the schema refuses the record
+// rather than the loader choosing for it.
 func (c *claim) tier() extract.Tier {
 	tier := extract.Likely
 	for _, t := range c.tiers {

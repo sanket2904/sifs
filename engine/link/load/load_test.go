@@ -192,7 +192,8 @@ func TestRemovedDocument(t *testing.T) {
 	stores(t, func(t *testing.T, ctx context.Context, reopen func() *Engine) {
 		mustLoad(t, ctx, reopen(), sampleRun(statement("stmt-jan"), statement("stmt-feb"), passport()))
 		e := reopen()
-		eq(t, "load without stmt-jan", mustLoad(t, ctx, e, sampleRun(statement("stmt-feb"), passport())), Report{Unchanged: 2, Removed: 1, TurnedDown: []TurnDown{}})
+		eq(t, "load without stmt-jan", mustLoad(t, ctx, e, sampleRun(statement("stmt-feb"), passport())),
+			Report{Unchanged: 2, Removed: 1, TurnedDown: []TurnDown{}, LeftOut: LeftOut{UnusedOrganisations: 1}})
 		docs, err := e.Documents(ctx)
 		if err != nil {
 			t.Fatal(err)
@@ -252,4 +253,99 @@ func TestTurnedDownRecord(t *testing.T) {
 		slices.Sort(docs)
 		eq(t, "documents", docs, []string{"passport-sample", "stmt-jan"})
 	})
+}
+
+// Mutation: drop the Answers count in Load, and the report says 0 answers
+// were left out.
+func TestLeftOutRowsCounted(t *testing.T) {
+	stores(t, func(t *testing.T, ctx context.Context, reopen func() *Engine) {
+		jan := statement("stmt-jan")
+		jan.Orgs = append(jan.Orgs, extract.OrgOut{Span: span(1, 90, "Example Club")})
+		run := sampleRun(jan, passport())
+		delete(run.Organisations, "name:stmt-feb:examplebank")
+		run.Organisations["BIC EXMPXXYY"] = extract.Card{}
+		run.Answers.LatestStatement = []extract.AccountAnswer{{Account: "000111222333", Document: "stmt-jan"}}
+		leftOut := LeftOut{UnusedOrganisations: 1, MentionsWithoutOrganisation: 1, Answers: 1}
+
+		e := reopen()
+		eq(t, "first load", mustLoad(t, ctx, e, run), Report{Written: 2, TurnedDown: []TurnDown{}, LeftOut: leftOut})
+		eq(t, "counts", mustCount(t, ctx, e), Counts{
+			Things: map[string]int{"Document": 2, "Organisation": 2, "Identifier": 3, "Statement": 1, "Passport": 1, "Holder": 1},
+			Links: map[string]int{"Mentions": 1, "Shows": 3, "HeldAt": 3, "SameOrg": 1, "StatementOf": 1, "StatementAccount": 1, "IssuedBy": 1,
+				"PassportOf": 1, "HolderOf": 1, "PassportNumber": 1, "PassportMRZ": 0},
+		})
+		eq(t, "second load", mustLoad(t, ctx, reopen(), run), Report{Unchanged: 2, TurnedDown: []TurnDown{}, LeftOut: leftOut})
+	})
+}
+
+// mergeDoc states two links and two same_org claims twice each: one claim
+// of each kind in a certain row and a likely row, the other in two likely
+// rows. certainFirst puts the certain rows first; otherwise they come last.
+func mergeDoc(certainFirst bool) extract.DocOut {
+	name := "name:merge-doc:examplebank"
+	doc := extract.DocOut{
+		ID:   "merge-doc",
+		Orgs: []extract.OrgOut{{Span: span(1, 0, "Example Bank"), Org: ptr(name), SettledBy: ptr("name")}},
+		Identifiers: []extract.IdentOut{
+			{Span: span(1, 20, "XX00EXMP0001"), ID: "i1", Kind: "iban", Value: "XX00EXMP0001", Valid: ptr(true), Tier: extract.Certain},
+			{Span: span(1, 40, "000111222333"), ID: "i2", Kind: "account", Value: "000111222333", Tier: extract.Likely},
+			{Span: span(1, 60, "EXMP0000001"), ID: "i3", Kind: "ifsc", Value: "EXMP0000001", Tier: extract.Likely},
+			{Span: span(1, 80, "EXMPXXYY"), ID: "i4", Kind: "bic", Value: "EXMPXXYY", Tier: extract.Likely},
+		},
+		Links: []extract.LinkOut{
+			{Identifier: "i1", Org: "IBAN XX EXMP", Reasons: []string{"iban-bank-code"}, Tier: extract.Certain},
+			{Identifier: "i1", Org: "IBAN XX EXMP", Reasons: []string{"paired-code"}, Via: "i3", Tier: extract.Likely},
+			{Identifier: "i2", Org: "IFSC EXMP", Reasons: []string{"paired-code"}, Via: "i3", Tier: extract.Likely},
+			{Identifier: "i2", Org: "IFSC EXMP", Reasons: []string{"same-account"}, Via: "i4", Tier: extract.Likely},
+		},
+		SameOrg: []extract.SameOrgOut{
+			{Keys: [2]string{name, "IFSC EXMP"}, Reason: "directory", Tier: extract.Certain},
+			{Keys: [2]string{"IFSC EXMP", name}, Reason: "spells-code", Tier: extract.Likely},
+			{Keys: [2]string{name, "BIC EXMPXXYY"}, Reason: "spells-code", Tier: extract.Likely},
+			{Keys: [2]string{"BIC EXMPXXYY", name}, Reason: "printed-together", Tier: extract.Likely},
+		},
+	}
+	if !certainFirst {
+		slices.Reverse(doc.Links)
+		slices.Reverse(doc.SameOrg)
+	}
+	return doc
+}
+
+// Rows with one id are one claim, certain when one row is (sample/FORMAT.md,
+// "Tiers" and "Ids"). Mutation: make claim.tier return the lowest tier, and
+// the mixed claims come out likely.
+func TestMergedClaims(t *testing.T) {
+	name := "name:merge-doc:examplebank"
+	iban, account := "identifier:iban:XX00EXMP0001", "identifier:account:000111222333"
+	ifsc, bic := "identifier:ifsc:EXMP0000001", "identifier:bic:EXMPXXYY"
+	want := []struct {
+		id, tier     string
+		reasons, via []string
+	}{
+		{ref("heldAt", "merge-doc", iban, "IBAN XX EXMP"), "certain", []string{"iban-bank-code", "paired-code"}, []string{ifsc}},
+		{ref("heldAt", "merge-doc", account, "IFSC EXMP"), "likely", []string{"paired-code", "same-account"}, []string{bic, ifsc}},
+		{ref("sameOrg", "merge-doc", "IFSC EXMP", name), "certain", []string{"directory", "spells-code"}, nil},
+		{ref("sameOrg", "merge-doc", "BIC EXMPXXYY", name), "likely", []string{"printed-together", "spells-code"}, nil},
+	}
+	for _, certainFirst := range []bool{true, false} {
+		t.Run(map[bool]string{true: "certain first", false: "likely first"}[certainFirst], func(t *testing.T) {
+			stores(t, func(t *testing.T, ctx context.Context, reopen func() *Engine) {
+				e := reopen()
+				mustLoad(t, ctx, e, &extract.Output{Format: 3, Documents: []extract.DocOut{mergeDoc(certainFirst)}})
+				c := mustCount(t, ctx, e)
+				eq(t, "links", [2]int{c.Links["HeldAt"], c.Links["SameOrg"]}, [2]int{2, 2})
+				for _, w := range want {
+					r := relation(t, ctx, e, w.id)
+					if r == nil {
+						t.Errorf("no link %s", w.id)
+						continue
+					}
+					eq(t, w.id+" tier", r.Attributes[pack.Tier], []any{w.tier})
+					eq(t, w.id+" reasons", sorted(r.Attributes[pack.Reasons]), w.reasons)
+					eq(t, w.id+" via", sorted(r.Attributes[pack.Via]), w.via)
+				}
+			})
+		})
+	}
 }

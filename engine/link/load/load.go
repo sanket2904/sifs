@@ -15,6 +15,7 @@ import (
 	"github.com/sanket2904/sifs/engine/link/pack"
 
 	"github.com/sanket2904/ontology-framework/interpreter"
+	"github.com/sanket2904/ontology-framework/ontology"
 	"github.com/sanket2904/ontology-framework/store"
 	"github.com/sanket2904/ontology-framework/store/sqlite"
 )
@@ -101,12 +102,26 @@ func open(ctx context.Context, schemas store.SchemaStore, objects store.Store, c
 // Close closes the store.
 func (e *Engine) Close() error { return e.close() }
 
-// Report is what a load did, by document.
+// Report is what a load did, by document, and the rows of the run it
+// left out.
 type Report struct {
 	Written    int        `json:"written"`
 	Unchanged  int        `json:"unchanged"`
 	Removed    int        `json:"removed"`
 	TurnedDown []TurnDown `json:"turned_down"`
+	LeftOut    LeftOut    `json:"left_out"`
+}
+
+// LeftOut counts, by kind, the rows of a run the loader does not store. It
+// leaves them out by design, so they do not make a load fail; it counts
+// them so that no one takes the run as loaded whole. An organisation card
+// that no loaded row uses has nothing to stand on; a mention whose org is
+// null names nothing to link to; the answers are judgements over many
+// documents, which are not stored.
+type LeftOut struct {
+	UnusedOrganisations         int `json:"unused_organisations"`
+	MentionsWithoutOrganisation int `json:"mentions_without_organisation"`
+	Answers                     int `json:"answers"`
 }
 
 // TurnDown is a record the engine did not take, with the engine's message.
@@ -123,16 +138,30 @@ func record(docID string) interpreter.SourceRecord {
 // engine turns down is reported and the others still load.
 func (e *Engine) Load(ctx context.Context, run *extract.Output) (Report, error) {
 	rep := Report{TurnedDown: []TurnDown{}}
+	rep.LeftOut.Answers = len(run.Answers.LatestStatement) + len(run.Answers.CurrentPassport)
+	usedOrgs := map[string]bool{}
 	inRun := map[string]bool{}
 	for _, doc := range run.Documents {
 		inRun[doc.ID] = true
-		res, err := e.interp.ReplaceRecord(ctx, record(doc.ID), Facts(doc, run.Organisations))
+		facts := Facts(doc, run.Organisations)
+		rep.LeftOut.MentionsWithoutOrganisation += len(doc.Orgs) - countType(facts.Relations, pack.Mentions)
+		for _, thing := range facts.Entities {
+			if thing.TypeID == pack.Organisation {
+				usedOrgs[thing.Attributes[pack.Key].(string)] = true
+			}
+		}
+		res, err := e.interp.ReplaceRecord(ctx, record(doc.ID), facts)
 		switch {
 		case !rep.taken(doc.ID, res, err):
 		case res.Record.Unchanged():
 			rep.Unchanged++
 		default:
 			rep.Written++
+		}
+	}
+	for key := range run.Organisations {
+		if !usedOrgs[key] {
+			rep.LeftOut.UnusedOrganisations++
 		}
 	}
 	stored, err := e.Documents(ctx)
@@ -148,6 +177,16 @@ func (e *Engine) Load(ctx context.Context, run *extract.Output) (Report, error) 
 		}
 	}
 	return rep, nil
+}
+
+func countType(relations []ontology.ObservedRelation, typeID string) int {
+	n := 0
+	for _, r := range relations {
+		if r.TypeID == typeID {
+			n++
+		}
+	}
+	return n
 }
 
 // taken reports whether the engine took a record write, and keeps its
