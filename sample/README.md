@@ -39,6 +39,32 @@ On macOS, `node sample/tools/check.mjs --pdfkit` also reads every PDF through PD
 
 Git does not keep modified times. Run `generate.mjs` after a checkout if a test needs the file dates, which deliberately disagree with the statement periods.
 
+## Load a run into the engine
+
+`sifs-load` puts an extractor's run (`FORMAT.md`, format 3) into the engine's store, `<data dir>/engine.db`. Each document is one record. Loading the same run again changes nothing, a document the run no longer holds is removed with everything only it gave, and a changed document is replaced. It stores each link and `same_org` row with its tier and reasons as the run gives them, and adds no rule, no join and no tier.
+
+```sh
+cd engine/link
+go run ./cmd/sifs-load --run ../../sample/runs/go-m1a-on-text.json --data-dir /tmp/sifs-data
+go run ./cmd/sifs-load --data-dir /tmp/sifs-data --counts
+```
+
+| Flag | Value |
+| --- | --- |
+| `--run` | The format 3 file to load. |
+| `--data-dir` | The folder that holds `engine.db`. Required, with no default. |
+| `--counts` | Print the store's counts by kind and write nothing. |
+
+It prints one line of JSON: documents written, unchanged and removed, the records the engine turned down with the engine's message, the rows of the run it left out by kind, the counts of things and links by kind, and the load time in milliseconds. A turned-down record does not stop the others, and the exit status is then 1. The first load of the committed run prints:
+
+```json
+{"documents":{"written":41,"unchanged":0,"removed":0},"turned_down":[],"left_out":{"unused_organisations":0,"mentions_without_organisation":1,"answers":16},"things":{"Document":41,"Holder":5,"Identifier":56,"Organisation":67,"Passport":5,"Statement":14},"links":{"HeldAt":53,"HolderOf":5,"IssuedBy":14,"Mentions":61,"PassportMRZ":5,"PassportNumber":5,"PassportOf":5,"SameOrg":22,"Shows":71,"StatementAccount":15,"StatementOf":14},"load_ms":924}
+```
+
+`left_out` counts rows the loader does not store, and they do not change the exit status. A mention whose `org` is `null` names no organisation to link to, and an organisation card that no stored row uses has nothing to stand on. The `answers` are judgements over many documents, which the engine is to work out itself, so they are not stored.
+
+`engine/link` is a Go module of its own because it needs the engine, a private module. It is built on the owner's Mac, with access to that module, and public CI does not build or test it.
+
 ## Files
 
 | Path | What it is |
