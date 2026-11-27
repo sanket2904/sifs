@@ -1,0 +1,756 @@
+{
+  "query": "HDFC",
+  "cards": [
+    {
+      "head": "IFSC HDFC",
+      "stands_on": "certain",
+      "keys": [
+        {
+          "key": "IFSC HDFC",
+          "code": "HDFC",
+          "names": [],
+          "joined": "certain"
+        },
+        {
+          "key": "name:hdfc-statement-aug:hdfcbank",
+          "names": [
+            "HDFC Bank Ltd"
+          ],
+          "joined": "likely"
+        },
+        {
+          "key": "name:hdfc-statement-jul:hdfcbank",
+          "names": [
+            "HDFC Bank Ltd"
+          ],
+          "joined": "likely"
+        },
+        {
+          "key": "name:hdfc-statement-sep:hdfcbank",
+          "names": [
+            "HDFC Bank Ltd"
+          ],
+          "joined": "likely"
+        },
+        {
+          "key": "name:neft-receipt-tied:hdfcbank",
+          "names": [
+            "HDFC",
+            "HDFC Bank"
+          ],
+          "joined": "likely"
+        }
+      ],
+      "joins": [
+        {
+          "one": "IFSC HDFC",
+          "other": "name:hdfc-statement-aug:hdfcbank",
+          "document": "hdfc-statement-aug",
+          "reasons": [
+            "directory",
+            "spells-code"
+          ],
+          "tier": "likely",
+          "card_tier": "likely"
+        },
+        {
+          "one": "IFSC HDFC",
+          "other": "name:hdfc-statement-jul:hdfcbank",
+          "document": "hdfc-statement-jul",
+          "reasons": [
+            "directory",
+            "spells-code"
+          ],
+          "tier": "likely",
+          "card_tier": "likely"
+        },
+        {
+          "one": "IFSC HDFC",
+          "other": "name:hdfc-statement-sep:hdfcbank",
+          "document": "hdfc-statement-sep",
+          "reasons": [
+            "directory",
+            "spells-code"
+          ],
+          "tier": "likely",
+          "card_tier": "likely"
+        },
+        {
+          "one": "IFSC HDFC",
+          "other": "name:neft-receipt-tied:hdfcbank",
+          "document": "neft-receipt-tied",
+          "reasons": [
+            "spells-code"
+          ],
+          "tier": "likely",
+          "card_tier": "likely"
+        }
+      ],
+      "held": [
+        {
+          "kind": "account",
+          "value": "50100417263958",
+          "card_tier": "likely",
+          "links": [
+            {
+              "key": "IFSC HDFC",
+              "document": "hdfc-statement-aug",
+              "reasons": [
+                "paired-code"
+              ],
+              "via": [
+                {
+                  "kind": "ifsc",
+                  "value": "HDFC0SAMPL1"
+                }
+              ],
+              "tier": "likely",
+              "card_tier": "likely"
+            },
+            {
+              "key": "IFSC HDFC",
+              "document": "hdfc-statement-jul",
+              "reasons": [
+                "paired-code"
+              ],
+              "via": [
+                {
+                  "kind": "ifsc",
+                  "value": "HDFC0SAMPL1"
+                }
+              ],
+              "tier": "likely",
+              "card_tier": "likely"
+            },
+            {
+              "key": "IFSC HDFC",
+              "document": "hdfc-statement-sep",
+              "reasons": [
+                "paired-code"
+              ],
+              "via": [
+                {
+                  "kind": "ifsc",
+                  "value": "HDFC0SAMPL1"
+                }
+              ],
+              "tier": "likely",
+              "card_tier": "likely"
+            },
+            {
+              "key": "IFSC HDFC",
+              "document": "neft-receipt-tied",
+              "reasons": [
+                "paired-code"
+              ],
+              "via": [
+                {
+                  "kind": "ifsc",
+                  "value": "HDFC0SAMPL1"
+                }
+              ],
+              "tier": "likely",
+              "card_tier": "likely"
+            },
+            {
+              "key": "IFSC HDFC",
+              "document": "pan-form-hindi",
+              "reasons": [
+                "paired-code"
+              ],
+              "via": [
+                {
+                  "kind": "ifsc",
+                  "value": "HDFC0SAMPL1"
+                }
+              ],
+              "tier": "likely",
+              "card_tier": "likely"
+            },
+            {
+              "key": "IFSC HDFC",
+              "document": "transfer-rows",
+              "reasons": [
+                "paired-code"
+              ],
+              "via": [
+                {
+                  "kind": "ifsc",
+                  "value": "HDFC0SAMPL1"
+                }
+              ],
+              "tier": "likely",
+              "card_tier": "likely"
+            },
+            {
+              "key": "name:hdfc-statement-aug:hdfcbank",
+              "document": "hdfc-statement-aug",
+              "reasons": [
+                "statement-header"
+              ],
+              "via": [],
+              "tier": "likely",
+              "card_tier": "likely"
+            },
+            {
+              "key": "name:hdfc-statement-jul:hdfcbank",
+              "document": "hdfc-statement-jul",
+              "reasons": [
+                "statement-header"
+              ],
+              "via": [],
+              "tier": "likely",
+              "card_tier": "likely"
+            },
+            {
+              "key": "name:hdfc-statement-sep:hdfcbank",
+              "document": "hdfc-statement-sep",
+              "reasons": [
+                "statement-header"
+              ],
+              "via": [],
+              "tier": "likely",
+              "card_tier": "likely"
+            }
+          ]
+        },
+        {
+          "kind": "account",
+          "value": "57500000123456",
+          "card_tier": "likely",
+          "links": [
+            {
+              "key": "IFSC HDFC",
+              "document": "utility-bill",
+              "reasons": [
+                "paired-code"
+              ],
+              "via": [
+                {
+                  "kind": "ifsc",
+                  "value": "HDFC0SAMPL3"
+                }
+              ],
+              "tier": "likely",
+              "card_tier": "likely"
+            }
+          ]
+        },
+        {
+          "kind": "ifsc",
+          "value": "HDFC0SAMPL1",
+          "card_tier": "certain",
+          "links": [
+            {
+              "key": "IFSC HDFC",
+              "document": "hdfc-statement-aug",
+              "reasons": [
+                "ifsc-prefix"
+              ],
+              "via": [],
+              "tier": "certain",
+              "card_tier": "certain"
+            },
+            {
+              "key": "IFSC HDFC",
+              "document": "hdfc-statement-jul",
+              "reasons": [
+                "ifsc-prefix"
+              ],
+              "via": [],
+              "tier": "certain",
+              "card_tier": "certain"
+            },
+            {
+              "key": "IFSC HDFC",
+              "document": "hdfc-statement-sep",
+              "reasons": [
+                "ifsc-prefix"
+              ],
+              "via": [],
+              "tier": "certain",
+              "card_tier": "certain"
+            },
+            {
+              "key": "IFSC HDFC",
+              "document": "neft-receipt-tied",
+              "reasons": [
+                "ifsc-prefix"
+              ],
+              "via": [],
+              "tier": "certain",
+              "card_tier": "certain"
+            },
+            {
+              "key": "IFSC HDFC",
+              "document": "pan-form-hindi",
+              "reasons": [
+                "ifsc-prefix"
+              ],
+              "via": [],
+              "tier": "certain",
+              "card_tier": "certain"
+            },
+            {
+              "key": "IFSC HDFC",
+              "document": "transfer-rows",
+              "reasons": [
+                "ifsc-prefix"
+              ],
+              "via": [],
+              "tier": "certain",
+              "card_tier": "certain"
+            }
+          ]
+        },
+        {
+          "kind": "ifsc",
+          "value": "HDFC0SAMPL3",
+          "card_tier": "certain",
+          "links": [
+            {
+              "key": "IFSC HDFC",
+              "document": "utility-bill",
+              "reasons": [
+                "ifsc-prefix"
+              ],
+              "via": [],
+              "tier": "certain",
+              "card_tier": "certain"
+            }
+          ]
+        }
+      ],
+      "documents": [
+        {
+          "document": "hdfc-statement-aug",
+          "card_tier": "likely",
+          "mentions": [
+            {
+              "key": "name:hdfc-statement-aug:hdfcbank",
+              "page": 1,
+              "start": 60,
+              "end": 73,
+              "text": "HDFC Bank Ltd",
+              "settled_by": "name"
+            }
+          ]
+        },
+        {
+          "document": "hdfc-statement-jul",
+          "card_tier": "likely",
+          "mentions": [
+            {
+              "key": "name:hdfc-statement-jul:hdfcbank",
+              "page": 1,
+              "start": 60,
+              "end": 73,
+              "text": "HDFC Bank Ltd",
+              "settled_by": "name"
+            }
+          ]
+        },
+        {
+          "document": "hdfc-statement-sep",
+          "card_tier": "likely",
+          "mentions": [
+            {
+              "key": "name:hdfc-statement-sep:hdfcbank",
+              "page": 1,
+              "start": 60,
+              "end": 73,
+              "text": "HDFC Bank Ltd",
+              "settled_by": "name"
+            }
+          ]
+        },
+        {
+          "document": "neft-receipt-tied",
+          "card_tier": "likely",
+          "mentions": [
+            {
+              "key": "name:neft-receipt-tied:hdfcbank",
+              "page": 1,
+              "start": 58,
+              "end": 62,
+              "text": "HDFC",
+              "settled_by": "mention"
+            },
+            {
+              "key": "name:neft-receipt-tied:hdfcbank",
+              "page": 1,
+              "start": 236,
+              "end": 245,
+              "text": "HDFC Bank",
+              "settled_by": "name"
+            }
+          ]
+        }
+      ],
+      "statements": [
+        {
+          "document": "hdfc-statement-aug",
+          "from": "2026-08-01",
+          "to": "2026-08-31",
+          "period_tier": "likely",
+          "issuer": "name:hdfc-statement-aug:hdfcbank",
+          "tier": "likely",
+          "card_tier": "likely"
+        },
+        {
+          "document": "hdfc-statement-jul",
+          "from": "2026-07-01",
+          "to": "2026-07-31",
+          "period_tier": "likely",
+          "issuer": "name:hdfc-statement-jul:hdfcbank",
+          "tier": "likely",
+          "card_tier": "likely"
+        },
+        {
+          "document": "hdfc-statement-sep",
+          "from": "2026-09-01",
+          "to": "2026-09-30",
+          "period_tier": "likely",
+          "issuer": "name:hdfc-statement-sep:hdfcbank",
+          "tier": "likely",
+          "card_tier": "likely"
+        }
+      ]
+    },
+    {
+      "head": "name:email-fee-payment:hdfcbank",
+      "stands_on": "likely-only",
+      "keys": [
+        {
+          "key": "name:email-fee-payment:hdfcbank",
+          "names": [
+            "HDFC BANK",
+            "hdfcbank"
+          ],
+          "joined": "certain"
+        }
+      ],
+      "joins": [],
+      "held": [],
+      "documents": [
+        {
+          "document": "email-fee-payment",
+          "card_tier": "certain",
+          "mentions": [
+            {
+              "key": "name:email-fee-payment:hdfcbank",
+              "page": 1,
+              "start": 234,
+              "end": 242,
+              "text": "hdfcbank",
+              "settled_by": "name"
+            },
+            {
+              "key": "name:email-fee-payment:hdfcbank",
+              "page": 1,
+              "start": 259,
+              "end": 268,
+              "text": "HDFC BANK",
+              "settled_by": "name"
+            }
+          ]
+        }
+      ],
+      "statements": []
+    },
+    {
+      "head": "name:hdfc-branch-letter:hdfcbank",
+      "stands_on": "likely-only",
+      "keys": [
+        {
+          "key": "name:hdfc-branch-letter:hdfcbank",
+          "names": [
+            "HDFC Bank",
+            "HDFC Bank Limited"
+          ],
+          "joined": "certain"
+        }
+      ],
+      "joins": [],
+      "held": [],
+      "documents": [
+        {
+          "document": "hdfc-branch-letter",
+          "card_tier": "certain",
+          "mentions": [
+            {
+              "key": "name:hdfc-branch-letter:hdfcbank",
+              "page": 1,
+              "start": 57,
+              "end": 74,
+              "text": "HDFC Bank Limited",
+              "settled_by": "name"
+            },
+            {
+              "key": "name:hdfc-branch-letter:hdfcbank",
+              "page": 1,
+              "start": 280,
+              "end": 289,
+              "text": "HDFC Bank",
+              "settled_by": "name"
+            }
+          ]
+        }
+      ],
+      "statements": []
+    },
+    {
+      "head": "name:hdfc-card-statement:hdfcbank",
+      "stands_on": "likely-only",
+      "keys": [
+        {
+          "key": "name:hdfc-card-statement:hdfcbank",
+          "names": [
+            "HDFC Bank"
+          ],
+          "joined": "certain"
+        }
+      ],
+      "joins": [],
+      "held": [
+        {
+          "kind": "card",
+          "value": "4242424242424242",
+          "card_tier": "likely",
+          "links": [
+            {
+              "key": "name:hdfc-card-statement:hdfcbank",
+              "document": "hdfc-card-statement",
+              "reasons": [
+                "statement-header"
+              ],
+              "via": [],
+              "tier": "likely",
+              "card_tier": "likely"
+            }
+          ]
+        }
+      ],
+      "documents": [
+        {
+          "document": "hdfc-card-statement",
+          "card_tier": "certain",
+          "mentions": [
+            {
+              "key": "name:hdfc-card-statement:hdfcbank",
+              "page": 1,
+              "start": 60,
+              "end": 69,
+              "text": "HDFC Bank",
+              "settled_by": "name"
+            }
+          ]
+        }
+      ],
+      "statements": [
+        {
+          "document": "hdfc-card-statement",
+          "from": "2026-08-16",
+          "to": "2026-09-15",
+          "period_tier": "likely",
+          "issuer": "name:hdfc-card-statement:hdfcbank",
+          "tier": "likely",
+          "card_tier": "likely"
+        }
+      ]
+    },
+    {
+      "head": "name:hdfc-life-receipt:hdfclifeinsurancecompany",
+      "stands_on": "likely-only",
+      "keys": [
+        {
+          "key": "name:hdfc-life-receipt:hdfclifeinsurancecompany",
+          "names": [
+            "HDFC Life",
+            "HDFC Life Insurance Company Limited"
+          ],
+          "joined": "certain"
+        }
+      ],
+      "joins": [],
+      "held": [],
+      "documents": [
+        {
+          "document": "hdfc-life-receipt",
+          "card_tier": "certain",
+          "mentions": [
+            {
+              "key": "name:hdfc-life-receipt:hdfclifeinsurancecompany",
+              "page": 1,
+              "start": 58,
+              "end": 93,
+              "text": "HDFC Life Insurance Company Limited",
+              "settled_by": "name"
+            },
+            {
+              "key": "name:hdfc-life-receipt:hdfclifeinsurancecompany",
+              "page": 1,
+              "start": 265,
+              "end": 274,
+              "text": "HDFC Life",
+              "settled_by": "mention"
+            }
+          ]
+        }
+      ],
+      "statements": []
+    },
+    {
+      "head": "name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation",
+      "stands_on": "likely-only",
+      "keys": [
+        {
+          "key": "name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation",
+          "names": [
+            "HDFC Ltd",
+            "Housing Development Finance Corporation Limited"
+          ],
+          "joined": "certain"
+        }
+      ],
+      "joins": [],
+      "held": [
+        {
+          "kind": "account",
+          "value": "612345678",
+          "card_tier": "likely",
+          "links": [
+            {
+              "key": "name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation",
+              "document": "hdfc-ltd-loan-2019",
+              "reasons": [
+                "statement-header"
+              ],
+              "via": [],
+              "tier": "likely",
+              "card_tier": "likely"
+            }
+          ]
+        }
+      ],
+      "documents": [
+        {
+          "document": "hdfc-ltd-loan-2019",
+          "card_tier": "certain",
+          "mentions": [
+            {
+              "key": "name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation",
+              "page": 1,
+              "start": 60,
+              "end": 68,
+              "text": "HDFC Ltd",
+              "settled_by": "mention"
+            },
+            {
+              "key": "name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation",
+              "page": 1,
+              "start": 69,
+              "end": 116,
+              "text": "Housing Development Finance Corporation Limited",
+              "settled_by": "name"
+            }
+          ]
+        }
+      ],
+      "statements": [
+        {
+          "document": "hdfc-ltd-loan-2019",
+          "from": "2018-04-01",
+          "to": "2019-03-31",
+          "period_tier": "likely",
+          "issuer": "name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation",
+          "tier": "likely",
+          "card_tier": "likely"
+        }
+      ]
+    }
+  ],
+  "also_named_in": [
+    {
+      "document": "email-fee-payment",
+      "mentions": [
+        {
+          "key": "name:email-fee-payment:hdfcbank",
+          "page": 1,
+          "start": 259,
+          "end": 268,
+          "text": "HDFC BANK",
+          "settled_by": "name"
+        }
+      ]
+    },
+    {
+      "document": "hdfc-branch-letter",
+      "mentions": [
+        {
+          "key": "name:hdfc-branch-letter:hdfcbank",
+          "page": 1,
+          "start": 57,
+          "end": 74,
+          "text": "HDFC Bank Limited",
+          "settled_by": "name"
+        },
+        {
+          "key": "name:hdfc-branch-letter:hdfcbank",
+          "page": 1,
+          "start": 280,
+          "end": 289,
+          "text": "HDFC Bank",
+          "settled_by": "name"
+        }
+      ]
+    },
+    {
+      "document": "hdfc-card-statement",
+      "mentions": [
+        {
+          "key": "name:hdfc-card-statement:hdfcbank",
+          "page": 1,
+          "start": 60,
+          "end": 69,
+          "text": "HDFC Bank",
+          "settled_by": "name"
+        }
+      ]
+    },
+    {
+      "document": "hdfc-life-receipt",
+      "mentions": [
+        {
+          "key": "name:hdfc-life-receipt:hdfclifeinsurancecompany",
+          "page": 1,
+          "start": 58,
+          "end": 93,
+          "text": "HDFC Life Insurance Company Limited",
+          "settled_by": "name"
+        },
+        {
+          "key": "name:hdfc-life-receipt:hdfclifeinsurancecompany",
+          "page": 1,
+          "start": 265,
+          "end": 274,
+          "text": "HDFC Life",
+          "settled_by": "mention"
+        }
+      ]
+    },
+    {
+      "document": "hdfc-ltd-loan-2019",
+      "mentions": [
+        {
+          "key": "name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation",
+          "page": 1,
+          "start": 60,
+          "end": 68,
+          "text": "HDFC Ltd",
+          "settled_by": "mention"
+        }
+      ]
+    }
+  ]
+}

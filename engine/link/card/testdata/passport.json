@@ -1,0 +1,94 @@
+{
+  "question": "when does my passport expire",
+  "answer": "passport-expiry",
+  "reference_date": "2026-11-27",
+  "passports": [
+    {
+      "holder": "ERIKSSON, ANNA MARIA",
+      "holder_tier": "likely",
+      "document": "passport-bad-mrz",
+      "expiry": {
+        "status": "cannot-tell",
+        "why": "extractor-cannot-tell",
+        "tier": "likely"
+      },
+      "current": {
+        "value": true,
+        "tier": "likely",
+        "says": "may be the current passport"
+      }
+    },
+    {
+      "holder": "KALPIT, ASHA",
+      "holder_tier": "certain",
+      "document": "passport-asha-current",
+      "expiry": {
+        "status": "in-date",
+        "date": "2034-03-17",
+        "tier": "certain",
+        "page": 1,
+        "start": 343,
+        "end": 354,
+        "text": "17 MAR 2034"
+      },
+      "current": {
+        "value": true,
+        "tier": "likely",
+        "says": "may be the current passport"
+      }
+    },
+    {
+      "holder": "KALPIT, ASHA",
+      "holder_tier": "certain",
+      "document": "passport-asha-expired",
+      "expiry": {
+        "status": "past",
+        "date": "2019-06-09",
+        "tier": "certain",
+        "page": 1,
+        "start": 276,
+        "end": 287,
+        "text": "09 JUN 2019"
+      },
+      "current": {
+        "value": false,
+        "tier": "likely",
+        "says": "may not be the current passport"
+      }
+    },
+    {
+      "holder": "KALPIT, MEERA",
+      "holder_tier": "certain",
+      "document": "passport-meera-1988",
+      "expiry": {
+        "status": "cannot-tell",
+        "why": "likely-only",
+        "tier": "likely"
+      },
+      "current": {
+        "value": true,
+        "tier": "likely",
+        "says": "may be the current passport"
+      }
+    },
+    {
+      "holder": "KALPIT, ROHAN",
+      "holder_tier": "certain",
+      "document": "passport-rohan",
+      "expiry": {
+        "status": "in-date",
+        "date": "2028-01-04",
+        "tier": "certain",
+        "page": 1,
+        "start": 344,
+        "end": 355,
+        "text": "04 JAN 2028"
+      },
+      "current": {
+        "value": true,
+        "tier": "likely",
+        "says": "may be the current passport"
+      }
+    }
+  ]
+}

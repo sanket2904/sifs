@@ -65,6 +65,27 @@ It prints one line of JSON: documents written, unchanged and removed, the record
 
 `engine/link` is a Go module of its own because it needs the engine, a private module. It is built on the owner's Mac, with access to that module, and public CI does not build or test it.
 
+## Ask the engine
+
+`sifs-card` answers from the store that `sifs-load` filled, and writes nothing to it. A missing store is an error, and it creates nothing.
+
+```sh
+cd engine/link
+go run ./cmd/sifs-card --data-dir /tmp/sifs-data --json "HDFC"
+go run ./cmd/sifs-card --data-dir /tmp/sifs-data --ask "when does my passport expire"
+```
+
+| Flag | Value |
+| --- | --- |
+| `--data-dir` | The folder that holds `engine.db`. Required, with no default. |
+| `--json` | A word or phrase. It prints the organisation cards it matches, best first. |
+| `--ask` | A question. It prints the answer. |
+| `--reference-date` | With `--ask`, the date that decides which expiries are past, `YYYY-MM-DD`. The default is today. |
+
+It prints one JSON document, with every list in a fixed order and the query time in `query_ms`. One card is one organisation as far as the stored `same_org` rows join its keys. Two keys are never joined by their names. Every fact on a card keeps the tier the store gives it, and `card_tier` gives the lower of that tier and the tier of its key's join to the card. A card says whether it stands on a certain row or on likely rows only. A query matches a name that a document prints when the name holds the query's words as whole words, in order and ignoring case. A one-word query also matches a code key when the word begins with that code, as `HDFC0SAMPL1` begins with `HDFC`. Documents that print a matching name on a key the first card does not hold are listed under `also_named_in`, because they may be the same organisation.
+
+`--ask` answers one kind of question: when a passport expires. It finds the question by its words, `passport` together with `expire`, `expiry` or `valid until`. It gives every passport the store holds, with its holder. An expiry is given as a date only when it is certain and its printed page is known. Otherwise the line says that the date cannot be told, and why. Whether a passport is the current one keeps its tier, and a likely one is said as "may be". Any other question gets `"answer": "not-answered-yet"` and exit status 0. It does not yet answer which statement is the latest, join two documents' names into one organisation, or explain a fact with the engine's rules.
+
 ## Files
 
 | Path | What it is |
