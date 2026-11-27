@@ -7,6 +7,7 @@ package load
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,14 +90,35 @@ func open(ctx context.Context, schemas store.SchemaStore, objects store.Store, c
 	if err != nil {
 		return nil, err
 	}
-	_, version, err := interp.SchemaSnapshot(ctx)
+	stored, version, err := interp.SchemaSnapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if err := interp.PublishSchema(ctx, box, version); err != nil {
 		return nil, fmt.Errorf("publish the files pack: %w", err)
 	}
+	// A store filled under a pack that declared other names is looked up
+	// by the old ones until it is indexed again.
+	if !maps.Equal(names(stored), names(box)) {
+		if err := interp.RebuildNameIndex(ctx); err != nil {
+			return nil, fmt.Errorf("index the names of the files pack: %w", err)
+		}
+	}
 	return &Engine{interp: interp, close: closer}, nil
+}
+
+// names is the set of attributes a schema declares as names.
+func names(box *ontology.TBox) map[string]bool {
+	out := map[string]bool{}
+	if box == nil {
+		return out
+	}
+	for id, at := range box.AttributeTypes {
+		if at != nil && at.Alias {
+			out[id] = true
+		}
+	}
+	return out
 }
 
 // Close closes the store.
