@@ -264,6 +264,26 @@ func TestSameNameTwoCards(t *testing.T) {
 	})
 }
 
+// A card that stands on a certain row comes before one on likely rows
+// only, though its keys sort after. Mutation: drop the sort of cards in
+// find, and the likely card comes first.
+func TestBestFirst(t *testing.T) {
+	letter := receipt("zz-letter")
+	short := "name:zz-letter:exmp"
+	letter.Orgs = append(letter.Orgs, extract.OrgOut{Span: span(1, 30, "EXMP"), Org: ptr(short), SettledBy: ptr("mention")})
+	letter.SameOrg = []extract.SameOrgOut{{Keys: [2]string{"name:zz-letter:examplebank", short}, Reason: "directory", Tier: extract.Certain}}
+	run := &extract.Output{Format: 3, Documents: []extract.DocOut{receipt("receipt-a"), letter}}
+	stores(t, run, func(t *testing.T, e *load.Engine) {
+		var order []string
+		for _, c := range find(t, e, "example bank").Cards {
+			order = append(order, c.Head+" "+c.StandsOn)
+		}
+		if want := []string{"name:zz-letter:examplebank certain", "name:receipt-a:examplebank likely-only"}; !slices.Equal(order, want) {
+			t.Errorf("cards %v, want %v", order, want)
+		}
+	})
+}
+
 // A chain: the code key and the printed name are joined certain, the name
 // and a second printed name likely. What reaches the card only through the
 // likely join is likely, though its own row says certain. Mutation: in
