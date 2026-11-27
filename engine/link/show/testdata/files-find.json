@@ -1,0 +1,186 @@
+{
+  "a German bank's printed name": {
+    "groups": [
+      {
+        "collection": "organisations",
+        "type": "files.Organisation",
+        "label": "Organisation",
+        "things": [
+          {
+            "id": "org:name:rechnung-falsche-iban:commerzbank",
+            "type": "files.Organisation",
+            "title": "Commerzbank",
+            "subtitle": "Commerzbank",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "Commerzbank",
+              "exact": true
+            }
+          },
+          {
+            "id": "org:name:transfer-untied:commerzbank",
+            "type": "files.Organisation",
+            "title": "Commerzbank",
+            "subtitle": "Commerzbank",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "Commerzbank",
+              "exact": true
+            }
+          },
+          {
+            "id": "org:BIC COBADEFF",
+            "type": "files.Organisation",
+            "title": "Commerzbank AG",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "Commerzbank AG",
+              "exact": false
+            }
+          },
+          {
+            "id": "org:IBAN DE 37040044",
+            "type": "files.Organisation",
+            "title": "Commerzbank AG",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "Commerzbank AG",
+              "exact": false
+            }
+          },
+          {
+            "id": "org:name:commerzbank-kontoauszug:commerzbank",
+            "type": "files.Organisation",
+            "title": "Commerzbank AG",
+            "subtitle": "Commerzbank AG",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "Commerzbank AG",
+              "exact": false
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "a full IBAN": {
+    "groups": [
+      {
+        "collection": "accounts",
+        "type": "files.Identifier",
+        "label": "Number or code",
+        "things": [
+          {
+            "id": "identifier:iban:••••••••••••••••••3000",
+            "type": "files.Identifier",
+            "title": "••••••••••••••••••3000",
+            "subtitle": "iban",
+            "matched": {
+              "attribute": "files.value",
+              "label": "Value",
+              "value": "••••••••••••••••••3000",
+              "exact": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "a holder's surname": {
+    "groups": [
+      {
+        "collection": "people",
+        "type": "files.Holder",
+        "label": "Passport holder",
+        "things": [
+          {
+            "id": "holder:passport-bad-mrz",
+            "type": "files.Holder",
+            "title": "ERIKSSON",
+            "subtitle": "ANNA MARIA",
+            "matched": {
+              "attribute": "files.surname",
+              "label": "Surname",
+              "value": "ERIKSSON",
+              "exact": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "a word of several kinds": {
+    "groups": [
+      {
+        "collection": "accounts",
+        "type": "files.Identifier",
+        "label": "Number or code",
+        "things": [
+          {
+            "id": "identifier:bic:•••••••0XXX",
+            "type": "files.Identifier",
+            "title": "•••••••0XXX",
+            "subtitle": "bic",
+            "matched": {
+              "attribute": "files.value",
+              "label": "Value",
+              "value": "•••••••0XXX",
+              "exact": false
+            }
+          },
+          {
+            "id": "identifier:bic:•••••••0XXX",
+            "type": "files.Identifier",
+            "title": "•••••••0XXX",
+            "subtitle": "bic",
+            "matched": {
+              "attribute": "files.value",
+              "label": "Value",
+              "value": "•••••••0XXX",
+              "exact": false
+            }
+          }
+        ]
+      },
+      {
+        "collection": "organisations",
+        "type": "files.Organisation",
+        "label": "Organisation",
+        "things": [
+          {
+            "id": "org:name:credit-advice-smbk-ca:smbk",
+            "type": "files.Organisation",
+            "title": "SMBK",
+            "subtitle": "SMBK",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "SMBK",
+              "exact": true
+            }
+          },
+          {
+            "id": "org:name:payroll-release-smbk-gb:smbk",
+            "type": "files.Organisation",
+            "title": "SMBK",
+            "subtitle": "SMBK",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "SMBK",
+              "exact": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "a word that is nowhere": {
+    "groups": []
+  }
+}

@@ -86,6 +86,28 @@ It prints one JSON document, with every list in a fixed order and the query time
 
 `--ask` answers one kind of question: when a passport expires. It finds the question by its words, `passport` together with `expire`, `expiry` or `valid until`. It gives every passport the store holds, with its holder. An expiry is given as a date only when it is certain and its printed page is known. Otherwise the line says that the date cannot be told, and why. Whether a passport is the current one keeps its tier, and a likely one is said as "may be". Any other question gets `"answer": "not-answered-yet"` and exit status 0. It does not yet answer which statement is the latest, join two documents' names into one organisation, or explain a fact with the engine's rules.
 
+## Show what the engine knows
+
+`sifs-show` shows any kind of thing the store holds, drawn only from the schema the store holds and the engine's own calls. It knows no type, so the same tool shows a store of another schema. It reads the store that `sifs-load` filled and writes nothing to it. A missing store is an error, and it creates nothing.
+
+```sh
+cd engine/link
+go run ./cmd/sifs-show --data-dir /tmp/sifs-data --kinds
+go run ./cmd/sifs-show --data-dir /tmp/sifs-data --find "Commerzbank"
+go run ./cmd/sifs-show --data-dir /tmp/sifs-data --page "holder:passport-bad-mrz"
+go run ./cmd/sifs-show --data-dir /tmp/sifs-data --find "NL91ABNA0417164300" --reveal
+```
+
+| Flag | Value |
+| --- | --- |
+| `--data-dir` | The folder that holds `engine.db`. Required, with no default. |
+| `--kinds` | List every kind of thing the schema declares, with its label, its collection and how many the store holds. |
+| `--find` | A word or phrase. It prints the things the engine's name lookup returns, grouped by collection and kind, each with its title, its subtitle and the name that matched. An empty phrase finds nothing. |
+| `--page` | A thing's id. It prints the thing's values with the status the engine gives each and the documents each comes from, its links grouped as the schema labels them, each naming the thing at the other end by its title and giving the link's own values, such as its tier, and every kind it has by a rule, with the engine's proof. |
+| `--reveal` | Give masked values in full. |
+
+Give exactly one of `--kinds`, `--find` and `--page`. It prints one JSON document, with every list in a fixed order and the query time in `query_ms`. A value the schema masks, such as an IBAN or a passport number, keeps only its last four characters wherever it appears, in a value, a title, a matched name, the other end of a link or a thing's id, unless `--reveal` is given. A value the schema hides is never printed. A usage error, a missing store or an id the store does not hold prints a message on stderr and exits 2.
+
 ## Files
 
 | Path | What it is |

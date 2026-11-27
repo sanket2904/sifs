@@ -1,0 +1,40 @@
+{
+  "kinds": [
+    {
+      "type": "files.Identifier",
+      "label": "Number or code",
+      "collection": "accounts",
+      "count": 56
+    },
+    {
+      "type": "files.Document",
+      "label": "Document",
+      "collection": "documents",
+      "count": 41
+    },
+    {
+      "type": "files.Passport",
+      "label": "Passport",
+      "collection": "documents",
+      "count": 5
+    },
+    {
+      "type": "files.Statement",
+      "label": "Statement",
+      "collection": "documents",
+      "count": 14
+    },
+    {
+      "type": "files.Organisation",
+      "label": "Organisation",
+      "collection": "organisations",
+      "count": 67
+    },
+    {
+      "type": "files.Holder",
+      "label": "Passport holder",
+      "collection": "people",
+      "count": 5
+    }
+  ]
+}
