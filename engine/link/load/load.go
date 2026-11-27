@@ -216,6 +216,17 @@ func (e *Engine) Documents(ctx context.Context) ([]string, error) {
 	return ids, nil
 }
 
+// Things reads every thing of one type the store holds, and Links every
+// link of one type. They only read: nothing reachable through them writes
+// to the store or publishes a schema.
+func (e *Engine) Things(ctx context.Context, typeID string) ([]*ontology.Entity, error) {
+	return e.interp.QueryEntities(ctx, store.EntityPattern{TypeID: typeID})
+}
+
+func (e *Engine) Links(ctx context.Context, typeID string) ([]*ontology.Relation, error) {
+	return e.interp.QueryRelations(ctx, store.RelationPattern{TypeID: typeID})
+}
+
 // Counts is how many things and links of each kind the store holds, by the
 // pack's type names without the module.
 type Counts struct {

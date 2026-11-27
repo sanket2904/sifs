@@ -278,6 +278,29 @@ func TestLeftOutRowsCounted(t *testing.T) {
 	})
 }
 
+// Mutation: make Links query by the wrong type, and the read finds no
+// same_org link.
+func TestReadThingsAndLinks(t *testing.T) {
+	stores(t, func(t *testing.T, ctx context.Context, reopen func() *Engine) {
+		mustLoad(t, ctx, reopen(), sampleRun(statement("stmt-jan"), passport()))
+		e := reopen()
+		links, err := e.Links(ctx, pack.SameOrg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(links) != 1 || links[0].ID != janSameOrg {
+			t.Fatalf("same_org links: %+v", links)
+		}
+		holders, err := e.Things(ctx, pack.Holder)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(holders) != 1 || !reflect.DeepEqual(holders[0].Attributes[pack.Surname], []any{"SAMPLE"}) {
+			t.Fatalf("holders: %+v", holders)
+		}
+	})
+}
+
 // mergeDoc states two links and two same_org claims twice each: one claim
 // of each kind in a certain row and a likely row, the other in two likely
 // rows. certainFirst puts the certain rows first; otherwise they come last.
