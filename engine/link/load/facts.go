@@ -73,9 +73,16 @@ func checkRefs(doc extract.DocOut) error {
 // Facts is everything one document of a run says, as one source record's
 // facts. Rows that format 3 calls one claim ("Ids": a link's document,
 // identifier and key; a same_org row's document and two keys) become one
-// link holding the union of their reasons, certain when one row is.
+// link holding the union of their reasons, certain when one row is. An
+// organisation holds, as printed, the text of each of this document's
+// mentions of it: what this document prints for that key, nothing more.
 func Facts(doc extract.DocOut, cards map[string]extract.Card) interpreter.RecordFacts {
 	f := newFacts(doc.ID, cards)
+	for _, m := range doc.Orgs {
+		if m.Org != nil {
+			f.printed[*m.Org] = append(f.printed[*m.Org], m.Span.Text)
+		}
+	}
 	idents := map[string]string{}
 	for _, ident := range doc.Identifiers {
 		idents[ident.ID] = f.identifier(ident.Kind, ident.Value)
@@ -171,6 +178,7 @@ func (f *facts) passport(p *extract.PassportOut, idents map[string]string) {
 type facts struct {
 	docID, doc string
 	cards      map[string]extract.Card
+	printed    map[string][]string
 	entities   map[string]ontology.ObservedEntity
 	relations  map[string]ontology.ObservedRelation
 	claims     map[string]*claim
@@ -205,7 +213,7 @@ func (c *claim) tier() extract.Tier {
 }
 
 func newFacts(docID string, cards map[string]extract.Card) *facts {
-	f := &facts{docID: docID, cards: cards, entities: map[string]ontology.ObservedEntity{}, relations: map[string]ontology.ObservedRelation{}, claims: map[string]*claim{}}
+	f := &facts{docID: docID, cards: cards, printed: map[string][]string{}, entities: map[string]ontology.ObservedEntity{}, relations: map[string]ontology.ObservedRelation{}, claims: map[string]*claim{}}
 	f.doc = f.entity(DocumentPrefix+docID, pack.Document, nil)
 	return f
 }
@@ -227,6 +235,9 @@ func (f *facts) org(key string) string {
 		if card.Directory != nil {
 			attrs[pack.DirectoryID] = *card.Directory
 		}
+	}
+	if printed := set(f.printed[key]); len(printed) > 0 {
+		attrs[pack.Printed] = printed
 	}
 	return f.entity("org:"+key, pack.Organisation, attrs)
 }
