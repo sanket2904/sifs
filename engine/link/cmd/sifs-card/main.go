@@ -45,7 +45,9 @@ func runMain(args []string, stdout, stderr io.Writer) int {
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *dataDir == "" || (*words == "") == (*question == "") || flags.NArg() > 0 {
+	set := map[string]bool{}
+	flags.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	if *dataDir == "" || set["json"] == set["ask"] || flags.NArg() > 0 {
 		fmt.Fprintln(stderr, `usage: sifs-card --data-dir <dir> --json "<words>" | sifs-card --data-dir <dir> --ask "<question>" [--reference-date YYYY-MM-DD]`)
 		return 2
 	}
@@ -53,7 +55,7 @@ func runMain(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "sifs-card: --reference-date:", err)
 		return 2
 	}
-	out, err := do(context.Background(), *dataDir, *words, *question, *refDate)
+	out, err := do(context.Background(), *dataDir, set["json"], *words, *question, *refDate)
 	if err != nil {
 		fmt.Fprintln(stderr, "sifs-card:", err)
 		return 2
@@ -65,14 +67,14 @@ func runMain(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func do(ctx context.Context, dataDir, words, question, refDate string) (any, error) {
+func do(ctx context.Context, dataDir string, byWords bool, words, question, refDate string) (any, error) {
 	e, err := load.OpenExisting(ctx, dataDir)
 	if err != nil {
 		return nil, err
 	}
 	defer e.Close()
 	start := time.Now()
-	if words != "" {
+	if byWords {
 		ans, err := card.Find(ctx, e, words)
 		return found{ans, time.Since(start).Milliseconds()}, err
 	}

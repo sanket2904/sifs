@@ -135,3 +135,67 @@ func TestAnswersExitZero(t *testing.T) {
 		t.Errorf("exit %d: %s", code, stdout)
 	}
 }
+
+// A flag given with an empty value is a query, not a missing flag.
+// Mutation: tell the flags apart by value again, as in
+// (*words == "") == (*question == ""), and the empty queries print usage.
+func TestEmptyQueriesAnswer(t *testing.T) {
+	dir := loaded(t)
+	for _, words := range []string{"", "   "} {
+		code, stdout, stderr := sifsCard(t, "--data-dir", dir, "--json", words)
+		var found map[string]any
+		if code != 0 || stderr != "" || json.Unmarshal([]byte(stdout), &found) != nil {
+			t.Fatalf("--json %q: exit %d: %s%s", words, code, stdout, stderr)
+		}
+		if cards, ok := found["cards"].([]any); !ok || len(cards) != 0 || found["query_ms"] == nil {
+			t.Errorf("--json %q: %s", words, stdout)
+		}
+	}
+	for _, args := range [][]string{{"--ask", ""}, {"--ask", "", "--reference-date", "2026-11-27"}} {
+		code, stdout, stderr := sifsCard(t, append([]string{"--data-dir", dir}, args...)...)
+		if code != 0 || stderr != "" || !strings.Contains(stdout, `"answer":"not-answered-yet"`) {
+			t.Errorf("%q: exit %d: %s%s", args, code, stdout, stderr)
+		}
+	}
+}
+
+// Usage goes to stderr only, exits 2 and leaves the data dir as it was.
+func TestUsageWritesNothing(t *testing.T) {
+	dir := loaded(t)
+	before := state(t, dir)
+	for _, args := range [][]string{
+		{"--data-dir", dir},
+		{"--data-dir", dir, "--json", "HDFC", "--ask", "what is my balance"},
+		{"--data-dir", dir, "--json", "", "--ask", ""},
+		{"--data-dir", dir, "--json", "HDFC", "stray"},
+		{"--data-dir", dir, "--json", "", "stray"},
+		{"--json", ""},
+		{"--ask", ""},
+		{"--data-dir", "", "--json", ""},
+	} {
+		code, stdout, stderr := sifsCard(t, args...)
+		if code != 2 || stdout != "" || !strings.HasPrefix(stderr, "usage: sifs-card") {
+			t.Errorf("%q: exit %d, stdout %q, stderr %q", args, code, stdout, stderr)
+		}
+	}
+	after := state(t, dir)
+	if len(after) != len(before) || after[load.StoreFile] != before[load.StoreFile] {
+		t.Errorf("usage changed the data dir: %d files, was %d", len(after), len(before))
+	}
+	empty := t.TempDir()
+	missing := filepath.Join(t.TempDir(), "none")
+	for _, d := range []string{empty, missing} {
+		for _, q := range [][]string{{"--json", ""}, {"--ask", ""}} {
+			code, stdout, stderr := sifsCard(t, append([]string{"--data-dir", d}, q...)...)
+			if code != 2 || stdout != "" || !strings.Contains(stderr, "no store") {
+				t.Errorf("%s %q: exit %d, stdout %q, stderr %q", d, q, code, stdout, stderr)
+			}
+		}
+	}
+	if entries, _ := os.ReadDir(empty); len(entries) != 0 {
+		t.Errorf("the empty data dir now holds %v", entries)
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Errorf("the missing data dir was made: %v", err)
+	}
+}
