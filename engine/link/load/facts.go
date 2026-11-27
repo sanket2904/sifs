@@ -1,6 +1,8 @@
 package load
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -239,11 +241,26 @@ func (f *facts) org(key string) string {
 	if printed := set(f.printed[key]); len(printed) > 0 {
 		attrs[pack.Printed] = printed
 	}
-	return f.entity("org:"+key, pack.Organisation, attrs)
+	return f.entity(OrgID(key), pack.Organisation, attrs)
 }
 
 func (f *facts) identifier(kind, value string) string {
-	return f.entity("identifier:"+kind+":"+value, pack.Identifier, map[string]any{pack.Kind: kind, pack.Value: value})
+	return f.entity(IdentifierID(kind, value), pack.Identifier, map[string]any{pack.Kind: kind, pack.Value: value})
+}
+
+// OrgID is the id of the organisation with key, and IdentifierID the id of
+// the number or code of kind with value. The schema hides a key and masks a
+// value, so neither is in the id: the id is a digest of it, the same on
+// every load and every machine.
+func OrgID(key string) string { return "org:" + digest(key) }
+
+func IdentifierID(kind, value string) string { return "identifier:" + digest(kind+":"+value) }
+
+// digest is the first 64 bits of the SHA-256 of s, in hex. Among a million
+// things, the odds that two share one are below one in thirty million.
+func digest(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:8])
 }
 
 func (f *facts) relation(id, typeID string, attrs map[string]any, players ...ontology.RolePlayer) {

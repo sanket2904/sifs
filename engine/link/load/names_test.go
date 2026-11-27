@@ -39,6 +39,12 @@ func resolve(t *testing.T, ctx context.Context, e *Engine, query string) []strin
 // The committed run's rows the loader leaves out (sample/README.md).
 var committedLeftOut = LeftOut{MentionsWithoutOrganisation: 1, Answers: 16}
 
+// sortedIDs are ids in the order the tests compare them in.
+func sortedIDs(ids ...string) []string {
+	slices.Sort(ids)
+	return ids
+}
+
 // The four holders the committed run's passports name with the surname
 // KALPIT; ERIKSSON's passport is the fifth.
 var kalpit = []string{"holder:passport-asha-current", "holder:passport-asha-expired", "holder:passport-meera-1988", "holder:passport-rohan"}
@@ -50,17 +56,17 @@ func runNames(run *extract.Output) map[string][]string {
 	names := map[string][]string{}
 	for key, card := range run.Organisations {
 		if card.Name != nil {
-			names["org:"+key] = append(names["org:"+key], *card.Name)
+			names[OrgID(key)] = append(names[OrgID(key)], *card.Name)
 		}
 	}
 	for _, doc := range run.Documents {
 		for _, m := range doc.Orgs {
 			if m.Org != nil {
-				names["org:"+*m.Org] = append(names["org:"+*m.Org], m.Span.Text)
+				names[OrgID(*m.Org)] = append(names[OrgID(*m.Org)], m.Span.Text)
 			}
 		}
 		for _, ident := range doc.Identifiers {
-			id := "identifier:" + ident.Kind + ":" + ident.Value
+			id := IdentifierID(ident.Kind, ident.Value)
 			names[id] = append(names[id], ident.Value)
 		}
 		if p := doc.Passport; p != nil {
@@ -84,17 +90,17 @@ func TestNames(t *testing.T) {
 		query string
 		want  []string
 	}{
-		{"hdfc", []string{"identifier:ifsc:HDFC0SAMPL1", "identifier:ifsc:HDFC0SAMPL3",
-			"org:IFSC HDFC", "org:name:email-fee-payment:hdfcbank", "org:name:hdfc-branch-letter:hdfcbank", "org:name:hdfc-card-statement:hdfcbank",
-			"org:name:hdfc-life-receipt:hdfclifeinsurancecompany", "org:name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation",
-			"org:name:hdfc-statement-aug:hdfcbank", "org:name:hdfc-statement-jul:hdfcbank", "org:name:hdfc-statement-sep:hdfcbank", "org:name:neft-receipt-tied:hdfcbank"}},
-		{"HDFC Bank", []string{"org:IFSC HDFC", "org:name:email-fee-payment:hdfcbank", "org:name:hdfc-branch-letter:hdfcbank", "org:name:hdfc-card-statement:hdfcbank",
-			"org:name:hdfc-statement-aug:hdfcbank", "org:name:hdfc-statement-jul:hdfcbank", "org:name:hdfc-statement-sep:hdfcbank", "org:name:neft-receipt-tied:hdfcbank"}},
-		{"HDFC Ltd", []string{"org:name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation"}},
+		{"hdfc", sortedIDs(IdentifierID("ifsc", "HDFC0SAMPL1"), IdentifierID("ifsc", "HDFC0SAMPL3"),
+			OrgID("IFSC HDFC"), OrgID("name:email-fee-payment:hdfcbank"), OrgID("name:hdfc-branch-letter:hdfcbank"), OrgID("name:hdfc-card-statement:hdfcbank"),
+			OrgID("name:hdfc-life-receipt:hdfclifeinsurancecompany"), OrgID("name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation"),
+			OrgID("name:hdfc-statement-aug:hdfcbank"), OrgID("name:hdfc-statement-jul:hdfcbank"), OrgID("name:hdfc-statement-sep:hdfcbank"), OrgID("name:neft-receipt-tied:hdfcbank"))},
+		{"HDFC Bank", sortedIDs(OrgID("IFSC HDFC"), OrgID("name:email-fee-payment:hdfcbank"), OrgID("name:hdfc-branch-letter:hdfcbank"), OrgID("name:hdfc-card-statement:hdfcbank"),
+			OrgID("name:hdfc-statement-aug:hdfcbank"), OrgID("name:hdfc-statement-jul:hdfcbank"), OrgID("name:hdfc-statement-sep:hdfcbank"), OrgID("name:neft-receipt-tied:hdfcbank"))},
+		{"HDFC Ltd", sortedIDs(OrgID("name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation"))},
 		{"KALPIT", kalpit},
 		{"anna maria", []string{"holder:passport-bad-mrz"}},
-		{"50100417263958", []string{"identifier:account:50100417263958"}},
-		{"SMBK", []string{"identifier:bic:SMBKCAT0XXX", "identifier:bic:SMBKGB20XXX", "org:name:credit-advice-smbk-ca:smbk", "org:name:payroll-release-smbk-gb:smbk"}},
+		{"50100417263958", sortedIDs(IdentifierID("account", "50100417263958"))},
+		{"SMBK", sortedIDs(IdentifierID("bic", "SMBKCAT0XXX"), IdentifierID("bic", "SMBKGB20XXX"), OrgID("name:credit-advice-smbk-ca:smbk"), OrgID("name:payroll-release-smbk-gb:smbk"))},
 		{"Zebrafinch Savings", nil},
 	}
 	stores(t, func(t *testing.T, ctx context.Context, reopen func() *Engine) {
@@ -119,7 +125,7 @@ func TestNames(t *testing.T) {
 			eq(t, q.query, ids, q.want)
 			switch q.query {
 			case "hdfc":
-				eq(t, "hdfc exactly", exact, []string{"org:name:neft-receipt-tied:hdfcbank"})
+				eq(t, "hdfc exactly", exact, []string{OrgID("name:neft-receipt-tied:hdfcbank")})
 			case "50100417263958":
 				eq(t, "the account exactly", exact, q.want)
 			}

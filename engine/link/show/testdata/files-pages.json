@@ -1,6 +1,6 @@
 {
   "a Dutch IBAN": {
-    "id": "identifier:iban:••••••••••••••4300",
+    "id": "identifier:2288ef2e20318bbd",
     "type": "files.Identifier",
     "title": "••••••••••••••4300",
     "subtitle": "iban",
@@ -51,7 +51,7 @@
                 "role": "files.HeldAt:organisation",
                 "label": "Organisation",
                 "thing": {
-                  "id": "org:IBAN NL ABNA",
+                  "id": "org:cccf138603c1eb31",
                   "type": "files.Organisation",
                   "title": "ABN AMRO"
                 }
@@ -221,7 +221,7 @@
                 "role": "files.StatementAccount:account",
                 "label": "Account",
                 "thing": {
-                  "id": "identifier:iban:••••••••••••••4300",
+                  "id": "identifier:2288ef2e20318bbd",
                   "type": "files.Identifier",
                   "title": "••••••••••••••4300",
                   "subtitle": "iban"
@@ -278,7 +278,7 @@
                 "role": "files.IssuedBy:issuer",
                 "label": "Issuer",
                 "thing": {
-                  "id": "org:name:abn-amro-statement:abnamrobanknv",
+                  "id": "org:07bcca155d7708a6",
                   "type": "files.Organisation",
                   "title": "ABN AMRO Bank N.V.",
                   "subtitle": "ABN AMRO Bank N.V."
@@ -303,7 +303,7 @@
     ]
   },
   "a German bank": {
-    "id": "org:BIC COBADEFF",
+    "id": "org:9e577a3773d0d204",
     "type": "files.Organisation",
     "title": "Commerzbank AG",
     "label": "Organisation",
@@ -342,7 +342,7 @@
                 "role": "files.HeldAt:identifier",
                 "label": "Number or code",
                 "thing": {
-                  "id": "identifier:bic:•••••••FXXX",
+                  "id": "identifier:45751cfa78b71419",
                   "type": "files.Identifier",
                   "title": "•••••••FXXX",
                   "subtitle": "bic"
@@ -391,7 +391,7 @@
                 "role": "files.SameOrg:other",
                 "label": "Other",
                 "thing": {
-                  "id": "org:name:commerzbank-kontoauszug:commerzbank",
+                  "id": "org:373009cb6827435f",
                   "type": "files.Organisation",
                   "title": "Commerzbank AG",
                   "subtitle": "Commerzbank AG"
@@ -433,7 +433,7 @@
                 "role": "files.SameOrg:other",
                 "label": "Other",
                 "thing": {
-                  "id": "org:IBAN DE 37040044",
+                  "id": "org:2700e65ab65dbfb6",
                   "type": "files.Organisation",
                   "title": "Commerzbank AG"
                 }
@@ -607,7 +607,7 @@
                 "role": "files.PassportMRZ:identifier",
                 "label": "Zone",
                 "thing": {
-                  "id": "identifier:mrz:•••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••<<<2",
+                  "id": "identifier:7f1d2b6ba5d3099a",
                   "type": "files.Identifier",
                   "title": "•••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••<<<2",
                   "subtitle": "mrz"
@@ -632,7 +632,7 @@
                 "role": "files.PassportNumber:identifier",
                 "label": "Number",
                 "thing": {
-                  "id": "identifier:passport_number:•••••02C3",
+                  "id": "identifier:b20c5af670095f48",
                   "type": "files.Identifier",
                   "title": "•••••02C3",
                   "subtitle": "passport_number"

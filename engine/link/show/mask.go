@@ -11,10 +11,10 @@ import (
 )
 
 // shown decides, for the whole reader, what of a value a person is given: a
-// value of a hidden attribute is never given, a value of a masked attribute
-// keeps its last four characters unless the reader reveals, and a thing's id
-// never carries one of the thing's own masked values. Every value, title,
-// subtitle, matched name and id the reader returns passes through it.
+// value of a hidden attribute is never given, and a value of a masked
+// attribute keeps its last four characters unless the reader reveals. Every
+// value, title, subtitle and matched name the reader returns passes through
+// it.
 type shown struct {
 	box    *ontology.TBox
 	reveal bool
@@ -47,25 +47,6 @@ func (s shown) values(attrID string, vs []any) []string {
 	}
 	slices.Sort(out)
 	return slices.Compact(out)
-}
-
-// id is a thing's id with each of its own masked values masked in it.
-func (s shown) id(e *ontology.Entity) string {
-	if s.reveal {
-		return e.ID
-	}
-	id := e.ID
-	for _, attrID := range sortedKeys(e.Attributes) {
-		if !s.display(attrID).Mask {
-			continue
-		}
-		for _, v := range e.Attributes[attrID] {
-			if raw := plain(v); raw != "" {
-				id = strings.ReplaceAll(id, raw, mask(raw))
-			}
-		}
-	}
-	return id
 }
 
 // first is the first of attrIDs with a value that is not hidden, as shown.

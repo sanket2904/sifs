@@ -106,7 +106,7 @@ go run ./cmd/sifs-show --data-dir /tmp/sifs-data --find "NL91ABNA0417164300" --r
 | `--page` | A thing's id. It prints the thing's values with the status the engine gives each and the documents each comes from, its links grouped as the schema labels them, each naming the thing at the other end by its title and giving the link's own values, such as its tier, and every kind it has by a rule, with the engine's proof. |
 | `--reveal` | Give masked values in full. |
 
-Give exactly one of `--kinds`, `--find` and `--page`. It prints one JSON document, with every list in a fixed order and the query time in `query_ms`. A value the schema masks, such as an IBAN or a passport number, keeps only its last four characters wherever it appears, in a value, a title, a matched name, the other end of a link or a thing's id, unless `--reveal` is given. A value the schema hides is never printed. A usage error, a missing store or an id the store does not hold prints a message on stderr and exits 2.
+Give exactly one of `--kinds`, `--find` and `--page`. It prints one JSON document, with every list in a fixed order and the query time in `query_ms`. A value the schema masks, such as an IBAN or a passport number, keeps only its last four characters wherever it appears, in a value, a title, a matched name or the other end of a link, unless `--reveal` is given. A value the schema hides is never printed. A thing's id holds no value: an organisation's id and a number's id are a digest of its key or of its kind and value, so `sifs-show` prints ids as they are, and the id a find prints opens that thing's page with or without `--reveal`. A usage error, a missing store or an id the store does not hold prints a message on stderr and exits 2.
 
 ## Files
 

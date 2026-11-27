@@ -197,8 +197,8 @@ var (
 		"a word that is nowhere":       "Zanzibar",
 	}
 	filesPages = map[string]string{
-		"a German bank":     "org:BIC COBADEFF",
-		"a Dutch IBAN":      "identifier:iban:NL91ABNA0417164300",
+		"a German bank":     load.OrgID("BIC COBADEFF"),
+		"a Dutch IBAN":      load.IdentifierID("iban", "NL91ABNA0417164300"),
 		"a Dutch statement": "statement:abn-amro-statement",
 		"a passport":        "passport:passport-bad-mrz",
 		"its holder":        "holder:passport-bad-mrz",

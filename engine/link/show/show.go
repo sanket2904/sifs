@@ -46,7 +46,7 @@ type Thing struct {
 }
 
 func (r *Reader) thing(e *ontology.Entity) Thing {
-	t := Thing{ID: r.shown.id(e), Type: e.TypeID}
+	t := Thing{ID: e.ID, Type: e.TypeID}
 	if d := r.typeDisplay(e.TypeID); d != nil {
 		t.Title = r.shown.first(e, d.Title)
 		t.Subtitle = r.shown.first(e, d.Subtitle)
