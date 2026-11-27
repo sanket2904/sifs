@@ -1,0 +1,186 @@
+{
+  "a German bank's printed name": {
+    "groups": [
+      {
+        "collection": "organisations",
+        "type": "files.Organisation",
+        "label": "Organisation",
+        "things": [
+          {
+            "id": "org:04fd95cb07c380ec",
+            "type": "files.Organisation",
+            "title": "Commerzbank",
+            "subtitle": "Commerzbank",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "Commerzbank",
+              "exact": true
+            }
+          },
+          {
+            "id": "org:37fc0ee4d19bdd70",
+            "type": "files.Organisation",
+            "title": "Commerzbank",
+            "subtitle": "Commerzbank",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "Commerzbank",
+              "exact": true
+            }
+          },
+          {
+            "id": "org:2700e65ab65dbfb6",
+            "type": "files.Organisation",
+            "title": "Commerzbank AG",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "Commerzbank AG",
+              "exact": false
+            }
+          },
+          {
+            "id": "org:373009cb6827435f",
+            "type": "files.Organisation",
+            "title": "Commerzbank AG",
+            "subtitle": "Commerzbank AG",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "Commerzbank AG",
+              "exact": false
+            }
+          },
+          {
+            "id": "org:9e577a3773d0d204",
+            "type": "files.Organisation",
+            "title": "Commerzbank AG",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "Commerzbank AG",
+              "exact": false
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "a full IBAN": {
+    "groups": [
+      {
+        "collection": "accounts",
+        "type": "files.Identifier",
+        "label": "Number or code",
+        "things": [
+          {
+            "id": "identifier:de53d6ca13f472d8",
+            "type": "files.Identifier",
+            "title": "••••••••••••••••••3000",
+            "subtitle": "iban",
+            "matched": {
+              "attribute": "files.value",
+              "label": "Value",
+              "value": "••••••••••••••••••3000",
+              "exact": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "a holder's surname": {
+    "groups": [
+      {
+        "collection": "people",
+        "type": "files.Holder",
+        "label": "Passport holder",
+        "things": [
+          {
+            "id": "holder:passport-bad-mrz",
+            "type": "files.Holder",
+            "title": "ERIKSSON",
+            "subtitle": "ANNA MARIA",
+            "matched": {
+              "attribute": "files.surname",
+              "label": "Surname",
+              "value": "ERIKSSON",
+              "exact": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "a word of several kinds": {
+    "groups": [
+      {
+        "collection": "accounts",
+        "type": "files.Identifier",
+        "label": "Number or code",
+        "things": [
+          {
+            "id": "identifier:9e2923ea3835638f",
+            "type": "files.Identifier",
+            "title": "•••••••0XXX",
+            "subtitle": "bic",
+            "matched": {
+              "attribute": "files.value",
+              "label": "Value",
+              "value": "•••••••0XXX",
+              "exact": false
+            }
+          },
+          {
+            "id": "identifier:c7efa621a7c99ac8",
+            "type": "files.Identifier",
+            "title": "•••••••0XXX",
+            "subtitle": "bic",
+            "matched": {
+              "attribute": "files.value",
+              "label": "Value",
+              "value": "•••••••0XXX",
+              "exact": false
+            }
+          }
+        ]
+      },
+      {
+        "collection": "organisations",
+        "type": "files.Organisation",
+        "label": "Organisation",
+        "things": [
+          {
+            "id": "org:1601dd1f6d4e0269",
+            "type": "files.Organisation",
+            "title": "SMBK",
+            "subtitle": "SMBK",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "SMBK",
+              "exact": true
+            }
+          },
+          {
+            "id": "org:f32acb7910897981",
+            "type": "files.Organisation",
+            "title": "SMBK",
+            "subtitle": "SMBK",
+            "matched": {
+              "attribute": "files.name",
+              "label": "Name",
+              "value": "SMBK",
+              "exact": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "a word that is nowhere": {
+    "groups": []
+  }
+}

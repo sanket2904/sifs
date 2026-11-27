@@ -1,0 +1,726 @@
+{
+  "a Dutch IBAN": {
+    "id": "identifier:2288ef2e20318bbd",
+    "type": "files.Identifier",
+    "title": "••••••••••••••4300",
+    "subtitle": "iban",
+    "label": "Number or code",
+    "also": [],
+    "values": [
+      {
+        "attribute": "files.kind",
+        "label": "Kind",
+        "values": [
+          "iban"
+        ],
+        "status": "accepted",
+        "sources": [
+          "abn-amro-statement"
+        ]
+      },
+      {
+        "attribute": "files.value",
+        "label": "Value",
+        "values": [
+          "••••••••••••••4300"
+        ],
+        "status": "accepted",
+        "sources": [
+          "abn-amro-statement"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "files.HeldAt",
+        "role": "files.HeldAt:identifier",
+        "label": "Held at",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.HeldAt:document",
+                "label": "Document",
+                "thing": {
+                  "id": "document:abn-amro-statement",
+                  "type": "files.Document",
+                  "title": "document:abn-amro-statement"
+                }
+              },
+              {
+                "role": "files.HeldAt:organisation",
+                "label": "Organisation",
+                "thing": {
+                  "id": "org:cccf138603c1eb31",
+                  "type": "files.Organisation",
+                  "title": "ABN AMRO"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "files.reasons",
+                "label": "Reasons",
+                "values": [
+                  "iban-bank-code"
+                ]
+              },
+              {
+                "attribute": "files.tier",
+                "label": "Tier",
+                "values": [
+                  "certain"
+                ]
+              }
+            ],
+            "sources": [
+              "abn-amro-statement"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "files.Shows",
+        "role": "files.Shows:identifier",
+        "label": "Printed in",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.Shows:document",
+                "label": "Document",
+                "thing": {
+                  "id": "document:abn-amro-statement",
+                  "type": "files.Document",
+                  "title": "document:abn-amro-statement"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "files.valid",
+                "label": "Check passes",
+                "values": [
+                  "true"
+                ]
+              },
+              {
+                "attribute": "files.page",
+                "label": "Page",
+                "values": [
+                  "1"
+                ]
+              },
+              {
+                "attribute": "files.text",
+                "label": "Printed text",
+                "values": [
+                  "••••••••••••••••••3 00"
+                ]
+              },
+              {
+                "attribute": "files.tier",
+                "label": "Tier",
+                "values": [
+                  "certain"
+                ]
+              }
+            ],
+            "sources": [
+              "abn-amro-statement"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "files.StatementAccount",
+        "role": "files.StatementAccount:account",
+        "label": "Statements",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.StatementAccount:statement",
+                "label": "Statement",
+                "thing": {
+                  "id": "statement:abn-amro-statement",
+                  "type": "files.Statement",
+                  "title": "2026-08-31",
+                  "subtitle": "2026-08-01"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "files.tier",
+                "label": "Tier",
+                "values": [
+                  "likely"
+                ]
+              }
+            ],
+            "sources": [
+              "abn-amro-statement"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "a Dutch statement": {
+    "id": "statement:abn-amro-statement",
+    "type": "files.Statement",
+    "title": "2026-08-31",
+    "subtitle": "2026-08-01",
+    "label": "Statement",
+    "also": [],
+    "values": [
+      {
+        "attribute": "files.from",
+        "label": "From",
+        "values": [
+          "2026-08-01"
+        ],
+        "status": "accepted",
+        "sources": [
+          "abn-amro-statement"
+        ]
+      },
+      {
+        "attribute": "files.periodTier",
+        "label": "Period tier",
+        "values": [
+          "likely"
+        ],
+        "status": "accepted",
+        "sources": [
+          "abn-amro-statement"
+        ]
+      },
+      {
+        "attribute": "files.to",
+        "label": "To",
+        "values": [
+          "2026-08-31"
+        ],
+        "status": "accepted",
+        "sources": [
+          "abn-amro-statement"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "files.StatementAccount",
+        "role": "files.StatementAccount:statement",
+        "label": "Account",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.StatementAccount:account",
+                "label": "Account",
+                "thing": {
+                  "id": "identifier:2288ef2e20318bbd",
+                  "type": "files.Identifier",
+                  "title": "••••••••••••••4300",
+                  "subtitle": "iban"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "files.tier",
+                "label": "Tier",
+                "values": [
+                  "likely"
+                ]
+              }
+            ],
+            "sources": [
+              "abn-amro-statement"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "files.StatementOf",
+        "role": "files.StatementOf:statement",
+        "label": "In document",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.StatementOf:document",
+                "label": "Document",
+                "thing": {
+                  "id": "document:abn-amro-statement",
+                  "type": "files.Document",
+                  "title": "document:abn-amro-statement"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [
+              "abn-amro-statement"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "files.IssuedBy",
+        "role": "files.IssuedBy:statement",
+        "label": "Issued by",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.IssuedBy:issuer",
+                "label": "Issuer",
+                "thing": {
+                  "id": "org:07bcca155d7708a6",
+                  "type": "files.Organisation",
+                  "title": "ABN AMRO Bank N.V.",
+                  "subtitle": "ABN AMRO Bank N.V."
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "files.tier",
+                "label": "Tier",
+                "values": [
+                  "likely"
+                ]
+              }
+            ],
+            "sources": [
+              "abn-amro-statement"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "a German bank": {
+    "id": "org:9e577a3773d0d204",
+    "type": "files.Organisation",
+    "title": "Commerzbank AG",
+    "label": "Organisation",
+    "also": [],
+    "values": [
+      {
+        "attribute": "files.name",
+        "label": "Name",
+        "values": [
+          "Commerzbank AG"
+        ],
+        "status": "accepted",
+        "sources": [
+          "commerzbank-kontoauszug"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "files.HeldAt",
+        "role": "files.HeldAt:organisation",
+        "label": "Holds",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.HeldAt:document",
+                "label": "Document",
+                "thing": {
+                  "id": "document:commerzbank-kontoauszug",
+                  "type": "files.Document",
+                  "title": "document:commerzbank-kontoauszug"
+                }
+              },
+              {
+                "role": "files.HeldAt:identifier",
+                "label": "Number or code",
+                "thing": {
+                  "id": "identifier:45751cfa78b71419",
+                  "type": "files.Identifier",
+                  "title": "•••••••FXXX",
+                  "subtitle": "bic"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "files.reasons",
+                "label": "Reasons",
+                "values": [
+                  "bic-institution"
+                ]
+              },
+              {
+                "attribute": "files.tier",
+                "label": "Tier",
+                "values": [
+                  "certain"
+                ]
+              }
+            ],
+            "sources": [
+              "commerzbank-kontoauszug"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "files.SameOrg",
+        "role": "files.SameOrg:one",
+        "label": "Same organisation as",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.SameOrg:document",
+                "label": "Document",
+                "thing": {
+                  "id": "document:commerzbank-kontoauszug",
+                  "type": "files.Document",
+                  "title": "document:commerzbank-kontoauszug"
+                }
+              },
+              {
+                "role": "files.SameOrg:other",
+                "label": "Other",
+                "thing": {
+                  "id": "org:373009cb6827435f",
+                  "type": "files.Organisation",
+                  "title": "Commerzbank AG",
+                  "subtitle": "Commerzbank AG"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "files.reasons",
+                "label": "Reasons",
+                "values": [
+                  "directory"
+                ]
+              },
+              {
+                "attribute": "files.tier",
+                "label": "Tier",
+                "values": [
+                  "likely"
+                ]
+              }
+            ],
+            "sources": [
+              "commerzbank-kontoauszug"
+            ]
+          },
+          {
+            "ends": [
+              {
+                "role": "files.SameOrg:document",
+                "label": "Document",
+                "thing": {
+                  "id": "document:commerzbank-kontoauszug",
+                  "type": "files.Document",
+                  "title": "document:commerzbank-kontoauszug"
+                }
+              },
+              {
+                "role": "files.SameOrg:other",
+                "label": "Other",
+                "thing": {
+                  "id": "org:2700e65ab65dbfb6",
+                  "type": "files.Organisation",
+                  "title": "Commerzbank AG"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "files.reasons",
+                "label": "Reasons",
+                "values": [
+                  "printed-together"
+                ]
+              },
+              {
+                "attribute": "files.tier",
+                "label": "Tier",
+                "values": [
+                  "likely"
+                ]
+              }
+            ],
+            "sources": [
+              "commerzbank-kontoauszug"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "a passport": {
+    "id": "passport:passport-bad-mrz",
+    "type": "files.Passport",
+    "title": "cannot-tell",
+    "subtitle": "2021-04-16",
+    "label": "Passport",
+    "also": [],
+    "values": [
+      {
+        "attribute": "files.current",
+        "label": "Current",
+        "values": [
+          "true"
+        ],
+        "status": "accepted",
+        "sources": [
+          "passport-bad-mrz"
+        ]
+      },
+      {
+        "attribute": "files.currentTier",
+        "label": "Current tier",
+        "values": [
+          "likely"
+        ],
+        "status": "accepted",
+        "sources": [
+          "passport-bad-mrz"
+        ]
+      },
+      {
+        "attribute": "files.expiry",
+        "label": "Expires",
+        "values": [
+          "cannot-tell"
+        ],
+        "status": "accepted",
+        "sources": [
+          "passport-bad-mrz"
+        ]
+      },
+      {
+        "attribute": "files.expiryText",
+        "label": "Expiry as printed",
+        "values": [
+          "15 APR 2031"
+        ],
+        "status": "accepted",
+        "sources": [
+          "passport-bad-mrz"
+        ]
+      },
+      {
+        "attribute": "files.expiryTier",
+        "label": "Expiry tier",
+        "values": [
+          "likely"
+        ],
+        "status": "accepted",
+        "sources": [
+          "passport-bad-mrz"
+        ]
+      },
+      {
+        "attribute": "files.issued",
+        "label": "Issued",
+        "values": [
+          "2021-04-16"
+        ],
+        "status": "accepted",
+        "sources": [
+          "passport-bad-mrz"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "files.HolderOf",
+        "role": "files.HolderOf:passport",
+        "label": "Holder",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.HolderOf:holder",
+                "label": "Holder",
+                "thing": {
+                  "id": "holder:passport-bad-mrz",
+                  "type": "files.Holder",
+                  "title": "ERIKSSON",
+                  "subtitle": "ANNA MARIA"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "files.tier",
+                "label": "Tier",
+                "values": [
+                  "likely"
+                ]
+              }
+            ],
+            "sources": [
+              "passport-bad-mrz"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "files.PassportOf",
+        "role": "files.PassportOf:passport",
+        "label": "In document",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.PassportOf:document",
+                "label": "Document",
+                "thing": {
+                  "id": "document:passport-bad-mrz",
+                  "type": "files.Document",
+                  "title": "document:passport-bad-mrz"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [
+              "passport-bad-mrz"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "files.PassportMRZ",
+        "role": "files.PassportMRZ:passport",
+        "label": "Machine-readable zone",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.PassportMRZ:identifier",
+                "label": "Zone",
+                "thing": {
+                  "id": "identifier:7f1d2b6ba5d3099a",
+                  "type": "files.Identifier",
+                  "title": "•••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••<<<2",
+                  "subtitle": "mrz"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [
+              "passport-bad-mrz"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "files.PassportNumber",
+        "role": "files.PassportNumber:passport",
+        "label": "Number",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.PassportNumber:identifier",
+                "label": "Number",
+                "thing": {
+                  "id": "identifier:b20c5af670095f48",
+                  "type": "files.Identifier",
+                  "title": "•••••02C3",
+                  "subtitle": "passport_number"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "files.tier",
+                "label": "Tier",
+                "values": [
+                  "likely"
+                ]
+              }
+            ],
+            "sources": [
+              "passport-bad-mrz"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "its holder": {
+    "id": "holder:passport-bad-mrz",
+    "type": "files.Holder",
+    "title": "ERIKSSON",
+    "subtitle": "ANNA MARIA",
+    "label": "Passport holder",
+    "also": [],
+    "values": [
+      {
+        "attribute": "files.given",
+        "label": "Given names",
+        "values": [
+          "ANNA MARIA"
+        ],
+        "status": "accepted",
+        "sources": [
+          "passport-bad-mrz"
+        ]
+      },
+      {
+        "attribute": "files.surname",
+        "label": "Surname",
+        "values": [
+          "ERIKSSON"
+        ],
+        "status": "accepted",
+        "sources": [
+          "passport-bad-mrz"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "files.HolderOf",
+        "role": "files.HolderOf:holder",
+        "label": "Passport",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.HolderOf:passport",
+                "label": "Passport",
+                "thing": {
+                  "id": "passport:passport-bad-mrz",
+                  "type": "files.Passport",
+                  "title": "cannot-tell",
+                  "subtitle": "2021-04-16"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "files.tier",
+                "label": "Tier",
+                "values": [
+                  "likely"
+                ]
+              }
+            ],
+            "sources": [
+              "passport-bad-mrz"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -428,7 +428,7 @@ func (s *snapshot) key(orgID string) string {
 	if thing := s.things[orgID]; thing != nil {
 		return str(thing.Attributes, pack.Key)
 	}
-	return strings.TrimPrefix(orgID, "org:")
+	return ""
 }
 
 func (s *snapshot) identifier(id string) Identifier {

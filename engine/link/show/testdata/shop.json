@@ -1,0 +1,579 @@
+{
+  "find a name": {
+    "groups": [
+      {
+        "collection": "people",
+        "type": "bakery.Customer",
+        "label": "Customer",
+        "things": [
+          {
+            "id": "customer:ana",
+            "type": "bakery.Customer",
+            "title": "Ana Ferreira",
+            "subtitle": "Lisbon",
+            "matched": {
+              "attribute": "bakery.fullName",
+              "label": "Name",
+              "value": "Ana Ferreira",
+              "exact": false
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "find a tax number": {
+    "groups": [
+      {
+        "collection": "people",
+        "type": "bakery.Customer",
+        "label": "Customer",
+        "things": [
+          {
+            "id": "customer:ana",
+            "type": "bakery.Customer",
+            "title": "Ana Ferreira",
+            "subtitle": "Lisbon",
+            "matched": {
+              "attribute": "bakery.taxNumber",
+              "label": "Tax number",
+              "value": "••••••••••3210",
+              "exact": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "find a word of two kinds": {
+    "groups": [
+      {
+        "collection": "people",
+        "type": "bakery.Customer",
+        "label": "Customer",
+        "things": [
+          {
+            "id": "customer:kwame",
+            "type": "bakery.Customer",
+            "title": "Kwame Mensah",
+            "subtitle": "Accra",
+            "matched": {
+              "attribute": "bakery.fullName",
+              "label": "Name",
+              "value": "Kwame Mensah",
+              "exact": false
+            }
+          }
+        ]
+      },
+      {
+        "collection": "things",
+        "type": "bakery.Product",
+        "label": "Product",
+        "things": [
+          {
+            "id": "product:tart",
+            "type": "bakery.Product",
+            "title": "Kwarktaart",
+            "subtitle": "KT-12",
+            "matched": {
+              "attribute": "bakery.title",
+              "label": "Name",
+              "value": "Kwarktaart",
+              "exact": false
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "find invoice numbers": {
+    "groups": [
+      {
+        "collection": "documents",
+        "type": "bakery.Invoice",
+        "label": "Invoice",
+        "things": [
+          {
+            "id": "invoice:0041",
+            "type": "bakery.Invoice",
+            "title": "INV-0041",
+            "subtitle": "2026-10-02",
+            "matched": {
+              "attribute": "bakery.number",
+              "label": "Number",
+              "value": "INV-0041",
+              "exact": false
+            }
+          },
+          {
+            "id": "invoice:0042",
+            "type": "bakery.Invoice",
+            "title": "INV-0042",
+            "subtitle": "2026-10-09",
+            "matched": {
+              "attribute": "bakery.number",
+              "label": "Number",
+              "value": "INV-0042",
+              "exact": false
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "find nothing": {
+    "groups": []
+  },
+  "kinds": {
+    "kinds": [
+      {
+        "type": "bakery.Invoice",
+        "label": "Invoice",
+        "collection": "documents",
+        "count": 2
+      },
+      {
+        "type": "bakery.LargeInvoice",
+        "label": "Large invoice",
+        "collection": "documents",
+        "count": 1
+      },
+      {
+        "type": "bakery.Customer",
+        "label": "Customer",
+        "collection": "people",
+        "count": 2
+      },
+      {
+        "type": "bakery.Product",
+        "label": "Product",
+        "collection": "things",
+        "count": 2
+      }
+    ]
+  },
+  "page customer:ana": {
+    "id": "customer:ana",
+    "type": "bakery.Customer",
+    "title": "Ana Ferreira",
+    "subtitle": "Lisbon",
+    "label": "Customer",
+    "also": [],
+    "values": [
+      {
+        "attribute": "bakery.city",
+        "label": "City",
+        "values": [
+          "Lisbon"
+        ],
+        "status": "accepted",
+        "sources": [
+          "invoice-0041.pdf"
+        ]
+      },
+      {
+        "attribute": "bakery.fullName",
+        "label": "Name",
+        "values": [
+          "Ana Ferreira"
+        ],
+        "status": "accepted",
+        "sources": [
+          "invoice-0041.pdf"
+        ]
+      },
+      {
+        "attribute": "bakery.taxNumber",
+        "label": "Tax number",
+        "values": [
+          "••••••••••3210"
+        ],
+        "status": "accepted",
+        "sources": [
+          "invoice-0041.pdf"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "bakery.BilledTo",
+        "role": "bakery.BilledTo:customer",
+        "label": "Invoices",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "bakery.BilledTo:invoice",
+                "label": "Invoice",
+                "thing": {
+                  "id": "invoice:0041",
+                  "type": "bakery.Invoice",
+                  "title": "INV-0041",
+                  "subtitle": "2026-10-02"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [
+              "invoice-0041.pdf"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "page invoice:0041": {
+    "id": "invoice:0041",
+    "type": "bakery.Invoice",
+    "title": "INV-0041",
+    "subtitle": "2026-10-02",
+    "label": "Invoice",
+    "also": [
+      {
+        "type": "bakery.LargeInvoice",
+        "label": "Large invoice",
+        "proof": {
+          "fact": "INV-0041 is Large invoice",
+          "status": "derived",
+          "rule": "bakery.large-invoice",
+          "because": [
+            {
+              "fact": "INV-0041 is Invoice",
+              "status": "asserted",
+              "sources": [
+                "invoice-0041.pdf"
+              ]
+            },
+            {
+              "fact": "INV-0041 Total 1250",
+              "status": "asserted",
+              "sources": [
+                "invoice-0041.pdf"
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "values": [
+      {
+        "attribute": "bakery.issued",
+        "label": "Issued",
+        "values": [
+          "2026-10-02"
+        ],
+        "status": "accepted",
+        "sources": [
+          "invoice-0041.pdf"
+        ]
+      },
+      {
+        "attribute": "bakery.number",
+        "label": "Number",
+        "values": [
+          "INV-0041"
+        ],
+        "status": "accepted",
+        "sources": [
+          "invoice-0041.pdf"
+        ]
+      },
+      {
+        "attribute": "bakery.total",
+        "label": "Total",
+        "values": [
+          "1250"
+        ],
+        "status": "accepted",
+        "sources": [
+          "invoice-0041.pdf"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "bakery.BilledTo",
+        "role": "bakery.BilledTo:invoice",
+        "label": "Billed to",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "bakery.BilledTo:customer",
+                "label": "Customer",
+                "thing": {
+                  "id": "customer:ana",
+                  "type": "bakery.Customer",
+                  "title": "Ana Ferreira",
+                  "subtitle": "Lisbon"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [
+              "invoice-0041.pdf"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "bakery.LineOf",
+        "role": "bakery.LineOf:invoice",
+        "label": "Lines",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "bakery.LineOf:product",
+                "label": "Product",
+                "thing": {
+                  "id": "product:tart",
+                  "type": "bakery.Product",
+                  "title": "Kwarktaart",
+                  "subtitle": "KT-12"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "bakery.quantity",
+                "label": "Quantity",
+                "values": [
+                  "25"
+                ]
+              }
+            ],
+            "sources": [
+              "invoice-0041.pdf"
+            ]
+          },
+          {
+            "ends": [
+              {
+                "role": "bakery.LineOf:product",
+                "label": "Product",
+                "thing": {
+                  "id": "product:loaf",
+                  "type": "bakery.Product",
+                  "title": "Sourdough loaf",
+                  "subtitle": "SD-01"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "bakery.quantity",
+                "label": "Quantity",
+                "values": [
+                  "40"
+                ]
+              }
+            ],
+            "sources": [
+              "invoice-0041.pdf"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "page invoice:0042": {
+    "id": "invoice:0042",
+    "type": "bakery.Invoice",
+    "title": "INV-0042",
+    "subtitle": "2026-10-09",
+    "label": "Invoice",
+    "also": [],
+    "values": [
+      {
+        "attribute": "bakery.issued",
+        "label": "Issued",
+        "values": [
+          "2026-10-09"
+        ],
+        "status": "accepted",
+        "sources": [
+          "invoice-0042.pdf"
+        ]
+      },
+      {
+        "attribute": "bakery.number",
+        "label": "Number",
+        "values": [
+          "INV-0042"
+        ],
+        "status": "accepted",
+        "sources": [
+          "invoice-0042.pdf"
+        ]
+      },
+      {
+        "attribute": "bakery.total",
+        "label": "Total",
+        "values": [
+          "85"
+        ],
+        "status": "accepted",
+        "sources": [
+          "invoice-0042.pdf"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "bakery.BilledTo",
+        "role": "bakery.BilledTo:invoice",
+        "label": "Billed to",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "bakery.BilledTo:customer",
+                "label": "Customer",
+                "thing": {
+                  "id": "customer:kwame",
+                  "type": "bakery.Customer",
+                  "title": "Kwame Mensah",
+                  "subtitle": "Accra"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [
+              "invoice-0042.pdf"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "bakery.LineOf",
+        "role": "bakery.LineOf:invoice",
+        "label": "Lines",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "bakery.LineOf:product",
+                "label": "Product",
+                "thing": {
+                  "id": "product:loaf",
+                  "type": "bakery.Product",
+                  "title": "Sourdough loaf",
+                  "subtitle": "SD-01"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "bakery.quantity",
+                "label": "Quantity",
+                "values": [
+                  "3"
+                ]
+              }
+            ],
+            "sources": [
+              "invoice-0042.pdf"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "page product:loaf": {
+    "id": "product:loaf",
+    "type": "bakery.Product",
+    "title": "Sourdough loaf",
+    "subtitle": "SD-01",
+    "label": "Product",
+    "also": [],
+    "values": [
+      {
+        "attribute": "bakery.title",
+        "label": "Name",
+        "values": [
+          "Sourdough loaf"
+        ],
+        "status": "accepted",
+        "sources": [
+          "invoice-0041.pdf",
+          "invoice-0042.pdf"
+        ]
+      },
+      {
+        "attribute": "bakery.sku",
+        "label": "Stock code",
+        "values": [
+          "SD-01"
+        ],
+        "status": "accepted",
+        "sources": [
+          "invoice-0041.pdf",
+          "invoice-0042.pdf"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "bakery.LineOf",
+        "role": "bakery.LineOf:product",
+        "label": "On invoices",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "bakery.LineOf:invoice",
+                "label": "Invoice",
+                "thing": {
+                  "id": "invoice:0041",
+                  "type": "bakery.Invoice",
+                  "title": "INV-0041",
+                  "subtitle": "2026-10-02"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "bakery.quantity",
+                "label": "Quantity",
+                "values": [
+                  "40"
+                ]
+              }
+            ],
+            "sources": [
+              "invoice-0041.pdf"
+            ]
+          },
+          {
+            "ends": [
+              {
+                "role": "bakery.LineOf:invoice",
+                "label": "Invoice",
+                "thing": {
+                  "id": "invoice:0042",
+                  "type": "bakery.Invoice",
+                  "title": "INV-0042",
+                  "subtitle": "2026-10-09"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "bakery.quantity",
+                "label": "Quantity",
+                "values": [
+                  "3"
+                ]
+              }
+            ],
+            "sources": [
+              "invoice-0042.pdf"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -145,10 +145,10 @@ func relation(t *testing.T, ctx context.Context, e *Engine, id string) *ontology
 	return r
 }
 
-const (
-	janAccount = "identifier:account:000111222333"
-	janHeader  = `heldAt:["stmt-jan","identifier:account:000111222333","name:stmt-jan:examplebank"]`
-	janCode    = `heldAt:["stmt-jan","identifier:account:000111222333","IFSC EXMP"]`
+var (
+	janAccount = IdentifierID("account", "000111222333")
+	janHeader  = ref("heldAt", "stmt-jan", janAccount, "name:stmt-jan:examplebank")
+	janCode    = ref("heldAt", "stmt-jan", janAccount, "IFSC EXMP")
 	janSameOrg = `sameOrg:["stmt-jan","IFSC EXMP","name:stmt-jan:examplebank"]`
 )
 
@@ -205,12 +205,12 @@ func TestRemovedDocument(t *testing.T) {
 				t.Errorf("%s stays after its only document went", id)
 			}
 		}
-		for _, id := range []string{janAccount, "org:IFSC EXMP"} {
+		for _, id := range []string{janAccount, OrgID("IFSC EXMP")} {
 			if thing, err := e.interp.GetEntity(ctx, id); err != nil || thing == nil {
 				t.Errorf("%s, which stmt-feb also gives, went: %v", id, err)
 			}
 		}
-		if thing, _ := e.interp.GetEntity(ctx, "org:name:stmt-jan:examplebank"); thing != nil {
+		if thing, _ := e.interp.GetEntity(ctx, OrgID("name:stmt-jan:examplebank")); thing != nil {
 			t.Error("stmt-jan's own name key stays")
 		}
 	})
@@ -340,14 +340,14 @@ func mergeDoc(certainFirst bool) extract.DocOut {
 // the mixed claims come out likely.
 func TestMergedClaims(t *testing.T) {
 	name := "name:merge-doc:examplebank"
-	iban, account := "identifier:iban:XX00EXMP0001", "identifier:account:000111222333"
-	ifsc, bic := "identifier:ifsc:EXMP0000001", "identifier:bic:EXMPXXYY"
+	iban, account := IdentifierID("iban", "XX00EXMP0001"), IdentifierID("account", "000111222333")
+	ifsc, bic := IdentifierID("ifsc", "EXMP0000001"), IdentifierID("bic", "EXMPXXYY")
 	want := []struct {
 		id, tier     string
 		reasons, via []string
 	}{
-		{ref("heldAt", "merge-doc", iban, "IBAN XX EXMP"), "certain", []string{"iban-bank-code", "paired-code"}, []string{ifsc}},
-		{ref("heldAt", "merge-doc", account, "IFSC EXMP"), "likely", []string{"paired-code", "same-account"}, []string{bic, ifsc}},
+		{ref("heldAt", "merge-doc", iban, "IBAN XX EXMP"), "certain", []string{"iban-bank-code", "paired-code"}, sortedIDs(ifsc)},
+		{ref("heldAt", "merge-doc", account, "IFSC EXMP"), "likely", []string{"paired-code", "same-account"}, sortedIDs(bic, ifsc)},
 		{ref("sameOrg", "merge-doc", "IFSC EXMP", name), "certain", []string{"directory", "spells-code"}, nil},
 		{ref("sameOrg", "merge-doc", "BIC EXMPXXYY", name), "likely", []string{"printed-together", "spells-code"}, nil},
 	}

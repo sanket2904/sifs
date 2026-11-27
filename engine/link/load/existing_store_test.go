@@ -146,8 +146,8 @@ func fillAsBefore(t *testing.T, ctx context.Context, schemas store.SchemaStore, 
 func TestExistingStore(t *testing.T) {
 	ctx := context.Background()
 	run := committedRun(t)
-	hdfcBank := []string{"org:IFSC HDFC", "org:name:email-fee-payment:hdfcbank", "org:name:hdfc-branch-letter:hdfcbank", "org:name:hdfc-card-statement:hdfcbank",
-		"org:name:hdfc-statement-aug:hdfcbank", "org:name:hdfc-statement-jul:hdfcbank", "org:name:hdfc-statement-sep:hdfcbank", "org:name:neft-receipt-tied:hdfcbank"}
+	hdfcBank := sortedIDs(OrgID("IFSC HDFC"), OrgID("name:email-fee-payment:hdfcbank"), OrgID("name:hdfc-branch-letter:hdfcbank"), OrgID("name:hdfc-card-statement:hdfcbank"),
+		OrgID("name:hdfc-statement-aug:hdfcbank"), OrgID("name:hdfc-statement-jul:hdfcbank"), OrgID("name:hdfc-statement-sep:hdfcbank"), OrgID("name:neft-receipt-tied:hdfcbank"))
 	check := func(t *testing.T, reopen func() *Engine) {
 		e := reopen()
 		before := mustCount(t, ctx, e)
@@ -155,7 +155,7 @@ func TestExistingStore(t *testing.T) {
 		eq(t, "kalpit on opening", resolve(t, ctx, e, "kalpit"), kalpit)
 		eq(t, "hdfc ltd, printed only, on opening", resolve(t, ctx, e, "HDFC Ltd"), []string(nil))
 		eq(t, "first load", mustLoad(t, ctx, e, run), Report{Written: 36, Unchanged: 5, TurnedDown: []TurnDown{}, LeftOut: committedLeftOut})
-		eq(t, "hdfc ltd after the load", resolve(t, ctx, e, "HDFC Ltd"), []string{"org:name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation"})
+		eq(t, "hdfc ltd after the load", resolve(t, ctx, e, "HDFC Ltd"), []string{OrgID("name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation")})
 		eq(t, "counts", mustCount(t, ctx, e), before)
 		eq(t, "second load", mustLoad(t, ctx, reopen(), run), Report{Unchanged: 41, TurnedDown: []TurnDown{}, LeftOut: committedLeftOut})
 	}
