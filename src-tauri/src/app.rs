@@ -1,6 +1,7 @@
 //! The desktop app: Tauri commands over the index, background scans, the
 //! watcher, reading inside files, and the tray.
 
+use crate::data::{self, Build, DataDir};
 use crate::extract::{self, Registry, Waker, Worker, WorkerOptions};
 use crate::index::db::Index;
 use crate::index::folders::{Event, Folders};
@@ -210,14 +211,14 @@ fn folder_event(app: &AppHandle, reading: &OnceLock<Waker>, event: Event) {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let home = std::env::var("HOME").unwrap_or_default();
-            let data = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&data)?;
-            let db_path = data.join("sifs.db");
+            let data = app.state::<DataDir>().inner().clone();
+            std::fs::create_dir_all(data.path())?;
+            let db_path = data.index();
             let mut index = Index::open(&db_path)?;
             // Before the watcher reads the folders: folders inside others
             // (allowed in phase 1) are taken into them. resume does it again.
@@ -312,8 +313,20 @@ pub fn run() {
             reveal_path,
             content_failures
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running SIFS");
+        .build(tauri::generate_context!())
+        .expect("error while building SIFS");
+    // Decided before run, which builds the window and then calls setup: a
+    // refused folder leaves nothing on disk.
+    let system = app.path().app_data_dir().expect("no data folder for SIFS");
+    let data = match data::data_dir(Build::THIS, &system, std::env::var_os(data::DATA_DIR_VAR).as_deref()) {
+        Ok(data) => data,
+        Err(refusal) => {
+            eprintln!("SIFS did not start: {refusal}");
+            std::process::exit(2);
+        }
+    };
+    app.manage(data);
+    app.run(|_, _| {});
 }
 
 fn show_main(app: &AppHandle) {
