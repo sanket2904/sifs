@@ -27,13 +27,13 @@ type held struct {
 	all            []string
 	things         map[string]*ontology.Entity
 	schema         map[string]bool
-	pages          map[string]string
+	pages          map[string]map[string]any
 }
 
 func holds(t *testing.T, interp *interpreter.Interpreter) held {
 	t.Helper()
 	ctx := context.Background()
-	h := held{box: interp.TBox(), things: map[string]*ontology.Entity{}, schema: map[string]bool{}, pages: map[string]string{}}
+	h := held{box: interp.TBox(), things: map[string]*ontology.Entity{}, schema: map[string]bool{}, pages: map[string]map[string]any{}}
 	add := func(attrs map[string][]any) {
 		for attrID, vs := range attrs {
 			d := h.display(attrID)
@@ -104,12 +104,11 @@ func (h held) display(attrID string) *ontology.AttributeDisplay {
 //     text with no value kept from a person in it;
 //   - a type, label, link, role or attribute: a name the schema declares, or
 //     text with no value kept from a person in it;
-//   - a proof's fact and each line of what it ruled out: the titles of the
-//     things that same node's own data names, each only when it is the
-//     title that thing's own page gives it and it passes as a title; the
-//     values that same node's claim gives, each only when it passes as a
-//     value of its attribute; and around them text with no value kept from
-//     a person in it;
+//   - a proof's fact and each line of what it ruled out: exactly what that
+//     node's own data makes, each part judged where it stands (see why); a
+//     line that is not is reported, and searched whole;
+//   - a claim on a hidden attribute: that it is hidden, and nothing else
+//     about that attribute;
 //   - every other text (ids, sources, claims and reasons): text with no
 //     value kept from a person in it.
 //
@@ -134,15 +133,57 @@ func (h held) leaks(read []byte, reveal bool) []string {
 			}
 		}
 	}
-	line := func(node map[string]any) func(path, s string) {
-		aside := h.aside(node, kept, reveal)
-		return func(path, s string) {
-			for _, v := range kept {
-				text, isText := v.(string)
-				if isText && text != "" && outside(s, text, aside) || !isText && s == fmt.Sprint(v) {
-					out = append(out, fmt.Sprintf("%s %q gives %q", path, s, fmt.Sprint(v)))
+	// why judges the why line node[key], at path, by the parts its data
+	// makes. A title must be the title its thing's page gives and pass
+	// as a title; a fact's value must be what the page of its thing (its
+	// link's row) shows for its attribute, in the line and in the data;
+	// a condition's value must not be of a hidden attribute, and is
+	// searched with the fixed words and labels. A part that fails is
+	// reported and searched too.
+	why := func(path string, node map[string]any, key string) {
+		var parts []part
+		var err error
+		if key == "fact" {
+			parts, err = factParts(object(node["claim"]))
+		} else {
+			parts = ruledOutParts(node)
+		}
+		line, at := text(node[key]), path+"."+key
+		made := err == nil && joined(parts) == line
+		if !made {
+			out = append(out, fmt.Sprintf("%s %q is not what its data makes, %q (%v)", at, line, joined(parts), err))
+			free(at, line)
+		}
+		var searched strings.Builder
+		for _, p := range parts {
+			wrong := ""
+			switch p.kind {
+			case titleOf:
+				if !h.passesAsTitle(p.of, kept, reveal) {
+					wrong = fmt.Sprintf("names %s by a title its page does not give, or that gives a value kept from a person", text(p.of["id"]))
 				}
+			case factValue:
+				if !factShown(h.pages, p.of) {
+					wrong = fmt.Sprintf("gives %s %q, which its page does not show", text(p.of["attribute"]), p.text)
+					out = append(out, fmt.Sprintf("%s %q %s", path+p.at, p.text, wrong))
+				}
+			case conditionValue:
+				if attr := text(p.of["attribute"]); h.display(attr).Hidden {
+					wrong = "gives a value of hidden " + attr
+				}
+				free(path+p.at, p.text)
 			}
+			if made && wrong != "" {
+				out = append(out, fmt.Sprintf("%s %q %s", at, line, wrong))
+			}
+			if p.kind == said || p.kind == conditionValue || wrong != "" {
+				searched.WriteString(p.text)
+			} else {
+				searched.WriteString("\x00")
+			}
+		}
+		if made {
+			free(at, searched.String())
 		}
 	}
 	var walk func(path string, v any, field func(path, s string))
@@ -155,6 +196,13 @@ func (h held) leaks(read []byte, reveal bool) []string {
 				walk(fmt.Sprintf("%s[%d]", path, i), sub, field)
 			}
 		case map[string]any:
+			if t["hidden"] == true {
+				for _, k := range []string{"attribute", "label", "value", "plus"} {
+					if sub, ok := t[k]; ok {
+						out = append(out, fmt.Sprintf("%s.%s %q is said of a hidden attribute", path, k, fmt.Sprint(sub)))
+					}
+				}
+			}
 			attr, _ := t["attribute"].(string)
 			id, isThing := t["id"].(string)
 			if _, titled := t["title"]; !titled {
@@ -179,7 +227,7 @@ func (h held) leaks(read []byte, reveal bool) []string {
 						}
 					})
 				case k == "fact" || k == "line":
-					walk(p, sub, line(t))
+					why(path, t, k)
 				case k == "type" || k == "label" || k == "link" || k == "role" || k == "attribute":
 					walk(p, sub, func(path, s string) {
 						if !h.schema[s] {
@@ -220,48 +268,14 @@ func gives(s string, v any) bool {
 	return s == fmt.Sprint(v)
 }
 
-// titled records the title the page of the thing id gives it.
-func (h held) titled(id, title string) { h.pages[id] = title }
-
-// aside are what a proof's fact or a ruled-out line, node, may hold whole:
-// the title of each thing node's own data names, when it is the title that
-// thing's page gives it and it passes as a title (a value of the thing's
-// own that is shown as it is, or text with no value kept from a person in
-// it), and each value node's claim gives that passes as a value of its
-// attribute (none of a hidden one; of a masked one, only as a page may
-// show it).
-func (h held) aside(node map[string]any, kept []any, reveal bool) []string {
-	var out []string
-	for _, thing := range slices.Concat(claimThings(object(node["claim"])), list(node["for"])) {
-		id, title := text(thing["id"]), text(thing["title"])
-		own := slices.ContainsFunc(h.shownAsIs(id, reveal), func(v any) bool { return gives(title, v) })
-		if title != "" && h.pages[id] == title && (own || !holdsAny(title, kept)) {
-			out = append(out, title)
-		}
-	}
-	for _, c := range claimValues(object(node["claim"])) {
-		d := h.display(text(c["attribute"]))
-		if c["attribute"] != nil && !d.Hidden && (!d.Mask || reveal || !holdsAny(text(c["value"]), kept)) {
-			out = append(out, text(c["value"]))
-		}
-	}
-	return out
-}
-
-// claimValues are the claims at any depth of c that give a value.
-func claimValues(c map[string]any) []map[string]any {
-	if c == nil {
-		return nil
-	}
-	var out []map[string]any
-	if text(c["value"]) != "" {
-		out = append(out, c)
-	}
-	out = append(out, claimValues(object(c["with"]))...)
-	for _, part := range list(c["of"]) {
-		out = append(out, claimValues(part)...)
-	}
-	return out
+// passesAsTitle reports whether thing's title is the title its own page
+// gives it and passes as a title: a value of the thing's own that is shown
+// as it is, or text with no value kept from a person in it.
+func (h held) passesAsTitle(thing map[string]any, kept []any, reveal bool) bool {
+	id, title := text(thing["id"]), text(thing["title"])
+	own := slices.ContainsFunc(h.shownAsIs(id, reveal), func(v any) bool { return gives(title, v) })
+	page := h.pages[id]
+	return page != nil && page["title"] == title && (own || !holdsAny(title, kept))
 }
 
 // holdsAny reports whether s gives any of kept: a text whole, any other
@@ -271,39 +285,6 @@ func holdsAny(s string, kept []any) bool {
 		text, isText := v.(string)
 		return isText && text != "" && holdsWhole(s, text) || !isText && s == fmt.Sprint(v)
 	})
-}
-
-// outside reports whether v stands whole in s somewhere that no whole text
-// of aside covers.
-func outside(s, v string, aside []string) bool {
-	for _, at := range wholeAt(s, v) {
-		covered := slices.ContainsFunc(aside, func(a string) bool {
-			return slices.ContainsFunc(wholeAt(s, a), func(t int) bool { return t <= at && at+len(v) <= t+len(a) })
-		})
-		if !covered {
-			return true
-		}
-	}
-	return false
-}
-
-// wholeAt are where v stands whole in s: no letter or digit joins it on
-// either side.
-func wholeAt(s, v string) []int {
-	var out []int
-	for i := 0; i <= len(s); {
-		at := strings.Index(s[i:], v)
-		if at < 0 {
-			break
-		}
-		start, end := i+at, i+at+len(v)
-		before, after := []rune(s[:start]), []rune(s[end:])
-		if (len(before) == 0 || !word(before[len(before)-1])) && (len(after) == 0 || !word(after[0])) {
-			out = append(out, start)
-		}
-		i = start + 1
-	}
-	return out
 }
 
 func holdsWhole(s, v string) bool {
@@ -352,13 +333,14 @@ func everything(t *testing.T, r *show.Reader, h held) [][]byte {
 }
 
 // reportLeaks reports each leak in reads, which hold the page of every
-// thing: a proof line may name a thing by the title its page gives it.
+// thing: a why line names a thing by the title its page gives it, and
+// gives a value as its page shows it.
 func reportLeaks(t *testing.T, h held, reads [][]byte, reveal bool) {
 	t.Helper()
 	for _, read := range reads {
-		var page struct{ ID, Title string }
-		if json.Unmarshal(read, &page) == nil && page.ID != "" {
-			h.titled(page.ID, page.Title)
+		var page map[string]any
+		if json.Unmarshal(read, &page) == nil && text(page["id"]) != "" {
+			h.pages[text(page["id"])] = page
 		}
 	}
 	n := 0
@@ -443,7 +425,11 @@ func plantedLines(t *testing.T, h held, raw, hidden string) {
 	p.pages = maps.Clone(h.pages)
 	plant := func(id, title string, attrs map[string][]any) show.Thing {
 		p.things[id] = &ontology.Entity{ID: id, TypeID: "planted", Attributes: attrs}
-		p.titled(id, title)
+		values := []any{}
+		for _, attr := range sortedIDs(attrs) {
+			values = append(values, map[string]any{"attribute": attr, "values": attrs[attr]})
+		}
+		p.pages[id] = map[string]any{"id": id, "type": "planted", "title": title, "values": values, "links": []any{}}
 		return show.Thing{ID: id, Type: "planted", Title: title}
 	}
 	var maskedAttr, hiddenAttr string
@@ -465,6 +451,10 @@ func plantedLines(t *testing.T, h held, raw, hidden string) {
 	lagos := plant("planted:depot", depot, map[string][]any{name: {depot}, code: {raw}})
 	printed := plant("planted:clinic", clinic, map[string][]any{name: {clinic}, code: {raw}})
 	osaka := plant("planted:osaka", osakaDepot, map[string][]any{name: {osakaDepot}})
+	p.pages[osaka.ID]["links"] = []any{map[string]any{"link": "planted", "rows": []any{map[string]any{
+		"ends":       []any{map[string]any{"thing": map[string]any{"id": lagos.ID, "title": depot}}},
+		"attributes": []any{map[string]any{"attribute": code, "values": []any{"2031-07-01"}}},
+	}}}}
 	nowhere := show.Thing{ID: "planted:nowhere", Type: "planted", Title: "Nowhere"}
 	misnamed := lagos
 	misnamed.Title = raw

@@ -34,108 +34,141 @@ func text(v any) string { s, _ := v.(string); return s }
 
 func object(v any) map[string]any { m, _ := v.(map[string]any); return m }
 
-// factLine is a proof's fact as its claim says it.
-func factLine(c map[string]any) (string, error) {
+// A part is one piece of a why line as its data makes it, and at is where
+// its text stands in the node's data. Of is the thing whose title it is, or
+// the claim whose value it is.
+type part struct {
+	kind partKind
+	text string
+	at   string
+	of   map[string]any
+}
+
+type partKind int
+
+const (
+	said           partKind = iota // fixed words and the schema's labels
+	titleOf                        // the title of a thing the data names
+	factValue                      // the value a fact gives, of a thing or a link
+	conditionValue                 // the value a rule's condition tests for
+)
+
+func words(s string) part { return part{kind: said, text: s} }
+
+func joined(parts []part) string {
+	var b strings.Builder
+	for _, p := range parts {
+		b.WriteString(p.text)
+	}
+	return b.String()
+}
+
+// factParts is a proof's fact as its claim, at .claim, says it.
+func factParts(c map[string]any) ([]part, error) {
 	if thing := object(c["thing"]); thing != nil {
-		title := text(thing["title"])
+		title := part{kind: titleOf, text: text(thing["title"]), at: ".claim.thing.title", of: thing}
 		switch {
 		case c["hidden"] == true:
-			return title + wordHas + wordNotShown, nil
+			return []part{title, words(wordHas + wordNotShown)}, nil
 		case c["test"] == "type":
-			return title + wordIs + text(c["label"]), nil
+			return []part{title, words(wordIs + text(c["label"]))}, nil
 		case c["test"] == "has":
-			return title + wordHas + text(c["label"]), nil
+			return []part{title, words(wordHas + text(c["label"]))}, nil
 		case c["test"] == "is":
-			return title + " " + text(c["label"]) + " " + text(c["value"]), nil
+			return []part{title, words(" " + text(c["label"]) + " "), {kind: factValue, text: text(c["value"]), at: ".claim.value", of: c}}, nil
 		}
-		return "", fmt.Errorf("a claim about a thing that tests %v", c["test"])
+		return nil, fmt.Errorf("a claim about a thing that tests %v", c["test"])
 	}
 	ends := list(c["ends"])
 	if c["link"] == nil || len(ends) == 0 {
-		return "", fmt.Errorf("a claim that names no thing: %v", c)
+		return nil, fmt.Errorf("a claim that names no thing: %v", c)
 	}
-	var named []string
-	for _, e := range ends {
-		end := text(object(e["thing"])["title"])
-		if role := text(e["label"]); role != "" {
-			end = role + " " + end
+	out := []part{words(text(c["link_label"]) + ": ")}
+	for i, e := range ends {
+		if i > 0 {
+			out = append(out, words(", "))
 		}
-		named = append(named, end)
+		if role := text(e["label"]); role != "" {
+			out = append(out, words(role+" "))
+		}
+		thing := object(e["thing"])
+		out = append(out, part{kind: titleOf, text: text(thing["title"]), at: fmt.Sprintf(".claim.ends[%d].thing.title", i), of: thing})
 	}
-	line := text(c["link_label"]) + ": " + strings.Join(named, ", ")
 	switch {
 	case c["test"] == "link":
-		return line, nil
+		return out, nil
 	case c["hidden"] == true:
-		return line + "; has " + wordNotShown, nil
+		return append(out, words("; has "+wordNotShown)), nil
 	case c["test"] == "has":
-		return line + "; has " + text(c["label"]), nil
+		return append(out, words("; has "+text(c["label"]))), nil
 	case c["test"] == "is":
-		return line + "; " + text(c["label"]) + ": " + text(c["value"]), nil
+		return append(out, words("; "+text(c["label"])+": "), part{kind: factValue, text: text(c["value"]), at: ".claim.value", of: c}), nil
 	}
-	return "", fmt.Errorf("a link claim that tests %v", c["test"])
+	return nil, fmt.Errorf("a link claim that tests %v", c["test"])
 }
 
-// conditionWords is a condition a rule checked as its claim says it.
-func conditionWords(c map[string]any) string {
+// conditionParts is a condition a rule checked, at at, as its claim says it.
+func conditionParts(c map[string]any, at string) []part {
 	switch c["test"] {
 	case "type":
-		return text(c["label"])
+		return []part{words(text(c["label"]))}
 	case "any_of", "all_of":
-		var parts []string
-		for _, part := range list(c["of"]) {
-			parts = append(parts, conditionWords(part))
+		var out []part
+		for i, sub := range list(c["of"]) {
+			if i > 0 {
+				out = append(out, words(map[any]string{"any_of": " or ", "all_of": " and "}[c["test"]]))
+			}
+			out = append(out, conditionParts(sub, fmt.Sprintf("%s.of[%d]", at, i))...)
 		}
-		return strings.Join(parts, map[any]string{"any_of": " or ", "all_of": " and "}[c["test"]])
+		return out
 	}
 	with := object(c["with"])
 	switch {
 	case c["link"] == nil:
-		return valueWords(c)
+		return valueParts(c, at)
 	case with != nil && with["hidden"] == true:
-		return text(c["link_label"]) + wordOneWith + wordNotShown
+		return []part{words(text(c["link_label"]) + wordOneWith + wordNotShown)}
 	case with != nil && with["test"] == "has":
-		return text(c["link_label"]) + wordOneWith + text(with["label"])
+		return []part{words(text(c["link_label"]) + wordOneWith + text(with["label"]))}
 	case with != nil:
-		return text(c["link_label"]) + wordOneWith + valueWords(with)
+		return append([]part{words(text(c["link_label"]) + wordOneWith)}, valueParts(with, at+".with")...)
 	case c["attribute"] != nil || c["hidden"] == true:
-		return text(c["link_label"]) + "; " + valueWords(c)
+		return append([]part{words(text(c["link_label"]) + "; ")}, valueParts(c, at)...)
 	}
-	return text(c["link_label"])
+	return []part{words(text(c["link_label"]))}
 }
 
-func valueWords(c map[string]any) string {
+func valueParts(c map[string]any, at string) []part {
 	if c["hidden"] == true {
-		return wordNotShown
+		return []part{words(wordNotShown)}
 	}
 	if c["test"] == "has" {
-		return "has " + text(c["label"])
+		return []part{words("has " + text(c["label"]))}
 	}
-	words := text(c["label"])
+	label := text(c["label"])
 	if plus := text(c["plus"]); plus != "" {
-		words += wordPlus + plus
+		label += wordPlus + plus
 	}
 	if c["test"] == "in_the_past" || c["test"] == "in_the_future" {
-		return words + testWords[text(c["test"])]
+		return []part{words(label + testWords[text(c["test"])])}
 	}
-	return words + testWords[text(c["test"])] + text(c["value"])
+	return []part{words(label + testWords[text(c["test"])]), {kind: conditionValue, text: text(c["value"]), at: at + ".value", of: c}}
 }
 
-// ruledOutLine is a ruled-out entry's line as its claim and things say it.
-func ruledOutLine(r map[string]any) string {
-	what := wordAMatch
+// ruledOutParts is a ruled-out entry's line as its claim and things say it.
+func ruledOutParts(r map[string]any) []part {
+	out := []part{words(wordAndNo + wordAMatch)}
 	if c := object(r["claim"]); c != nil {
-		what = conditionWords(c)
+		out = append([]part{words(wordAndNo)}, conditionParts(c, ".claim")...)
 	}
-	line := wordAndNo + what
-	var titles []string
-	for _, thing := range list(r["for"]) {
-		titles = append(titles, text(thing["title"]))
+	for i, thing := range list(r["for"]) {
+		out = append(out, words(map[bool]string{true: wordFor, false: ", "}[i == 0]))
+		out = append(out, part{kind: titleOf, text: text(thing["title"]), at: fmt.Sprintf(".for[%d].title", i), of: thing})
 	}
-	if len(titles) > 0 {
-		line += wordFor + strings.Join(titles, ", ") + ")"
+	if len(list(r["for"])) > 0 {
+		out = append(out, words(")"))
 	}
-	return line
+	return out
 }
 
 // claimThings are the things a claim names, at any depth.
@@ -198,6 +231,18 @@ func shownValue(page map[string]any, link, other, attribute, value string) bool 
 		}
 	}
 	return false
+}
+
+// factShown reports whether the value a fact's claim gives is what the
+// page of its thing shows for its attribute, or, of a link, what that
+// thing's row of the link to its other end shows.
+func factShown(pages map[string]map[string]any, c map[string]any) bool {
+	subject, link, other := object(c["thing"]), "", ""
+	if ends := list(c["ends"]); len(ends) == 2 {
+		subject, link, other = object(ends[0]["thing"]), text(c["link"]), text(object(ends[1]["thing"])["id"])
+	}
+	page := pages[text(subject["id"])]
+	return page != nil && shownValue(page, link, other, text(c["attribute"]), text(c["value"]))
 }
 
 // kindOf is the kind of fact a claim says, for the counts.
@@ -263,18 +308,13 @@ func TestWhyLinesGiveTheirParts(t *testing.T) {
 					fail(where, "no data")
 				} else {
 					counts[kindOf(c)]++
-					if line, err := factLine(c); err != nil || line != p["fact"] {
+					parts, err := factParts(c)
+					if line := joined(parts); err != nil || line != p["fact"] {
 						fail(where, "the data %v makes %q (%v)", c, line, err)
 					}
 					named(where, claimThings(c))
-					if value := text(c["value"]); value != "" {
-						subject, link, other := object(c["thing"]), "", ""
-						if ends := list(c["ends"]); len(ends) == 2 {
-							subject, link, other = object(ends[0]["thing"]), text(c["link"]), text(object(ends[1]["thing"])["id"])
-						}
-						if page := pages[text(subject["id"])]; page == nil || !shownValue(page, link, other, text(c["attribute"]), value) {
-							fail(where, "gives %s %q, which its page does not show", c["attribute"], value)
-						}
+					if value := text(c["value"]); value != "" && !factShown(pages, c) {
+						fail(where, "gives %s %q, which its page does not show", c["attribute"], value)
 					}
 				}
 				for _, ruled := range list(p["ruled_out"]) {
@@ -282,7 +322,7 @@ func TestWhyLinesGiveTheirParts(t *testing.T) {
 					if c := object(ruled["claim"]); c == nil && len(list(ruled["for"])) == 0 {
 						fail(where, "%q has no data", ruled["line"])
 					}
-					if line := ruledOutLine(ruled); line != ruled["line"] {
+					if line := joined(ruledOutParts(ruled)); line != ruled["line"] {
 						fail(where, "%q: its data makes %q", ruled["line"], line)
 					}
 					named(where+" > "+text(ruled["line"]), slices.Concat(claimThings(object(ruled["claim"])), list(ruled["for"])))
