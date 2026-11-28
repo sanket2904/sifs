@@ -2,12 +2,14 @@ package load
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
-	"unicode"
 
 	"github.com/sanket2904/sifs/engine/link/pack"
 
@@ -16,15 +18,18 @@ import (
 	"github.com/sanket2904/ontology-framework/store"
 )
 
-// No thing's id holds a value of its own that the schema masks or hides. An
-// organisation's, a number's and a bank code's id are a digest of its key,
-// value or code, the same on every load and every machine (the three
-// written down here are the first 16 hex characters of the SHA-256 of "BIC
-// COBADEFF", "iban:NL91ABNA0417164300" and "bic:COBADEFFXXX"), and each of
-// the committed run's keys, numbers and bank codes has an id of its own.
-// Mutations: put the key back in OrgID, or the value back in IdentifierID
-// or BankCodeID, and the ids differ from the ones written down here and the
-// stored ids hold masked or hidden values; count calls in digest, and the
+// No thing's id holds a key or a value. An organisation's, a number's and
+// a bank code's id is its prefix and the first 16 hex characters of the
+// SHA-256 of its key, of kind:value or of kind:code, and nothing else (the
+// three written down here are those of "BIC COBADEFF",
+// "iban:NL91ABNA0417164300" and "bic:COBADEFFXXX"), the same on every load
+// and every machine, and each of the committed run's keys, numbers and bank
+// codes has an id of its own. No id holds any key or any value of the run,
+// or any text the store masks or hides: a value made only of hex digits,
+// such as a French RIB key "06", may sit in a digest by chance, and is let
+// pass only there, as the digest is checked whole. Mutations: put a key or
+// a value in an id, glued to letters or inside the digest, and the id is
+// not its prefix and digest, and holds it; count calls in digest, and the
 // second load gives other ids.
 func TestIDsCarryNoValue(t *testing.T) {
 	eq(t, "a German bank's id", OrgID("BIC COBADEFF"), "org:9e577a3773d0d204")
@@ -69,20 +74,74 @@ func TestIDsCarryNoValue(t *testing.T) {
 		eq(t, "organisations, one per key", len(orgs), len(keys))
 		eq(t, "numbers, one per kind and value", len(idents), len(numbers))
 		eq(t, "bank codes, one per kind and code", len(bankCodes), len(codes))
-		for _, o := range orgs {
-			if key := o.Attributes[pack.Key][0].(string); o.ID != OrgID(key) {
-				t.Errorf("the organisation with key %q has the id %s", key, o.ID)
+		digests := map[string]bool{}
+		digestID := func(id, prefix, of string) {
+			t.Helper()
+			sum := sha256.Sum256([]byte(of))
+			if want := prefix + ":" + hex.EncodeToString(sum[:8]); id != want {
+				t.Errorf("the id of %q is %s, want %s", of, id, want)
+				return
 			}
+			digests[id] = true
+		}
+		looked := map[string]bool{}
+		for _, o := range orgs {
+			key := o.Attributes[pack.Key][0].(string)
+			digestID(o.ID, "org", key)
+			looked[key] = true
 		}
 		for _, n := range idents {
-			if kind, value := n.Attributes[pack.Kind][0].(string), n.Attributes[pack.Value][0].(string); n.ID != IdentifierID(kind, value) {
-				t.Errorf("the %s %q has the id %s", kind, value, n.ID)
-			}
+			kind, value := n.Attributes[pack.Kind][0].(string), n.Attributes[pack.Value][0].(string)
+			digestID(n.ID, "identifier", kind+":"+value)
+			looked[value] = true
 		}
 		for _, c := range bankCodes {
-			if kind, code := c.Attributes[pack.Kind][0].(string), c.Attributes[pack.Code][0].(string); c.ID != BankCodeID(kind, code) {
-				t.Errorf("the %s %q has the id %s", kind, code, c.ID)
+			kind, code := c.Attributes[pack.Kind][0].(string), c.Attributes[pack.Code][0].(string)
+			digestID(c.ID, "bankcode", kind+":"+code)
+			looked[code] = true
+		}
+		for key := range keys {
+			looked[key] = true
+		}
+		for n := range numbers {
+			looked[n[1]] = true
+		}
+		for c := range codes {
+			looked[c[1]] = true
+		}
+		box := e.interp.TBox()
+		all, err := e.interp.QueryEntities(ctx, store.EntityPattern{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, thing := range all {
+			for attrID, vs := range thing.Attributes {
+				if d := box.GetAttributeType(attrID).Display; d == nil || !d.Mask && !d.Hidden {
+					continue
+				}
+				for _, v := range vs {
+					if text, ok := v.(string); ok {
+						looked[text] = true
+					}
+				}
 			}
+		}
+		hexOnly, byChance := regexp.MustCompile(`^[0-9a-f]+$`), 0
+		for _, thing := range all {
+			id, prefix := thing.ID, thing.ID[:strings.IndexByte(thing.ID, ':')+1]
+			for v := range looked {
+				if !strings.Contains(id, v) {
+					continue
+				}
+				if digests[id] && hexOnly.MatchString(v) && !strings.Contains(prefix, v) {
+					byChance++
+					continue
+				}
+				t.Errorf("the id %s holds %q", id, v)
+			}
+		}
+		if len(digests) != len(orgs)+len(idents)+len(bankCodes) {
+			t.Fatalf("%d of %d ids are their prefix and digest", len(digests), len(orgs)+len(idents)+len(bankCodes))
 		}
 		ids := func(e *Engine) []string {
 			all, err := e.interp.QueryEntities(ctx, store.EntityPattern{})
@@ -96,52 +155,11 @@ func TestIDsCarryNoValue(t *testing.T) {
 			slices.Sort(out)
 			return out
 		}
-		box, kept := e.interp.TBox(), 0
-		all, err := e.interp.QueryEntities(ctx, store.EntityPattern{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, thing := range all {
-			for attrID, vs := range thing.Attributes {
-				if d := box.GetAttributeType(attrID).Display; d == nil || !d.Mask && !d.Hidden {
-					continue
-				}
-				for _, v := range vs {
-					if text, ok := v.(string); ok {
-						kept++
-						if holdsWhole(thing.ID, text) {
-							t.Errorf("the id %s holds its %s %q", thing.ID, attrID, text)
-						}
-					}
-				}
-			}
-		}
-		if kept == 0 {
-			t.Fatal("no masked or hidden text to look for")
-		}
 		first := ids(e)
 		mustLoad(t, ctx, reopen(), run)
 		eq(t, "ids after a second load", ids(reopen()), first)
-		t.Logf("%d things, %d masked or hidden texts looked for in their ids", len(first), kept)
+		t.Logf("%d things, %d keys, values and masked or hidden texts looked for in their ids, %d found in a digest by chance", len(first), len(looked), byChance)
 	})
-}
-
-// holdsWhole reports whether s holds v with no letter or digit joined to
-// it on either side.
-func holdsWhole(s, v string) bool {
-	word := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
-	for i := 0; ; {
-		at := strings.Index(s[i:], v)
-		if at < 0 {
-			return false
-		}
-		start, end := i+at, i+at+len(v)
-		before, after := []rune(s[:start]), []rune(s[end:])
-		if (len(before) == 0 || !word(before[len(before)-1])) && (len(after) == 0 || !word(after[0])) {
-			return true
-		}
-		i = start + 1
-	}
 }
 
 // asBefore is a document's facts with the ids sifs-load gave before an id
