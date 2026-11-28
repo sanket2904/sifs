@@ -378,3 +378,83 @@ func TestValuePremisesRead(t *testing.T) {
 		})
 	}
 }
+
+// lendingPages are the pages of every thing in the lending library, as one
+// document.
+func lendingPages(t *testing.T, r *show.Reader) []byte {
+	t.Helper()
+	out := map[string]show.Page{}
+	for _, id := range []string{"member:aiko", "member:lucas", "branch:osaka", "branch:lyon", "loan:0107", "loan:0212", "reminder:0212"} {
+		p, err := r.Page(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out[id] = p
+	}
+	return encode(t, out)
+}
+
+// Every page of the lending library, with and without reveal, is the same
+// on both stores and as its golden.
+func TestLendingGoldens(t *testing.T) {
+	for name, open := range lendingStores() {
+		t.Run(name, func(t *testing.T) {
+			interp := open(t)
+			golden(t, "lending.json", lendingPages(t, show.New(interp, false)))
+			golden(t, "lending-revealed.json", lendingPages(t, show.New(interp, true)))
+		})
+	}
+}
+
+// A proof gives a value only as the page gives that attribute: a masked
+// value masked unless revealed, in the text and the data of a premise; a
+// hidden value never, while the premise still says the attribute has one.
+// Every read of the library is searched field by field as for the other
+// schemas.
+func TestProofKeepsMaskedAndHidden(t *testing.T) {
+	for name, open := range lendingStores() {
+		t.Run(name, func(t *testing.T) {
+			interp := open(t)
+			h := holds(t, interp)
+			for _, v := range []string{aikoCard, aikoReceipt} {
+				if !slices.Contains(h.masked, any(v)) {
+					t.Fatalf("%s is not among the masked values", v)
+				}
+			}
+			for _, v := range []string{aikoChecker, aikoNote} {
+				if !slices.Contains(h.hidden, any(v)) {
+					t.Fatalf("%s is not among the hidden values", v)
+				}
+			}
+			for _, reveal := range []bool{false, true} {
+				r := show.New(interp, reveal)
+				reportLeaks(t, h, everything(t, r, h), reveal)
+				receipt := "••••••••••8213"
+				if reveal {
+					receipt = aikoReceipt
+				}
+				proof, _ := row(t, doc(t, r, "member:aiko"), "May borrow from", "Osaka Central")["proof"].(map[string]any)
+				var fees map[string]any
+				for _, p := range list(proof["because"]) {
+					if c, _ := p["claim"].(map[string]any); c["link"] == "lending.PaidFeesAt" {
+						fees = p
+					}
+				}
+				if claim, _ := fees["claim"].(map[string]any); fees["fact"] != "Paid fees at: Member Aiko Tanaka, Branch Osaka Central; Receipt: "+receipt || claim["value"] != receipt {
+					t.Errorf("reveal %v: the receipt premise %v", reveal, fees)
+				}
+				for _, page := range []string{"member:aiko", "branch:osaka"} {
+					b := string(encode(t, doc(t, r, page)))
+					if !strings.Contains(b, "; has Checked by") || page == "member:aiko" && !strings.Contains(b, "Aiko Tanaka has Note") {
+						t.Errorf("reveal %v: %s does not say a hidden attribute has a value", reveal, page)
+					}
+					for _, v := range []string{aikoChecker, aikoNote} {
+						if strings.Contains(b, v) {
+							t.Errorf("reveal %v: %s gives hidden %q", reveal, page, v)
+						}
+					}
+				}
+			}
+		})
+	}
+}

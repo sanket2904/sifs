@@ -1,0 +1,1157 @@
+{
+  "branch:lyon": {
+    "id": "branch:lyon",
+    "type": "lending.Branch",
+    "title": "Lyon Part-Dieu",
+    "subtitle": "Lyon",
+    "label": "Branch",
+    "also": [],
+    "values": [
+      {
+        "attribute": "lending.city",
+        "label": "City",
+        "values": [
+          "Lyon"
+        ],
+        "status": "accepted",
+        "sources": [
+          "registration-lyon.pdf"
+        ]
+      },
+      {
+        "attribute": "lending.name",
+        "label": "Name",
+        "values": [
+          "Lyon Part-Dieu"
+        ],
+        "status": "accepted",
+        "sources": [
+          "registration-lyon.pdf"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "lending.RegisteredAt",
+        "role": "lending.RegisteredAt:branch",
+        "label": "Members",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.RegisteredAt:member",
+                "label": "Member",
+                "thing": {
+                  "id": "member:lucas",
+                  "type": "lending.Member",
+                  "title": "Lucas Moreau",
+                  "subtitle": "Lyon"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "lending.standing",
+                "label": "Standing",
+                "values": [
+                  "suspended"
+                ]
+              }
+            ],
+            "sources": [
+              "registration-lyon.pdf"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "branch:osaka": {
+    "id": "branch:osaka",
+    "type": "lending.Branch",
+    "title": "Osaka Central",
+    "subtitle": "Osaka",
+    "label": "Branch",
+    "also": [],
+    "values": [
+      {
+        "attribute": "lending.city",
+        "label": "City",
+        "values": [
+          "Osaka"
+        ],
+        "status": "accepted",
+        "sources": [
+          "fees-osaka-2026.pdf",
+          "registration-osaka.pdf"
+        ]
+      },
+      {
+        "attribute": "lending.name",
+        "label": "Name",
+        "values": [
+          "Osaka Central"
+        ],
+        "status": "accepted",
+        "sources": [
+          "fees-osaka-2026.pdf",
+          "registration-osaka.pdf"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "lending.PaidFeesAt",
+        "role": "lending.PaidFeesAt:branch",
+        "label": "Fees paid by",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.PaidFeesAt:member",
+                "label": "Member",
+                "thing": {
+                  "id": "member:aiko",
+                  "type": "lending.Member",
+                  "title": "Aiko Tanaka",
+                  "subtitle": "Osaka"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "lending.receipt",
+                "label": "Receipt",
+                "values": [
+                  "RCPT-OSK-88213"
+                ]
+              }
+            ],
+            "sources": [
+              "fees-osaka-2026.pdf"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "lending.MayBorrowFrom",
+        "role": "lending.MayBorrowFrom:branch",
+        "label": "Lends to",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.MayBorrowFrom:member",
+                "label": "Member",
+                "thing": {
+                  "id": "member:aiko",
+                  "type": "lending.Member",
+                  "title": "Aiko Tanaka",
+                  "subtitle": "Osaka"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [],
+            "proof": {
+              "fact": "May borrow from: Member Aiko Tanaka, Branch Osaka Central",
+              "status": "derived",
+              "rule": "lending.may-borrow",
+              "claim": {
+                "test": "link",
+                "link": "lending.MayBorrowFrom",
+                "link_label": "May borrow from",
+                "ends": [
+                  {
+                    "role": "lending.MayBorrowFrom:member",
+                    "label": "Member",
+                    "thing": {
+                      "id": "member:aiko",
+                      "type": "lending.Member",
+                      "title": "Aiko Tanaka",
+                      "subtitle": "Osaka"
+                    }
+                  },
+                  {
+                    "role": "lending.MayBorrowFrom:branch",
+                    "label": "Branch",
+                    "thing": {
+                      "id": "branch:osaka",
+                      "type": "lending.Branch",
+                      "title": "Osaka Central",
+                      "subtitle": "Osaka"
+                    }
+                  }
+                ]
+              },
+              "because": [
+                {
+                  "fact": "Aiko Tanaka is Member",
+                  "status": "asserted",
+                  "sources": [
+                    "fees-osaka-2026.pdf",
+                    "loan-slip-0107.pdf",
+                    "registration-osaka.pdf"
+                  ]
+                },
+                {
+                  "fact": "Registered at: Member Aiko Tanaka, Branch Osaka Central; Standing: good",
+                  "status": "asserted",
+                  "sources": [
+                    "registration-osaka.pdf"
+                  ],
+                  "claim": {
+                    "test": "is",
+                    "link": "lending.RegisteredAt",
+                    "link_label": "Registered at",
+                    "ends": [
+                      {
+                        "role": "lending.RegisteredAt:member",
+                        "label": "Member",
+                        "thing": {
+                          "id": "member:aiko",
+                          "type": "lending.Member",
+                          "title": "Aiko Tanaka",
+                          "subtitle": "Osaka"
+                        }
+                      },
+                      {
+                        "role": "lending.RegisteredAt:branch",
+                        "label": "Branch",
+                        "thing": {
+                          "id": "branch:osaka",
+                          "type": "lending.Branch",
+                          "title": "Osaka Central",
+                          "subtitle": "Osaka"
+                        }
+                      }
+                    ],
+                    "attribute": "lending.standing",
+                    "label": "Standing",
+                    "value": "good"
+                  }
+                },
+                {
+                  "fact": "Registered at: Member Aiko Tanaka, Branch Osaka Central; has Checked by",
+                  "status": "asserted",
+                  "sources": [
+                    "registration-osaka.pdf"
+                  ],
+                  "claim": {
+                    "test": "has",
+                    "link": "lending.RegisteredAt",
+                    "link_label": "Registered at",
+                    "ends": [
+                      {
+                        "role": "lending.RegisteredAt:member",
+                        "label": "Member",
+                        "thing": {
+                          "id": "member:aiko",
+                          "type": "lending.Member",
+                          "title": "Aiko Tanaka",
+                          "subtitle": "Osaka"
+                        }
+                      },
+                      {
+                        "role": "lending.RegisteredAt:branch",
+                        "label": "Branch",
+                        "thing": {
+                          "id": "branch:osaka",
+                          "type": "lending.Branch",
+                          "title": "Osaka Central",
+                          "subtitle": "Osaka"
+                        }
+                      }
+                    ],
+                    "attribute": "lending.checkedBy",
+                    "label": "Checked by"
+                  }
+                },
+                {
+                  "fact": "Paid fees at: Member Aiko Tanaka, Branch Osaka Central; Receipt: RCPT-OSK-88213",
+                  "status": "asserted",
+                  "sources": [
+                    "fees-osaka-2026.pdf"
+                  ],
+                  "claim": {
+                    "test": "is",
+                    "link": "lending.PaidFeesAt",
+                    "link_label": "Paid fees at",
+                    "ends": [
+                      {
+                        "role": "lending.PaidFeesAt:member",
+                        "label": "Member",
+                        "thing": {
+                          "id": "member:aiko",
+                          "type": "lending.Member",
+                          "title": "Aiko Tanaka",
+                          "subtitle": "Osaka"
+                        }
+                      },
+                      {
+                        "role": "lending.PaidFeesAt:branch",
+                        "label": "Branch",
+                        "thing": {
+                          "id": "branch:osaka",
+                          "type": "lending.Branch",
+                          "title": "Osaka Central",
+                          "subtitle": "Osaka"
+                        }
+                      }
+                    ],
+                    "attribute": "lending.receipt",
+                    "label": "Receipt",
+                    "value": "RCPT-OSK-88213"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "link": "lending.RegisteredAt",
+        "role": "lending.RegisteredAt:branch",
+        "label": "Members",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.RegisteredAt:member",
+                "label": "Member",
+                "thing": {
+                  "id": "member:aiko",
+                  "type": "lending.Member",
+                  "title": "Aiko Tanaka",
+                  "subtitle": "Osaka"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "lending.standing",
+                "label": "Standing",
+                "values": [
+                  "good"
+                ]
+              }
+            ],
+            "sources": [
+              "registration-osaka.pdf"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "loan:0107": {
+    "id": "loan:0107",
+    "type": "lending.Loan",
+    "title": "L-0107",
+    "subtitle": "2026-10-20",
+    "label": "Loan",
+    "also": [
+      {
+        "type": "lending.ReminderFreeLoan",
+        "label": "Free of reminders",
+        "proof": {
+          "fact": "L-0107 is Free of reminders",
+          "status": "derived",
+          "rule": "lending.reminder-free",
+          "because": [
+            {
+              "fact": "L-0107 is Loan",
+              "status": "asserted",
+              "sources": [
+                "loan-slip-0107.pdf"
+              ]
+            },
+            {
+              "fact": "L-0107 Returned true",
+              "status": "asserted",
+              "sources": [
+                "loan-slip-0107.pdf"
+              ]
+            }
+          ],
+          "ruled_out": [
+            {
+              "line": "and no: A reminder was sent (for L-0107)",
+              "claim": {
+                "test": "link",
+                "link": "lending.ReminderFor",
+                "link_label": "A reminder was sent"
+              },
+              "for": [
+                {
+                  "id": "loan:0107",
+                  "type": "lending.Loan",
+                  "title": "L-0107",
+                  "subtitle": "2026-10-20"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "values": [
+      {
+        "attribute": "lending.due",
+        "label": "Due",
+        "values": [
+          "2026-10-20"
+        ],
+        "status": "accepted",
+        "sources": [
+          "loan-slip-0107.pdf"
+        ]
+      },
+      {
+        "attribute": "lending.number",
+        "label": "Number",
+        "values": [
+          "L-0107"
+        ],
+        "status": "accepted",
+        "sources": [
+          "loan-slip-0107.pdf"
+        ]
+      },
+      {
+        "attribute": "lending.returned",
+        "label": "Returned",
+        "values": [
+          "true"
+        ],
+        "status": "accepted",
+        "sources": [
+          "loan-slip-0107.pdf"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "lending.LentTo",
+        "role": "lending.LentTo:loan",
+        "label": "Lent to",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.LentTo:member",
+                "label": "Member",
+                "thing": {
+                  "id": "member:aiko",
+                  "type": "lending.Member",
+                  "title": "Aiko Tanaka",
+                  "subtitle": "Osaka"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [
+              "loan-slip-0107.pdf"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "loan:0212": {
+    "id": "loan:0212",
+    "type": "lending.Loan",
+    "title": "L-0212",
+    "subtitle": "2026-11-03",
+    "label": "Loan",
+    "also": [],
+    "values": [
+      {
+        "attribute": "lending.due",
+        "label": "Due",
+        "values": [
+          "2026-11-03"
+        ],
+        "status": "accepted",
+        "sources": [
+          "loan-slip-0212.pdf"
+        ]
+      },
+      {
+        "attribute": "lending.number",
+        "label": "Number",
+        "values": [
+          "L-0212"
+        ],
+        "status": "accepted",
+        "sources": [
+          "loan-slip-0212.pdf"
+        ]
+      },
+      {
+        "attribute": "lending.returned",
+        "label": "Returned",
+        "values": [
+          "true"
+        ],
+        "status": "accepted",
+        "sources": [
+          "loan-slip-0212.pdf"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "lending.LentTo",
+        "role": "lending.LentTo:loan",
+        "label": "Lent to",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.LentTo:member",
+                "label": "Member",
+                "thing": {
+                  "id": "member:lucas",
+                  "type": "lending.Member",
+                  "title": "Lucas Moreau",
+                  "subtitle": "Lyon"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [
+              "loan-slip-0212.pdf"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "lending.ReminderFor",
+        "role": "lending.ReminderFor:loan",
+        "label": "Reminders",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.ReminderFor:reminder",
+                "label": "Reminder",
+                "thing": {
+                  "id": "reminder:0212",
+                  "type": "lending.Reminder",
+                  "title": "R-0212"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [
+              "reminder-0212.pdf"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "member:aiko": {
+    "id": "member:aiko",
+    "type": "lending.Member",
+    "title": "Aiko Tanaka",
+    "subtitle": "Osaka",
+    "label": "Member",
+    "also": [
+      {
+        "type": "lending.CardHolder",
+        "label": "Card holder",
+        "proof": {
+          "fact": "Aiko Tanaka is Card holder",
+          "status": "derived",
+          "rule": "lending.card-holder",
+          "because": [
+            {
+              "fact": "Aiko Tanaka is Member",
+              "status": "asserted",
+              "sources": [
+                "fees-osaka-2026.pdf",
+                "loan-slip-0107.pdf",
+                "registration-osaka.pdf"
+              ]
+            },
+            {
+              "fact": "Aiko Tanaka has Card number",
+              "status": "asserted",
+              "sources": [
+                "fees-osaka-2026.pdf",
+                "loan-slip-0107.pdf",
+                "registration-osaka.pdf"
+              ],
+              "claim": {
+                "test": "has",
+                "attribute": "lending.cardNumber",
+                "label": "Card number"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "lending.InGoodStanding",
+        "label": "In good standing",
+        "proof": {
+          "fact": "Aiko Tanaka is In good standing",
+          "status": "derived",
+          "rule": "lending.good-standing",
+          "because": [
+            {
+              "fact": "Aiko Tanaka is Member",
+              "status": "asserted",
+              "sources": [
+                "fees-osaka-2026.pdf",
+                "loan-slip-0107.pdf",
+                "registration-osaka.pdf"
+              ]
+            }
+          ],
+          "ruled_out": [
+            {
+              "line": "and no: Registered at; Standing: suspended (for Aiko Tanaka)",
+              "claim": {
+                "test": "is",
+                "link": "lending.RegisteredAt",
+                "link_label": "Registered at",
+                "attribute": "lending.standing",
+                "label": "Standing",
+                "value": "suspended"
+              },
+              "for": [
+                {
+                  "id": "member:aiko",
+                  "type": "lending.Member",
+                  "title": "Aiko Tanaka",
+                  "subtitle": "Osaka"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "lending.Volunteer",
+        "label": "Volunteer",
+        "proof": {
+          "fact": "Aiko Tanaka is Volunteer",
+          "status": "derived",
+          "rule": "lending.volunteer",
+          "because": [
+            {
+              "fact": "Aiko Tanaka is Member",
+              "status": "asserted",
+              "sources": [
+                "fees-osaka-2026.pdf",
+                "loan-slip-0107.pdf",
+                "registration-osaka.pdf"
+              ]
+            },
+            {
+              "fact": "Aiko Tanaka has Note",
+              "status": "asserted",
+              "sources": [
+                "fees-osaka-2026.pdf",
+                "loan-slip-0107.pdf",
+                "registration-osaka.pdf"
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "values": [
+      {
+        "attribute": "lending.cardNumber",
+        "label": "Card number",
+        "values": [
+          "JP-OSK-4471-2209"
+        ],
+        "status": "accepted",
+        "sources": [
+          "fees-osaka-2026.pdf",
+          "loan-slip-0107.pdf",
+          "registration-osaka.pdf"
+        ]
+      },
+      {
+        "attribute": "lending.city",
+        "label": "City",
+        "values": [
+          "Osaka"
+        ],
+        "status": "accepted",
+        "sources": [
+          "fees-osaka-2026.pdf",
+          "loan-slip-0107.pdf",
+          "registration-osaka.pdf"
+        ]
+      },
+      {
+        "attribute": "lending.fullName",
+        "label": "Name",
+        "values": [
+          "Aiko Tanaka"
+        ],
+        "status": "accepted",
+        "sources": [
+          "fees-osaka-2026.pdf",
+          "loan-slip-0107.pdf",
+          "registration-osaka.pdf"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "lending.LentTo",
+        "role": "lending.LentTo:member",
+        "label": "Loans",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.LentTo:loan",
+                "label": "Loan",
+                "thing": {
+                  "id": "loan:0107",
+                  "type": "lending.Loan",
+                  "title": "L-0107",
+                  "subtitle": "2026-10-20"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [
+              "loan-slip-0107.pdf"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "lending.MayBorrowFrom",
+        "role": "lending.MayBorrowFrom:member",
+        "label": "May borrow from",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.MayBorrowFrom:branch",
+                "label": "Branch",
+                "thing": {
+                  "id": "branch:osaka",
+                  "type": "lending.Branch",
+                  "title": "Osaka Central",
+                  "subtitle": "Osaka"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [],
+            "proof": {
+              "fact": "May borrow from: Member Aiko Tanaka, Branch Osaka Central",
+              "status": "derived",
+              "rule": "lending.may-borrow",
+              "claim": {
+                "test": "link",
+                "link": "lending.MayBorrowFrom",
+                "link_label": "May borrow from",
+                "ends": [
+                  {
+                    "role": "lending.MayBorrowFrom:member",
+                    "label": "Member",
+                    "thing": {
+                      "id": "member:aiko",
+                      "type": "lending.Member",
+                      "title": "Aiko Tanaka",
+                      "subtitle": "Osaka"
+                    }
+                  },
+                  {
+                    "role": "lending.MayBorrowFrom:branch",
+                    "label": "Branch",
+                    "thing": {
+                      "id": "branch:osaka",
+                      "type": "lending.Branch",
+                      "title": "Osaka Central",
+                      "subtitle": "Osaka"
+                    }
+                  }
+                ]
+              },
+              "because": [
+                {
+                  "fact": "Aiko Tanaka is Member",
+                  "status": "asserted",
+                  "sources": [
+                    "fees-osaka-2026.pdf",
+                    "loan-slip-0107.pdf",
+                    "registration-osaka.pdf"
+                  ]
+                },
+                {
+                  "fact": "Registered at: Member Aiko Tanaka, Branch Osaka Central; Standing: good",
+                  "status": "asserted",
+                  "sources": [
+                    "registration-osaka.pdf"
+                  ],
+                  "claim": {
+                    "test": "is",
+                    "link": "lending.RegisteredAt",
+                    "link_label": "Registered at",
+                    "ends": [
+                      {
+                        "role": "lending.RegisteredAt:member",
+                        "label": "Member",
+                        "thing": {
+                          "id": "member:aiko",
+                          "type": "lending.Member",
+                          "title": "Aiko Tanaka",
+                          "subtitle": "Osaka"
+                        }
+                      },
+                      {
+                        "role": "lending.RegisteredAt:branch",
+                        "label": "Branch",
+                        "thing": {
+                          "id": "branch:osaka",
+                          "type": "lending.Branch",
+                          "title": "Osaka Central",
+                          "subtitle": "Osaka"
+                        }
+                      }
+                    ],
+                    "attribute": "lending.standing",
+                    "label": "Standing",
+                    "value": "good"
+                  }
+                },
+                {
+                  "fact": "Registered at: Member Aiko Tanaka, Branch Osaka Central; has Checked by",
+                  "status": "asserted",
+                  "sources": [
+                    "registration-osaka.pdf"
+                  ],
+                  "claim": {
+                    "test": "has",
+                    "link": "lending.RegisteredAt",
+                    "link_label": "Registered at",
+                    "ends": [
+                      {
+                        "role": "lending.RegisteredAt:member",
+                        "label": "Member",
+                        "thing": {
+                          "id": "member:aiko",
+                          "type": "lending.Member",
+                          "title": "Aiko Tanaka",
+                          "subtitle": "Osaka"
+                        }
+                      },
+                      {
+                        "role": "lending.RegisteredAt:branch",
+                        "label": "Branch",
+                        "thing": {
+                          "id": "branch:osaka",
+                          "type": "lending.Branch",
+                          "title": "Osaka Central",
+                          "subtitle": "Osaka"
+                        }
+                      }
+                    ],
+                    "attribute": "lending.checkedBy",
+                    "label": "Checked by"
+                  }
+                },
+                {
+                  "fact": "Paid fees at: Member Aiko Tanaka, Branch Osaka Central; Receipt: RCPT-OSK-88213",
+                  "status": "asserted",
+                  "sources": [
+                    "fees-osaka-2026.pdf"
+                  ],
+                  "claim": {
+                    "test": "is",
+                    "link": "lending.PaidFeesAt",
+                    "link_label": "Paid fees at",
+                    "ends": [
+                      {
+                        "role": "lending.PaidFeesAt:member",
+                        "label": "Member",
+                        "thing": {
+                          "id": "member:aiko",
+                          "type": "lending.Member",
+                          "title": "Aiko Tanaka",
+                          "subtitle": "Osaka"
+                        }
+                      },
+                      {
+                        "role": "lending.PaidFeesAt:branch",
+                        "label": "Branch",
+                        "thing": {
+                          "id": "branch:osaka",
+                          "type": "lending.Branch",
+                          "title": "Osaka Central",
+                          "subtitle": "Osaka"
+                        }
+                      }
+                    ],
+                    "attribute": "lending.receipt",
+                    "label": "Receipt",
+                    "value": "RCPT-OSK-88213"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "link": "lending.PaidFeesAt",
+        "role": "lending.PaidFeesAt:member",
+        "label": "Paid fees at",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.PaidFeesAt:branch",
+                "label": "Branch",
+                "thing": {
+                  "id": "branch:osaka",
+                  "type": "lending.Branch",
+                  "title": "Osaka Central",
+                  "subtitle": "Osaka"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "lending.receipt",
+                "label": "Receipt",
+                "values": [
+                  "RCPT-OSK-88213"
+                ]
+              }
+            ],
+            "sources": [
+              "fees-osaka-2026.pdf"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "lending.RegisteredAt",
+        "role": "lending.RegisteredAt:member",
+        "label": "Registered at",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.RegisteredAt:branch",
+                "label": "Branch",
+                "thing": {
+                  "id": "branch:osaka",
+                  "type": "lending.Branch",
+                  "title": "Osaka Central",
+                  "subtitle": "Osaka"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "lending.standing",
+                "label": "Standing",
+                "values": [
+                  "good"
+                ]
+              }
+            ],
+            "sources": [
+              "registration-osaka.pdf"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "member:lucas": {
+    "id": "member:lucas",
+    "type": "lending.Member",
+    "title": "Lucas Moreau",
+    "subtitle": "Lyon",
+    "label": "Member",
+    "also": [
+      {
+        "type": "lending.NeedsCard",
+        "label": "Needs a card",
+        "proof": {
+          "fact": "Lucas Moreau is Needs a card",
+          "status": "derived",
+          "rule": "lending.needs-card",
+          "because": [
+            {
+              "fact": "Lucas Moreau is Member",
+              "status": "asserted",
+              "sources": [
+                "loan-slip-0212.pdf",
+                "registration-lyon.pdf"
+              ]
+            }
+          ],
+          "ruled_out": [
+            {
+              "line": "and no: has Card number (for Lucas Moreau)",
+              "claim": {
+                "test": "has",
+                "attribute": "lending.cardNumber",
+                "label": "Card number"
+              },
+              "for": [
+                {
+                  "id": "member:lucas",
+                  "type": "lending.Member",
+                  "title": "Lucas Moreau",
+                  "subtitle": "Lyon"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "values": [
+      {
+        "attribute": "lending.city",
+        "label": "City",
+        "values": [
+          "Lyon"
+        ],
+        "status": "accepted",
+        "sources": [
+          "loan-slip-0212.pdf",
+          "registration-lyon.pdf"
+        ]
+      },
+      {
+        "attribute": "lending.fullName",
+        "label": "Name",
+        "values": [
+          "Lucas Moreau"
+        ],
+        "status": "accepted",
+        "sources": [
+          "loan-slip-0212.pdf",
+          "registration-lyon.pdf"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "lending.LentTo",
+        "role": "lending.LentTo:member",
+        "label": "Loans",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.LentTo:loan",
+                "label": "Loan",
+                "thing": {
+                  "id": "loan:0212",
+                  "type": "lending.Loan",
+                  "title": "L-0212",
+                  "subtitle": "2026-11-03"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [
+              "loan-slip-0212.pdf"
+            ]
+          }
+        ]
+      },
+      {
+        "link": "lending.RegisteredAt",
+        "role": "lending.RegisteredAt:member",
+        "label": "Registered at",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.RegisteredAt:branch",
+                "label": "Branch",
+                "thing": {
+                  "id": "branch:lyon",
+                  "type": "lending.Branch",
+                  "title": "Lyon Part-Dieu",
+                  "subtitle": "Lyon"
+                }
+              }
+            ],
+            "attributes": [
+              {
+                "attribute": "lending.standing",
+                "label": "Standing",
+                "values": [
+                  "suspended"
+                ]
+              }
+            ],
+            "sources": [
+              "registration-lyon.pdf"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "reminder:0212": {
+    "id": "reminder:0212",
+    "type": "lending.Reminder",
+    "title": "R-0212",
+    "label": "Reminder",
+    "also": [],
+    "values": [
+      {
+        "attribute": "lending.number",
+        "label": "Number",
+        "values": [
+          "R-0212"
+        ],
+        "status": "accepted",
+        "sources": [
+          "reminder-0212.pdf"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "link": "lending.ReminderFor",
+        "role": "lending.ReminderFor:reminder",
+        "label": "About",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "lending.ReminderFor:loan",
+                "label": "Loan",
+                "thing": {
+                  "id": "loan:0212",
+                  "type": "lending.Loan",
+                  "title": "L-0212",
+                  "subtitle": "2026-11-03"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [
+              "reminder-0212.pdf"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
