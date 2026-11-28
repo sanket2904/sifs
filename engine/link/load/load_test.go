@@ -159,8 +159,8 @@ func TestFirstLoad(t *testing.T) {
 		rep := mustLoad(t, ctx, e, sampleRun(statement("stmt-jan"), statement("stmt-feb"), passport()))
 		eq(t, "report", rep, Report{Written: 3, TurnedDown: []TurnDown{}})
 		eq(t, "counts", mustCount(t, ctx, e), Counts{
-			Things: map[string]int{"Document": 3, "Organisation": 3, "Identifier": 3, "Statement": 2, "Passport": 1, "Holder": 1},
-			Links: map[string]int{"Mentions": 2, "Shows": 5, "HeldAt": 6, "SameOrg": 2, "StatementOf": 2, "StatementAccount": 2, "IssuedBy": 2,
+			Things: map[string]int{"Document": 3, "Organisation": 3, "Identifier": 2, "BankCode": 1, "Statement": 2, "Passport": 1, "Holder": 1},
+			Links: map[string]int{"Mentions": 2, "Shows": 3, "ShowsCode": 2, "HeldAt": 4, "CodeOf": 2, "SameOrg": 2, "StatementOf": 2, "StatementAccount": 2, "IssuedBy": 2,
 				"PassportOf": 1, "HolderOf": 1, "PassportNumber": 1, "PassportMRZ": 0},
 		})
 		same := relation(t, ctx, e, janSameOrg)
@@ -270,8 +270,8 @@ func TestLeftOutRowsCounted(t *testing.T) {
 		e := reopen()
 		eq(t, "first load", mustLoad(t, ctx, e, run), Report{Written: 2, TurnedDown: []TurnDown{}, LeftOut: leftOut})
 		eq(t, "counts", mustCount(t, ctx, e), Counts{
-			Things: map[string]int{"Document": 2, "Organisation": 2, "Identifier": 3, "Statement": 1, "Passport": 1, "Holder": 1},
-			Links: map[string]int{"Mentions": 1, "Shows": 3, "HeldAt": 3, "SameOrg": 1, "StatementOf": 1, "StatementAccount": 1, "IssuedBy": 1,
+			Things: map[string]int{"Document": 2, "Organisation": 2, "Identifier": 2, "BankCode": 1, "Statement": 1, "Passport": 1, "Holder": 1},
+			Links: map[string]int{"Mentions": 1, "Shows": 2, "ShowsCode": 1, "HeldAt": 2, "CodeOf": 1, "SameOrg": 1, "StatementOf": 1, "StatementAccount": 1, "IssuedBy": 1,
 				"PassportOf": 1, "HolderOf": 1, "PassportNumber": 1, "PassportMRZ": 0},
 		})
 		eq(t, "second load", mustLoad(t, ctx, reopen(), run), Report{Unchanged: 2, TurnedDown: []TurnDown{}, LeftOut: leftOut})
@@ -341,7 +341,7 @@ func mergeDoc(certainFirst bool) extract.DocOut {
 func TestMergedClaims(t *testing.T) {
 	name := "name:merge-doc:examplebank"
 	iban, account := IdentifierID("iban", "XX00EXMP0001"), IdentifierID("account", "000111222333")
-	ifsc, bic := IdentifierID("ifsc", "EXMP0000001"), IdentifierID("bic", "EXMPXXYY")
+	ifsc, bic := BankCodeID("ifsc", "EXMP0000001"), BankCodeID("bic", "EXMPXXYY")
 	want := []struct {
 		id, tier     string
 		reasons, via []string

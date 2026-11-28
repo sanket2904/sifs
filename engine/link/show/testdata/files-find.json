@@ -73,7 +73,7 @@
       {
         "collection": "accounts",
         "type": "files.Identifier",
-        "label": "Number or code",
+        "label": "Number",
         "things": [
           {
             "id": "identifier:de53d6ca13f472d8",
@@ -117,31 +117,31 @@
   "a word of several kinds": {
     "groups": [
       {
-        "collection": "accounts",
-        "type": "files.Identifier",
-        "label": "Number or code",
+        "collection": "organisations",
+        "type": "files.BankCode",
+        "label": "Bank code",
         "things": [
           {
-            "id": "identifier:9e2923ea3835638f",
-            "type": "files.Identifier",
-            "title": "•••••••0XXX",
+            "id": "bankcode:c7efa621a7c99ac8",
+            "type": "files.BankCode",
+            "title": "SMBKCAT0XXX",
             "subtitle": "bic",
             "matched": {
-              "attribute": "files.value",
-              "label": "Value",
-              "value": "•••••••0XXX",
+              "attribute": "files.code",
+              "label": "Code",
+              "value": "SMBKCAT0XXX",
               "exact": false
             }
           },
           {
-            "id": "identifier:c7efa621a7c99ac8",
-            "type": "files.Identifier",
-            "title": "•••••••0XXX",
+            "id": "bankcode:9e2923ea3835638f",
+            "type": "files.BankCode",
+            "title": "SMBKGB20XXX",
             "subtitle": "bic",
             "matched": {
-              "attribute": "files.value",
-              "label": "Value",
-              "value": "•••••••0XXX",
+              "attribute": "files.code",
+              "label": "Code",
+              "value": "SMBKGB20XXX",
               "exact": false
             }
           }

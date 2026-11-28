@@ -2,9 +2,9 @@
   "kinds": [
     {
       "type": "files.Identifier",
-      "label": "Number or code",
+      "label": "Number",
       "collection": "accounts",
-      "count": 56
+      "count": 40
     },
     {
       "type": "files.Document",
@@ -23,6 +23,12 @@
       "label": "Statement",
       "collection": "documents",
       "count": 14
+    },
+    {
+      "type": "files.BankCode",
+      "label": "Bank code",
+      "collection": "organisations",
+      "count": 16
     },
     {
       "type": "files.Organisation",

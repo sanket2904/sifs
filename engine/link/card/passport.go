@@ -119,9 +119,9 @@ func expiry(attrs map[string][]any, referenceDate string) Expiry {
 	date, t := str(attrs, pack.Expiry), tier(attrs, pack.ExpiryTier)
 	page, hasPage := integer(attrs, pack.ExpiryPage)
 	switch {
-	case date == "":
+	case date == "" && t == "":
 		return Expiry{Status: "cannot-tell", Why: "not-given"}
-	case date == "cannot-tell":
+	case date == "" || date == "cannot-tell": // the word is what a store filled before dates were typed holds
 		return Expiry{Status: "cannot-tell", Why: "extractor-cannot-tell", Tier: t}
 	case t != Certain:
 		return Expiry{Status: "cannot-tell", Why: "likely-only", Tier: t}

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/sanket2904/sifs/engine/extract"
 	"github.com/sanket2904/sifs/engine/link/pack"
@@ -89,11 +91,12 @@ func Facts(doc extract.DocOut, cards map[string]extract.Card) interpreter.Record
 	for _, ident := range doc.Identifiers {
 		idents[ident.ID] = f.identifier(ident.Kind, ident.Value)
 	}
+	public := func(id string) bool { return f.entities[idents[id]].TypeID == pack.BankCode }
 	for _, m := range doc.Orgs {
 		if m.Org == nil {
 			continue
 		}
-		attrs := spanAttrs(m.Span)
+		attrs := spanAttrs(m.Span, pack.PrintedText)
 		if m.SettledBy != nil {
 			attrs[pack.SettledBy] = *m.SettledBy
 		}
@@ -101,13 +104,17 @@ func Facts(doc extract.DocOut, cards map[string]extract.Card) interpreter.Record
 			player(pack.Mentions, "document", f.doc), player(pack.Mentions, "organisation", f.org(*m.Org)))
 	}
 	for _, ident := range doc.Identifiers {
-		attrs := spanAttrs(ident.Span)
+		kind, typeID, role, text := "shows", pack.Shows, "identifier", pack.Text
+		if public(ident.ID) {
+			kind, typeID, role, text = "showsCode", pack.ShowsCode, "code", pack.PrintedText
+		}
+		attrs := spanAttrs(ident.Span, text)
 		attrs[pack.Tier] = string(ident.Tier)
 		if ident.Valid != nil {
 			attrs[pack.Valid] = *ident.Valid
 		}
-		f.relation(ref("shows", doc.ID, ident.Page, ident.Start, ident.End), pack.Shows, attrs,
-			player(pack.Shows, "document", f.doc), player(pack.Shows, "identifier", idents[ident.ID]))
+		f.relation(ref(kind, doc.ID, ident.Page, ident.Start, ident.End), typeID, attrs,
+			player(typeID, "document", f.doc), player(typeID, role, idents[ident.ID]))
 	}
 	for _, l := range doc.Links {
 		var via []string
@@ -115,8 +122,12 @@ func Facts(doc extract.DocOut, cards map[string]extract.Card) interpreter.Record
 			via = []string{idents[l.Via]}
 		}
 		ident := idents[l.Identifier]
-		f.claim(ref("heldAt", doc.ID, ident, l.Org), pack.HeldAt, l.Reasons, via, l.Tier,
-			player(pack.HeldAt, "identifier", ident), player(pack.HeldAt, "organisation", f.org(l.Org)), player(pack.HeldAt, "document", f.doc))
+		kind, typeID, role := "heldAt", pack.HeldAt, "identifier"
+		if public(l.Identifier) {
+			kind, typeID, role = "codeOf", pack.CodeOf, "code"
+		}
+		f.claim(ref(kind, doc.ID, ident, l.Org), typeID, l.Reasons, via, l.Tier,
+			player(typeID, role, ident), player(typeID, "organisation", f.org(l.Org)), player(typeID, "document", f.doc))
 	}
 	for _, s := range doc.SameOrg {
 		keys := []string{s.Keys[0], s.Keys[1]}
@@ -125,7 +136,13 @@ func Facts(doc extract.DocOut, cards map[string]extract.Card) interpreter.Record
 			player(pack.SameOrg, "one", f.org(keys[0])), player(pack.SameOrg, "other", f.org(keys[1])), player(pack.SameOrg, "document", f.doc))
 	}
 	if s := doc.Statement; s != nil {
-		stmt := f.entity("statement:"+doc.ID, pack.Statement, map[string]any{pack.From: s.From, pack.To: s.To, pack.PeriodTier: string(s.Tiers["period"])})
+		attrs := map[string]any{pack.PeriodTier: string(s.Tiers["period"])}
+		putDate(attrs, pack.From, &s.From)
+		putDate(attrs, pack.To, &s.To)
+		if p := period(s.From, s.To); p != "" {
+			attrs[pack.Period] = p
+		}
+		stmt := f.entity("statement:"+doc.ID, pack.Statement, attrs)
 		f.relation(ref("statementOf", doc.ID), pack.StatementOf, nil, player(pack.StatementOf, "statement", stmt), player(pack.StatementOf, "document", f.doc))
 		for _, a := range s.Accounts {
 			f.relation(ref("statementAccount", doc.ID, idents[a]), pack.StatementAccount, map[string]any{pack.Tier: string(s.Tiers["accounts"])},
@@ -144,15 +161,15 @@ func Facts(doc extract.DocOut, cards map[string]extract.Card) interpreter.Record
 
 func (f *facts) passport(p *extract.PassportOut, idents map[string]string) {
 	attrs := map[string]any{}
-	if p.Issued != nil {
-		attrs[pack.Issued] = *p.Issued
-	}
+	putDate(attrs, pack.Issued, p.Issued)
 	if p.Expiry != nil {
-		attrs[pack.Expiry] = *p.Expiry
+		putDate(attrs, pack.Expiry, p.Expiry)
 		attrs[pack.ExpiryTier] = string(p.Tiers["expiry"])
 	}
 	if at := p.ExpiryAt; at != nil {
 		attrs[pack.ExpiryPage], attrs[pack.ExpiryStart], attrs[pack.ExpiryEnd], attrs[pack.ExpiryText] = int64(at.Page), int64(at.Start), int64(at.End), at.Text
+	} else if p.Expiry != nil && isDay(*p.Expiry) {
+		attrs[pack.ExpiryDay] = *p.Expiry
 	}
 	if p.Current != nil {
 		attrs[pack.Current] = *p.Current
@@ -228,8 +245,37 @@ func (f *facts) entity(id, typeID string, attrs map[string]any) string {
 	return id
 }
 
+// putDate puts the day a format 3 date names, at midnight UTC, under attr.
+// A date it does not spell as YYYY-MM-DD, such as an expiry the extractor
+// marks `cannot-tell`, is left out: the claim's tier still says one was
+// given.
+func putDate(attrs map[string]any, attr string, date *string) {
+	if date == nil {
+		return
+	}
+	if day, err := time.Parse(time.DateOnly, *date); err == nil {
+		attrs[attr] = day
+	}
+}
+
+// period is a statement's title: its first and last day as format 3 spells
+// them, or the one of the two that is a day.
+func period(from, to string) string {
+	days := slices.DeleteFunc([]string{from, to}, func(d string) bool { return !isDay(d) })
+	return strings.Join(days, " to ")
+}
+
+// isDay reports whether a format 3 date is a day, spelt YYYY-MM-DD.
+func isDay(date string) bool {
+	_, err := time.Parse(time.DateOnly, date)
+	return err == nil
+}
+
 func (f *facts) org(key string) string {
 	attrs := map[string]any{pack.Key: key}
+	if !strings.HasPrefix(key, documentKeyPrefix) {
+		attrs[pack.Institution] = key
+	}
 	if card, ok := f.cards[key]; ok {
 		if card.Name != nil {
 			attrs[pack.Name] = *card.Name
@@ -244,17 +290,29 @@ func (f *facts) org(key string) string {
 	return f.entity(OrgID(key), pack.Organisation, attrs)
 }
 
+// documentKeyPrefix starts a document key (sample/FORMAT.md, "No
+// merging"); every other key is an institution code's key, spelt from a
+// code that is printed for anyone to read.
+const documentKeyPrefix = "name:"
+
+// identifier is the thing a number or code of kind is: a bank code when
+// the pack lists kind as public, otherwise a person's own number.
 func (f *facts) identifier(kind, value string) string {
+	if pack.Public(kind) {
+		return f.entity(BankCodeID(kind, value), pack.BankCode, map[string]any{pack.Kind: kind, pack.Code: value})
+	}
 	return f.entity(IdentifierID(kind, value), pack.Identifier, map[string]any{pack.Kind: kind, pack.Value: value})
 }
 
-// OrgID is the id of the organisation with key, and IdentifierID the id of
-// the number or code of kind with value. The schema hides a key and masks a
-// value, so neither is in the id: the id is a digest of it, the same on
-// every load and every machine.
+// OrgID is the id of the organisation with key, IdentifierID the id of the
+// number of kind with value, and BankCodeID the id of the bank code of
+// kind with value. None holds its key, value or code: the id is a digest
+// of it, the same on every load and every machine.
 func OrgID(key string) string { return "org:" + digest(key) }
 
 func IdentifierID(kind, value string) string { return "identifier:" + digest(kind+":"+value) }
+
+func BankCodeID(kind, code string) string { return "bankcode:" + digest(kind+":"+code) }
 
 // digest is the first 64 bits of the SHA-256 of s, in hex. Among a million
 // things, the odds that two share one are below one in thirty million.
@@ -323,8 +381,9 @@ func player(relation, role, id string) ontology.RolePlayer {
 	return ontology.RolePlayer{RoleTypeID: relation + ":" + role, PlayerID: id, PlayerKind: ontology.PlayerEntity}
 }
 
-func spanAttrs(s extract.Span) map[string]any {
-	return map[string]any{pack.Page: int64(s.Page), pack.Start: int64(s.Start), pack.End: int64(s.End), pack.Text: s.Text}
+// spanAttrs is where a span is, and its text under text.
+func spanAttrs(s extract.Span, text string) map[string]any {
+	return map[string]any{pack.Page: int64(s.Page), pack.Start: int64(s.Start), pack.End: int64(s.End), text: s.Text}
 }
 
 // ref is a link's id: its kind and the parts format 3 names the claim by.
