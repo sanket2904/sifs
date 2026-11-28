@@ -220,7 +220,18 @@
                   "status": "asserted",
                   "sources": [
                     "abn-amro-statement"
-                  ]
+                  ],
+                  "claim": {
+                    "test": "is",
+                    "thing": {
+                      "id": "statement:abn-amro-statement",
+                      "type": "files.Statement",
+                      "title": "2026-08-01 to 2026-08-31"
+                    },
+                    "attribute": "files.periodTier",
+                    "label": "Period tier",
+                    "value": "likely"
+                  }
                 },
                 {
                   "fact": "2026-08-01 to 2026-08-31 has To",
@@ -230,6 +241,11 @@
                   ],
                   "claim": {
                     "test": "has",
+                    "thing": {
+                      "id": "statement:abn-amro-statement",
+                      "type": "files.Statement",
+                      "title": "2026-08-01 to 2026-08-31"
+                    },
                     "attribute": "files.to",
                     "label": "To"
                   }
@@ -549,7 +565,18 @@
                   "status": "asserted",
                   "sources": [
                     "abn-amro-statement"
-                  ]
+                  ],
+                  "claim": {
+                    "test": "is",
+                    "thing": {
+                      "id": "statement:abn-amro-statement",
+                      "type": "files.Statement",
+                      "title": "2026-08-01 to 2026-08-31"
+                    },
+                    "attribute": "files.periodTier",
+                    "label": "Period tier",
+                    "value": "likely"
+                  }
                 },
                 {
                   "fact": "2026-08-01 to 2026-08-31 has To",
@@ -559,6 +586,11 @@
                   ],
                   "claim": {
                     "test": "has",
+                    "thing": {
+                      "id": "statement:abn-amro-statement",
+                      "type": "files.Statement",
+                      "title": "2026-08-01 to 2026-08-31"
+                    },
                     "attribute": "files.to",
                     "label": "To"
                   }

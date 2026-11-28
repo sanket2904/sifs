@@ -32,18 +32,21 @@ type RuledOut struct {
 	For   []Thing `json:"for"`
 }
 
-// Claim is a fact about a link or an attribute's value, or a condition a
-// rule checked, as data in the schema's terms: what it tests, the type,
-// link and attribute it is about with their labels, the things on the
-// link, the value as the page shows that attribute, and the time a rule
-// adds to a time it tests. With is what the thing at a link's other end
-// has; Of are the parts of a condition of several.
+// Claim is a fact or a condition a rule checked, as data in the schema's
+// terms: what it tests, the thing a fact is about, the type, link and
+// attribute it is about with their labels, the things on the link, the
+// value as the page shows that attribute, and the time a rule adds to a
+// time it tests. With is what the thing at a link's other end has; Of are
+// the parts of a condition of several. A claim that rests on a hidden
+// attribute says only that: Hidden, with no attribute, label or value.
 type Claim struct {
 	Test      string  `json:"test"`
+	Thing     *Thing  `json:"thing,omitempty"`
 	Type      string  `json:"type,omitempty"`
 	Link      string  `json:"link,omitempty"`
 	LinkLabel string  `json:"link_label,omitempty"`
 	Ends      []End   `json:"ends,omitempty"`
+	Hidden    bool    `json:"hidden,omitempty"`
 	Attribute string  `json:"attribute,omitempty"`
 	Label     string  `json:"label,omitempty"`
 	Value     string  `json:"value,omitempty"`
@@ -106,56 +109,89 @@ func (r *Reader) named(ctx context.Context, id string) (Thing, bool, error) {
 	return r.thing(e), true, nil
 }
 
-// fact is a proof's fact in the words of the schema, each thing by its
-// title, and, for a fact about a link or that a value is present, the
-// same as data.
+// fact is a proof's fact as data in the schema's terms, each thing as its
+// page names it, and in words made from that data.
 func (r *Reader) fact(ctx context.Context, f interpreter.ProofFact) (string, *Claim, error) {
+	var claim *Claim
 	switch f.Kind {
 	case interpreter.ProofLinkFact, interpreter.ProofLinkValueFact:
-		return r.linkClaim(ctx, f)
+		claim = &Claim{Test: testLink, Link: f.Relation, LinkLabel: r.label(f.Relation), Ends: []End{}}
+		for _, p := range f.Players {
+			thing, _, err := r.named(ctx, p.Thing)
+			if err != nil {
+				return "", nil, err
+			}
+			claim.Ends = append(claim.Ends, End{Role: p.Role, Label: r.label(p.Role), Thing: thing})
+		}
+		if f.Kind == interpreter.ProofLinkValueFact {
+			r.about(claim, f)
+		}
 	case interpreter.ProofTypeFact, interpreter.ProofValueFact, interpreter.ProofHasValueFact:
-	default:
-		return string(f.Kind), nil, nil
-	}
-	t, _, err := r.named(ctx, f.Thing)
-	switch {
-	case f.Kind == interpreter.ProofTypeFact:
-		return fmt.Sprintf("%s is %s", t.Title, r.label(f.Type)), nil, err
-	case f.Kind == interpreter.ProofHasValueFact:
-		claim := &Claim{Test: testHas, Attribute: f.Attribute, Label: r.label(f.Attribute)}
-		return fmt.Sprintf("%s %s", t.Title, r.saidValue(claim)), claim, err
-	case f.Value == nil || r.shown.hidden(f.Attribute):
-		return fmt.Sprintf("%s has %s", t.Title, r.label(f.Attribute)), nil, err
-	}
-	return fmt.Sprintf("%s %s %s", t.Title, r.label(f.Attribute), r.shown.value(f.Attribute, f.Value)), nil, err
-}
-
-// linkClaim is a fact about a link: "<link>: <role> <thing>, ...", and,
-// for a value of the link, "; <attribute>: <value>" or "; has
-// <attribute>".
-func (r *Reader) linkClaim(ctx context.Context, f interpreter.ProofFact) (string, *Claim, error) {
-	claim := &Claim{Test: testLink, Link: f.Relation, LinkLabel: r.label(f.Relation), Ends: []End{}}
-	var ends []string
-	for _, p := range f.Players {
-		thing, _, err := r.named(ctx, p.Thing)
+		thing, _, err := r.named(ctx, f.Thing)
 		if err != nil {
 			return "", nil, err
 		}
-		claim.Ends = append(claim.Ends, End{Role: p.Role, Label: r.label(p.Role), Thing: thing})
-		if p.Role != "" {
-			thing.Title = r.label(p.Role) + " " + thing.Title
+		claim = &Claim{Thing: &thing}
+		if f.Kind == interpreter.ProofTypeFact {
+			claim.Test, claim.Type, claim.Label = testType, f.Type, r.label(f.Type)
+		} else {
+			r.about(claim, f)
 		}
-		ends = append(ends, thing.Title)
+	default:
+		return string(f.Kind), nil, nil
 	}
-	text := fmt.Sprintf("%s: %s", claim.LinkLabel, strings.Join(ends, ", "))
-	if f.Kind != interpreter.ProofLinkValueFact {
-		return text, claim, nil
+	return r.factLine(claim), claim, nil
+}
+
+// about gives claim the attribute a fact is about and the value it gives,
+// as the page shows that attribute; of a hidden attribute, only that it is
+// hidden.
+func (r *Reader) about(claim *Claim, f interpreter.ProofFact) {
+	switch {
+	case r.shown.hidden(f.Attribute):
+		claim.Test, claim.Hidden = testHas, true
+	case f.Kind == interpreter.ProofHasValueFact || f.Value == nil:
+		claim.Test, claim.Attribute, claim.Label = testHas, f.Attribute, r.label(f.Attribute)
+	default:
+		claim.Test, claim.Attribute, claim.Label, claim.Value = testIs, f.Attribute, r.label(f.Attribute), r.shown.value(f.Attribute, f.Value)
 	}
-	claim.Test, claim.Attribute, claim.Label = testHas, f.Attribute, r.label(f.Attribute)
-	if f.Value != nil && !r.shown.hidden(f.Attribute) {
-		claim.Test, claim.Value = testIs, r.shown.value(f.Attribute, f.Value)
+}
+
+// factLine is a fact's claim in words: "<thing> is <type>", "<thing>
+// <attribute> <value>", "<thing> has <attribute>", or "<link>: <role>
+// <thing>, ..." followed, for a value of the link, by "; <attribute>:
+// <value>" or "; has <attribute>". A hidden attribute is "a value that is
+// not shown".
+func (r *Reader) factLine(c *Claim) string {
+	if c.Thing != nil {
+		switch c.Test {
+		case testType:
+			return c.Thing.Title + " is " + c.Label
+		case testIs:
+			return c.Thing.Title + " " + c.Label + " " + c.Value
+		default:
+			if c.Hidden {
+				return c.Thing.Title + " has " + notShown
+			}
+			return c.Thing.Title + " has " + c.Label
+		}
 	}
-	return text + "; " + r.saidValue(claim), claim, nil
+	var ends []string
+	for _, e := range c.Ends {
+		if e.Label != "" {
+			ends = append(ends, e.Label+" "+e.Thing.Title)
+		} else {
+			ends = append(ends, e.Thing.Title)
+		}
+	}
+	text := c.LinkLabel + ": " + strings.Join(ends, ", ")
+	switch {
+	case c.Test == testLink:
+		return text
+	case c.Hidden:
+		return text + "; has " + notShown
+	}
+	return text + "; " + r.saidValue(c)
 }
 
 // ruledOut is a negation of a proof in one form, built from the schema's
@@ -270,10 +306,15 @@ func (r *Reader) condition(c ontology.RuleCondition) *Claim {
 }
 
 // valued gives claim its attribute's label and value as the page shows
-// that attribute: none of a hidden one, a masked one masked.
+// that attribute, a masked one masked; of a hidden one, only that it is
+// hidden.
 func (r *Reader) valued(claim *Claim, v any) *Claim {
+	if r.shown.hidden(claim.Attribute) {
+		claim.Hidden, claim.Attribute, claim.Plus = true, "", ""
+		return claim
+	}
 	claim.Label = r.label(claim.Attribute)
-	if v != nil && !r.shown.hidden(claim.Attribute) {
+	if v != nil {
 		claim.Value = r.shown.value(claim.Attribute, v)
 	}
 	return claim
@@ -301,31 +342,34 @@ func (r *Reader) said(c *Claim) string {
 	switch {
 	case c.Link == "":
 		return r.saidValue(c)
-	case c.With != nil && c.With.Test == testHas:
+	case c.With != nil && c.With.Test == testHas && !c.With.Hidden:
 		return c.LinkLabel + ", one with " + c.With.Label
 	case c.With != nil:
 		return c.LinkLabel + ", one with " + r.saidValue(c.With)
-	case c.Attribute != "":
+	case c.Attribute != "" || c.Hidden:
 		return c.LinkLabel + "; " + r.saidValue(c)
 	}
 	return c.LinkLabel
 }
 
+// notShown is what a why says of a hidden attribute.
+const notShown = "a value that is not shown"
+
 // saidValue is what a claim says of its attribute: "has <attribute>" when
-// it tests only that there is a value, else "<attribute> <test> <value>",
-// a hidden attribute's value said to be hidden.
+// it tests only that there is a value, else "<attribute> <test> <value>";
+// of a hidden attribute, that it rests on a value that is not shown.
 func (r *Reader) saidValue(c *Claim) string {
 	text := c.Label
 	if c.Plus != "" {
 		text += " plus " + c.Plus
 	}
 	switch {
+	case c.Hidden:
+		return notShown
 	case c.Test == testHas:
 		return "has " + c.Label
 	case c.Test == testInThePast || c.Test == testInFuture:
 		return text + testWords[c.Test]
-	case r.shown.hidden(c.Attribute):
-		return text + testWords[c.Test] + "a hidden value"
 	}
 	return text + testWords[c.Test] + c.Value
 }
