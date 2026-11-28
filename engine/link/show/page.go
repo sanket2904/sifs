@@ -42,11 +42,13 @@ type LinkGroup struct {
 }
 
 // Link is one link: the things on its other ends, its own attributes and
-// the source records it comes from.
+// the source records it comes from, or, when no source record states it,
+// the engine's proof of it.
 type Link struct {
 	Ends       []End    `json:"ends"`
 	Attributes []Value  `json:"attributes"`
 	Sources    []string `json:"sources"`
+	Proof      *Proof   `json:"proof,omitempty"`
 	id         string
 }
 
@@ -62,20 +64,6 @@ type Also struct {
 	Label string `json:"label"`
 	Proof Proof  `json:"proof"`
 }
-
-// Proof is the engine's proof of one fact: the rule that derived it and the
-// facts it rests on, or the source records that state it.
-type Proof struct {
-	Fact    string   `json:"fact"`
-	Status  string   `json:"status"`
-	Rule    string   `json:"rule,omitempty"`
-	Cut     string   `json:"cut,omitempty"`
-	Sources []string `json:"sources,omitempty"`
-	Because []Proof  `json:"because,omitempty"`
-}
-
-// proofLimits bound the proof of one derived type.
-var proofLimits = interpreter.ProofLimits{MaxDepth: 4, MaxNodes: 64}
 
 // Page reads the page of the thing with id.
 func (r *Reader) Page(ctx context.Context, id string) (Page, error) {
@@ -97,11 +85,7 @@ func (r *Reader) Page(ctx context.Context, id string) (Page, error) {
 		if typeID == e.TypeID {
 			continue
 		}
-		why, err := r.interp.Why(ctx, interpreter.TypeFact(id, typeID), proofLimits)
-		if err != nil {
-			return p, err
-		}
-		proof, err := r.proof(ctx, why.Proof)
+		proof, err := r.why(ctx, interpreter.TypeFact(id, typeID))
 		if err != nil {
 			return p, err
 		}
@@ -220,8 +204,30 @@ func (r *Reader) link(ctx context.Context, rel *ontology.Relation, self, role st
 	}
 	sortValues(row.Attributes)
 	var err error
-	row.Sources, err = r.sources(ctx, store.AssertionQuery{RelationID: rel.ID})
-	return row, err
+	if row.Sources, err = r.sources(ctx, store.AssertionQuery{RelationID: rel.ID}); err != nil || len(row.Sources) > 0 {
+		return row, err
+	}
+	if fact, ok := r.linkFact(rel); ok {
+		proof, err := r.why(ctx, fact)
+		row.Proof = &proof
+		return row, err
+	}
+	return row, nil
+}
+
+// linkFact names a link of two things as the engine's proofs name it, its
+// players in the order its type declares their roles.
+func (r *Reader) linkFact(rel *ontology.Relation) (interpreter.ProofFact, bool) {
+	rt := r.box.GetRelationType(rel.TypeID)
+	if rt == nil || len(rt.Relates) != 2 || len(rel.Players) != 2 {
+		return interpreter.ProofFact{}, false
+	}
+	player := map[string]string{}
+	for _, p := range rel.Players {
+		player[p.RoleTypeID] = p.PlayerID
+	}
+	from, to := player[rt.Relates[0].RoleTypeID], player[rt.Relates[1].RoleTypeID]
+	return interpreter.LinkFact(rel.TypeID, from, to), from != "" && to != ""
 }
 
 func rowKey(l Link) string {
@@ -256,68 +262,4 @@ func (r *Reader) sources(ctx context.Context, q store.AssertionQuery) ([]string,
 	}
 	slices.Sort(out)
 	return slices.Compact(out), nil
-}
-
-func (r *Reader) proof(ctx context.Context, p *interpreter.Proof) (Proof, error) {
-	if p == nil {
-		return Proof{Status: string(interpreter.ProofUnknown)}, nil
-	}
-	fact, err := r.fact(ctx, p.Fact)
-	if err != nil {
-		return Proof{}, err
-	}
-	out := Proof{Fact: fact, Status: string(p.Status), Cut: string(p.Cut)}
-	if p.Rule != nil {
-		out.Rule = p.Rule.ID
-	}
-	for _, s := range p.Sources {
-		out.Sources = append(out.Sources, s.SourceRecordID)
-	}
-	slices.Sort(out.Sources)
-	out.Sources = slices.Compact(out.Sources)
-	for _, premise := range p.Premises {
-		sub, err := r.proof(ctx, premise)
-		if err != nil {
-			return out, err
-		}
-		out.Because = append(out.Because, sub)
-	}
-	return out, nil
-}
-
-// fact is a proof's fact in the words of the schema, each thing by its
-// title.
-func (r *Reader) fact(ctx context.Context, f interpreter.ProofFact) (string, error) {
-	title := func(id string) (string, error) {
-		e, err := r.interp.GetEntity(ctx, id)
-		if err != nil || e == nil {
-			return id, err
-		}
-		return r.thing(e).Title, nil
-	}
-	switch f.Kind {
-	case interpreter.ProofTypeFact:
-		t, err := title(f.Thing)
-		return fmt.Sprintf("%s is %s", t, r.label(f.Type)), err
-	case interpreter.ProofValueFact, interpreter.ProofHasValueFact:
-		t, err := title(f.Thing)
-		if r.shown.hidden(f.Attribute) {
-			return fmt.Sprintf("%s has %s", t, r.label(f.Attribute)), err
-		}
-		return fmt.Sprintf("%s %s %s", t, r.label(f.Attribute), r.shown.value(f.Attribute, f.Value)), err
-	case interpreter.ProofLinkFact, interpreter.ProofLinkValueFact:
-		var ends []string
-		for _, p := range f.Players {
-			t, err := title(p.Thing)
-			if err != nil {
-				return "", err
-			}
-			if p.Role != "" {
-				t = r.label(p.Role) + " " + t
-			}
-			ends = append(ends, t)
-		}
-		return fmt.Sprintf("%s: %s", r.label(f.Relation), strings.Join(ends, ", ")), nil
-	}
-	return string(f.Kind), nil
 }
