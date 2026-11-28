@@ -3,6 +3,7 @@ package load
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -134,8 +135,10 @@ func TestPublicShownPrivateMasked(t *testing.T) {
 // Dates read as the day the run gives, wherever the loader and the reader
 // run: two zones a day apart. A passport's expiry the run cannot tell is no
 // value and no word; its tier stays. Every organisation, every statement
-// and every passport the run prints an expiry for has a title of its own; a
-// statement's is its first and last day. Mutations: parse a date in
+// and every passport has a title of its own, never an id or a digest; a
+// statement's is its first and last day, a passport's its expiry as
+// printed or else its expiry's day. Mutations: drop the expiry from the
+// passport's title, and one passport is titled by its id; parse a date in
 // time.Local in putDate, and the dates move a day; store `cannot-tell` as
 // an expiry, and the passport is turned down; drop "institution" from the
 // organisation's title, and three organisations are titled by their id;
@@ -172,14 +175,27 @@ func TestDatesAndTitles(t *testing.T) {
 						day(doc.ID+" issued", value(p, "Issued"), pp.Issued)
 						day(doc.ID+" expires", value(p, "Expires"), pp.Expiry)
 						eq(t, doc.ID+" expiry tier", value(p, "Expiry tier"), []string{string(pp.Tiers["expiry"])})
-						if pp.ExpiryAt != nil {
+						switch {
+						case pp.ExpiryAt != nil:
 							eq(t, doc.ID+" title", p.Title, pp.ExpiryAt.Text)
+						case pp.Expiry != nil && isDay(*pp.Expiry):
+							eq(t, doc.ID+" title", p.Title, *pp.Expiry)
+						default:
+							t.Errorf("the run gives %s no expiry to title it by", doc.ID)
 						}
+						titled[doc.ID] = p.Title
 					}
 				}
-				for _, id := range []string{"natwest-statement", "abn-amro-statement", "commerzbank-kontoauszug", "mizuho-statement-ja", "hdfc-statement-aug"} {
+				for _, id := range []string{"natwest-statement", "abn-amro-statement", "commerzbank-kontoauszug", "mizuho-statement-ja", "hdfc-statement-aug",
+					"passport-asha-current", "passport-asha-expired", "passport-rohan", "passport-bad-mrz", "passport-meera-1988"} {
 					if titled[id] == "" {
-						t.Errorf("the run has no statement %s", id)
+						t.Errorf("the run has no statement or passport %s", id)
+					}
+				}
+				digest := regexp.MustCompile(`[0-9a-f]{16}`)
+				for id, title := range titled {
+					if strings.Contains(title, id) || strings.Contains(title, ":") || digest.MatchString(title) {
+						t.Errorf("%s is titled by an id or a digest: %q", id, title)
 					}
 				}
 				things, err := e.interp.QueryEntities(ctx, store.EntityPattern{})
@@ -201,6 +217,11 @@ func TestDatesAndTitles(t *testing.T) {
 			})
 		})
 	}
+}
+
+func isDay(s string) bool {
+	_, err := time.Parse(time.DateOnly, s)
+	return err == nil
 }
 
 // A statement whose run gives one day is titled by that day, and one with
@@ -229,6 +250,28 @@ func TestStatementWithOneDay(t *testing.T) {
 			p := page(t, ctx, r, "statement:"+c.id)
 			eq(t, c.id+" title", p.Title, c.title)
 			eq(t, c.id+" period", value(p, "Period"), c.period)
+		}
+	})
+}
+
+// A passport is titled by its expiry as printed, else by the day of its
+// expiry, else by its id: the run gives nothing else to call it. Mutation:
+// drop the expiry from the passport's title, and the second is titled by
+// its id.
+func TestPassportTitle(t *testing.T) {
+	passport := func(id string, expiry *string, at *extract.Span) extract.DocOut {
+		return extract.DocOut{ID: id, Passport: &extract.PassportOut{Expiry: expiry, ExpiryAt: at, Tiers: map[string]extract.Tier{"expiry": extract.Likely}}}
+	}
+	run := &extract.Output{Format: 3, Documents: []extract.DocOut{
+		passport("passport-printed", ptr("2031-04-15"), &extract.Span{Page: 1, Start: 10, End: 21, Text: "15 APR 2031"}),
+		passport("passport-day-only", ptr("2033-11-30"), nil),
+		passport("passport-unreadable", ptr("cannot-tell"), nil),
+	}}
+	stores(t, func(t *testing.T, ctx context.Context, reopen func() *Engine) {
+		eq(t, "turned down", mustLoad(t, ctx, reopen(), run).TurnedDown, []TurnDown{})
+		r := show.New(reopen().interp, false)
+		for id, title := range map[string]string{"passport-printed": "15 APR 2031", "passport-day-only": "2033-11-30", "passport-unreadable": "passport:passport-unreadable"} {
+			eq(t, id+" title", page(t, ctx, r, "passport:"+id).Title, title)
 		}
 	})
 }
