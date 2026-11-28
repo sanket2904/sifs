@@ -238,3 +238,103 @@ fn a_child_moved_to_another_group_outlives_stop_and_does_not_hold_the_run() {
     assert!(within(GONE, || gone(pids[0])), "the tool is ended");
     assert!(!gone(pids[1]), "the child in its own group lives on (the known limit)");
 }
+
+fn finished(ran: Ran) -> (i32, Vec<u8>, Vec<u8>) {
+    match ran {
+        Ran::Finished { code, stdout, stderr } => (code, stdout, stderr),
+        other => panic!("not finished: {other:?}"),
+    }
+}
+
+#[test]
+fn arguments_reach_the_tool_byte_for_byte_with_no_shell() {
+    let scratch = Scratch::new();
+    let echo = scratch.write_tool("echo-args", "printf '%s\\0' \"$@\"");
+    let args = ["two words", "it's \"quoted\"", "$(touch made-by-a-shell)", "a\nnewline", "-n", "", "*", "back\\slash"];
+    let expected: Vec<u8> = args.iter().flat_map(|arg| arg.bytes().chain([0])).collect();
+    let (code, stdout, _) = finished(Runner::default().run(&echo, args, LONG));
+    assert_eq!(code, 0);
+    assert_eq!(String::from_utf8_lossy(&stdout), String::from_utf8_lossy(&expected));
+}
+
+#[test]
+fn standard_input_is_closed() {
+    let scratch = Scratch::new();
+    let reads = scratch.write_tool("reads", "if read line; then echo \"got $line\"; else echo nothing; fi");
+    assert_eq!(finished(Runner::default().run(&reads, [""; 0], LONG)), (0, b"nothing\n".to_vec(), Vec::new()));
+}
+
+#[test]
+fn the_exit_code_is_given_as_it_is() {
+    let scratch = Scratch::new();
+    for code in [0, 1, 2, 7] {
+        let tool = scratch.write_tool(&format!("exit-{code}"), &format!("echo out\necho err >&2\nexit {code}"));
+        let ran = finished(Runner::default().run(&tool, [""; 0], LONG));
+        assert_eq!(ran, (code, b"out\n".to_vec(), b"err\n".to_vec()));
+    }
+}
+
+#[test]
+fn a_tool_ended_by_a_signal_is_not_reported_as_finished() {
+    let scratch = Scratch::new();
+    let crash = scratch.write_tool("crash", "echo dying >&2\nkill -TERM $$");
+    match Runner::default().run(&crash, [""; 0], LONG) {
+        Ran::Signalled { signal, stderr } => assert_eq!((signal, stderr), (libc::SIGTERM, b"dying\n".to_vec())),
+        other => panic!("{other:?}"),
+    }
+}
+
+// Each output alone fills its pipe many times over: a runner that reads
+// one only after the tool ends waits on a tool that waits on it.
+#[test]
+fn both_outputs_are_read_while_the_tool_runs() {
+    let scratch = Scratch::new();
+    let loud = scratch.write_tool(
+        "loud",
+        "head -c 1048576 /dev/zero | tr '\\0' e >&2\necho the end >&2\nhead -c 1048576 /dev/zero | tr '\\0' o",
+    );
+    let (code, stdout, stderr) = finished(Runner::default().run(&loud, [""; 0], Duration::from_secs(20)));
+    assert_eq!(code, 0);
+    assert!(stdout.len() == 1 << 20 && stdout.iter().all(|&b| b == b'o'), "all of standard output");
+    assert_eq!(stderr.len(), STDERR_KEPT, "the last 16 KB of standard error");
+    assert!(stderr.ends_with(b"eeethe end\n"), "its end");
+}
+
+#[test]
+fn standard_output_past_the_cap_ends_the_tool() {
+    let scratch = Scratch::new();
+    let runner = Runner::default();
+    let exact = scratch.write_tool("exact", &format!("head -c {STDOUT_CAP} /dev/zero"));
+    let over = scratch.write_tool("over", &format!("head -c {} /dev/zero", STDOUT_CAP + 1));
+    let endless = scratch.write_tool("endless", "echo $$ > \"$1\"\nexec /usr/bin/yes \"$0\"");
+    assert_eq!(finished(runner.run(&exact, [""; 0], LONG)).1.len(), STDOUT_CAP, "the cap itself fits");
+    let ran = runner.run(&over, [""; 0], LONG);
+    assert!(matches!(ran, Ran::WroteTooMuch), "{ran:?}");
+    let ran = runner.run(&endless, [scratch.file("y")], Duration::from_secs(20));
+    assert!(matches!(ran, Ran::WroteTooMuch), "{ran:?}");
+    let pid = pid_in(&scratch.file("y")).unwrap();
+    assert!(within(GONE, || gone(pid)), "the endless tool is ended");
+}
+
+#[test]
+fn a_tool_that_never_reads_or_writes_is_ended_at_its_deadline() {
+    let scratch = Scratch::new();
+    let started_at = Instant::now();
+    let ran = Runner::default().run(&scratch.tool("silent"), [""; 0], Duration::from_millis(300));
+    assert!(matches!(ran, Ran::TimedOut), "{ran:?}");
+    assert!(started_at.elapsed() >= Duration::from_millis(300), "not before its deadline");
+    assert!(within(GONE, || scratch.marked().is_empty()), "alive after its deadline: {:?}", scratch.marked());
+}
+
+#[test]
+fn a_tool_that_cannot_be_started_says_why() {
+    let scratch = Scratch::new();
+    let plain = scratch.file("plain");
+    std::fs::write(&plain, "#!/bin/sh\n").unwrap();
+    for (program, kind) in [(scratch.file("absent"), std::io::ErrorKind::NotFound), (plain, std::io::ErrorKind::PermissionDenied)] {
+        match Runner::default().run(&program, [""; 0], LONG) {
+            Ran::CouldNotStart(e) => assert_eq!(e.kind(), kind, "{program:?}"),
+            other => panic!("{program:?}: {other:?}"),
+        }
+    }
+}
