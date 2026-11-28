@@ -138,8 +138,8 @@ func Module() *schema.ModuleDef {
 		Attribute("code", "string", schema.Required(), label("Code"), names).
 		Display(schema.Title("code"), schema.Subtitle("kind"), schema.Collection(ontology.CollectionOrganisations))
 	m.Entity("Statement").Label("Statement").
-		Attribute("from", "timestamp", label("From"), date).
-		Attribute("to", "timestamp", label("To"), date).
+		Attribute("from", "timestamp", label("Start date"), date).
+		Attribute("to", "timestamp", label("End date"), date).
 		Attribute("period", "string", label("Period")).
 		Attribute("periodTier", "string", tier, label("Period tier")).
 		Display(schema.Title("period"), schema.Collection(ontology.CollectionDocuments))

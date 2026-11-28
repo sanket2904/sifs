@@ -234,7 +234,7 @@
                   }
                 },
                 {
-                  "fact": "2026-08-01 to 2026-08-31 has To",
+                  "fact": "2026-08-01 to 2026-08-31 has End date",
                   "status": "asserted",
                   "sources": [
                     "abn-amro-statement"
@@ -247,7 +247,7 @@
                       "title": "2026-08-01 to 2026-08-31"
                     },
                     "attribute": "files.to",
-                    "label": "To"
+                    "label": "End date"
                   }
                 }
               ],
@@ -341,10 +341,10 @@
     "also": [],
     "values": [
       {
-        "attribute": "files.from",
-        "label": "From",
+        "attribute": "files.to",
+        "label": "End date",
         "values": [
-          "2026-08-01"
+          "2026-08-31"
         ],
         "status": "accepted",
         "sources": [
@@ -374,10 +374,10 @@
         ]
       },
       {
-        "attribute": "files.to",
-        "label": "To",
+        "attribute": "files.from",
+        "label": "Start date",
         "values": [
-          "2026-08-31"
+          "2026-08-01"
         ],
         "status": "accepted",
         "sources": [
@@ -579,7 +579,7 @@
                   }
                 },
                 {
-                  "fact": "2026-08-01 to 2026-08-31 has To",
+                  "fact": "2026-08-01 to 2026-08-31 has End date",
                   "status": "asserted",
                   "sources": [
                     "abn-amro-statement"
@@ -592,7 +592,7 @@
                       "title": "2026-08-01 to 2026-08-31"
                     },
                     "attribute": "files.to",
-                    "label": "To"
+                    "label": "End date"
                   }
                 }
               ],
