@@ -12,12 +12,16 @@ const START: Duration = Duration::from_secs(20);
 /// How long an ended process may take to leave the process table.
 const GONE: Duration = Duration::from_secs(10);
 
-/// Every stand-in that waits gives up after two minutes, so a runner that
-/// fails to end it leaves nothing for long.
-const LIVES: &str = "i=0; while [ $i -lt 120 ]; do sleep 1; i=$((i+1)); done";
+/// Every stand-in that waits gives up after 30 seconds, so a runner that
+/// fails to end it leaves nothing for long without the tests signalling
+/// anything themselves.
+const LIVES: &str = "i=0; while [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done";
+/// The child the escaper moves into another process group ends on its own
+/// after 5 seconds.
+const ESCAPER_LIVES: &str = "i=0; while [ $i -lt 5 ]; do sleep 1; i=$((i+1)); done";
 
 /// A temp folder of stand-in tools. A process whose command line names the
-/// folder is one these tests started; dropping it kills any still alive.
+/// folder is one these tests started.
 struct Scratch(tempfile::TempDir);
 
 impl Scratch {
@@ -25,10 +29,12 @@ impl Scratch {
         let scratch = Scratch(tempfile::tempdir().unwrap());
         let sleeper = format!("echo $$ > \"$1\"\n{LIVES}");
         let stubborn = format!("trap '' HUP INT TERM QUIT\necho $$ > \"$1\"\n{LIVES}");
-        let escaper = "set -m\n/bin/sh \"${0%/*}/sleeper\" \"$1.away\" &\necho $$ > \"$1\"\nwait";
+        let away = format!("echo $$ > \"$1\"\n{ESCAPER_LIVES}");
+        let escaper = "set -m\n/bin/sh \"${0%/*}/away\" \"$1.away\" &\necho $$ > \"$1\"\nwait";
         for (name, body) in [
             ("sleeper", sleeper.as_str()),
             ("stubborn", stubborn.as_str()),
+            ("away", away.as_str()),
             ("family", "echo $$ > \"$1\"\n/bin/sh \"${0%/*}/child\" \"$1\" &\nwait"),
             ("child", "echo $$ > \"$1.child\"\n/bin/sh \"${0%/*}/sleeper\" \"$1.grand\" &\nwait"),
             ("silent", LIVES),
@@ -69,15 +75,6 @@ impl Scratch {
                 (!stat.starts_with('Z')).then_some(pid)
             })
             .collect()
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        for pid in self.marked() {
-            // SAFETY: kill has no memory effects; pid is a process this test started.
-            unsafe { libc::kill(pid, libc::SIGKILL) };
-        }
     }
 }
 
@@ -277,6 +274,8 @@ fn the_exit_code_is_given_as_it_is() {
 #[test]
 fn a_tool_ended_by_a_signal_is_not_reported_as_finished() {
     let scratch = Scratch::new();
+    // The stand-in signals itself ($$) while the runner still holds it unreaped,
+    // so its pid cannot be reused.
     let crash = scratch.write_tool("crash", "echo dying >&2\nkill -TERM $$");
     match Runner::default().run(&crash, [""; 0], LONG) {
         Ran::Signalled { signal, stderr } => assert_eq!((signal, stderr), (libc::SIGTERM, b"dying\n".to_vec())),
@@ -431,6 +430,15 @@ fn the_reason_names_the_folder_each_piece_and_the_script() {
         NotFound::NoFolder(folder.to_path_buf()).to_string(),
         "SIFS has no tools: there is no folder /tmp/sifs-tools; build them with sample/tools/build-tools.sh /tmp/sifs-tools"
     );
+    for value in ["", "tools"] {
+        assert_eq!(
+            NotFound::NotAbsolute(value.into()).to_string(),
+            format!(
+                "SIFS_TOOLS_DIR must be an absolute path, not {value:?}; SIFS does not fall back to its usual tools folder; \
+                 build them with sample/tools/build-tools.sh <folder>"
+            )
+        );
+    }
 }
 
 fn data(folder: &Path) -> DataDir {

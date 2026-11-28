@@ -95,7 +95,7 @@ impl fmt::Display for NotFound {
         match self {
             NotFound::NotAbsolute(value) => write!(
                 f,
-                "{TOOLS_DIR_VAR} must be an absolute path, not {value:?}; SIFS does not fall back to its usual tools folder"
+                "{TOOLS_DIR_VAR} must be an absolute path, not {value:?}; SIFS does not fall back to its usual tools folder; build them with {BUILD_SCRIPT} <folder>"
             ),
             NotFound::NoFolder(folder) => {
                 write!(f, "SIFS has no tools: there is no folder {}", folder.display())?;
