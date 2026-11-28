@@ -418,4 +418,13 @@ func plantedLines(t *testing.T, h held, raw, hidden string) {
 			t.Errorf("%s: found %v, want %v: %q", c.name, inProof, c.found, got)
 		}
 	}
+	twin := p
+	twin.things = maps.Clone(p.things)
+	twin.things["planted:twin"] = &ontology.Entity{ID: "planted:twin", TypeID: "planted", Attributes: map[string][]any{"planted.name": {raw}}}
+	twin.excuse("planted:twin", raw, false)
+	read := encode(t, show.Page{Thing: show.Thing{ID: "planted", Type: "planted", Title: "planted"},
+		Links: []show.LinkGroup{{Link: "planted", Rows: []show.Link{{Ends: []show.End{}, Proof: &show.Proof{Fact: "Statement account: Account " + raw}}}}}})
+	if got := twin.leaks(read, false); !slices.ContainsFunc(got, func(leak string) bool { return strings.Contains(leak, ".proof.fact") }) {
+		t.Errorf("a masked value raw in a fact, the same text as the public title of a thing the fact's data does not name: not found: %q", got)
+	}
 }
