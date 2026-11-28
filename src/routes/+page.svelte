@@ -4,10 +4,15 @@
 	import { open as pickFolder } from '@tauri-apps/plugin-dialog';
 	import { onMount, tick } from 'svelte';
 	import { BLANK, createSearch } from '../lib/search.js';
+	import { NOTHING, createThings } from '../lib/things.js';
+	import Things from '../lib/Things.svelte';
+	import ThingPage from '../lib/ThingPage.svelte';
 
 	let query = $state('');
 	/** @type {import('../lib/search.js').View} */
 	let view = $state.raw(BLANK);
+	/** @type {import('../lib/things.js').View} */
+	let found = $state.raw(NOTHING);
 	let selected = $state(0);
 	let settings = $state(null);
 	let showSettings = $state(false);
@@ -41,6 +46,14 @@
 		}
 	});
 
+	const things = createThings({
+		invoke,
+		now: () => performance.now(),
+		setTimer: (run, ms) => setTimeout(run, ms),
+		clearTimer: (id) => clearTimeout(/** @type {number} */ (id)),
+		show: (next) => (found = next)
+	});
+
 	/** @param {number} to */
 	function move(to) {
 		selected = Math.max(0, Math.min(to, view.rows.length - 1));
@@ -55,6 +68,7 @@
 	function onInput() {
 		chosen = null;
 		search.type(query);
+		things.type(query);
 	}
 
 	async function openHit(hit, reveal = false) {
@@ -66,6 +80,7 @@
 	}
 
 	async function onKey(e) {
+		if (e.key === 'Escape' && found.page) return;
 		if (e.key === 'ArrowDown') {
 			move(selected + 1);
 			e.preventDefault();
@@ -78,6 +93,7 @@
 			chosen = null;
 			query = '';
 			search.type('');
+			things.type('');
 		}
 		await reveal();
 	}
@@ -174,10 +190,13 @@
 		];
 		return () => {
 			search.stop();
+			things.stop();
 			unlisten.forEach((p) => p.then((f) => f()));
 		};
 	});
 </script>
+
+<svelte:window onkeydown={(e) => e.key === 'Escape' && found.page && things.back()} />
 
 <main>
 	<header>
@@ -249,6 +268,9 @@
 		</section>
 	{/if}
 
+	<div class="stage">
+		<div class="scroll" inert={!!found.page}>
+			<Things groups={found.groups} line={found.line} />
 	<ul class="results">
 		{#each view.rows as hit, i}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -274,6 +296,9 @@
 			</li>
 		{/each}
 	</ul>
+		</div>
+		{#if found.page}<ThingPage page={found.page} depth={found.depth} back={things.back} />{/if}
+	</div>
 	{#if query && view.rows.length === 0 && view.ms !== null && !view.pending}
 		<p class="muted center">Nothing found for “{query}”.</p>
 	{/if}
@@ -439,12 +464,20 @@
 	.found .label {
 		font-style: italic;
 	}
+	.stage {
+		position: relative;
+		flex: 1;
+		min-height: 0;
+	}
+	.scroll {
+		position: absolute;
+		inset: 0;
+		overflow: auto;
+	}
 	.results {
 		list-style: none;
 		margin: 0;
 		padding: 0 8px;
-		flex: 1;
-		overflow: auto;
 	}
 	.results li {
 		display: grid;
