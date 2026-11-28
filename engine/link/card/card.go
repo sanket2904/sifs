@@ -439,7 +439,7 @@ func (s *snapshot) identifier(id string) Identifier {
 }
 
 func (s *snapshot) mention(r *ontology.Relation) Mention {
-	m := Mention{Key: s.key(player(r, "organisation")), Text: str(r.Attributes, pack.Text), SettledBy: str(r.Attributes, pack.SettledBy)}
+	m := Mention{Key: s.key(player(r, "organisation")), Text: cmp.Or(str(r.Attributes, pack.PrintedText), str(r.Attributes, pack.Text)), SettledBy: str(r.Attributes, pack.SettledBy)}
 	m.Page, _ = integer(r.Attributes, pack.Page)
 	m.Start, _ = integer(r.Attributes, pack.Start)
 	m.End, _ = integer(r.Attributes, pack.End)

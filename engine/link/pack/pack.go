@@ -71,7 +71,7 @@ const (
 	Start       = module + ".start"
 	End         = module + ".end"
 	Text        = module + ".text"
-	NumberText  = module + ".numberText"
+	PrintedText = module + ".printedText"
 	SettledBy   = module + ".settledBy"
 	Tier        = module + ".tier"
 	Reasons     = module + ".reasons"
@@ -153,7 +153,7 @@ func Module() *schema.ModuleDef {
 		Attribute("page", "int64", schema.Required(), label("Page")).
 		Attribute("start", "int64", schema.Required(), label("Start"), hidden).
 		Attribute("end", "int64", schema.Required(), label("End"), hidden).
-		Attribute("text", "string", schema.Required(), label("Printed text")).
+		Attribute("printedText", "string", schema.Required(), label("Printed text")).
 		Attribute("settledBy", "string", label("Settled by"), hidden)
 	m.Relation("Shows").Label("Shows").
 		Role("document", "Document", one, label("Document"), shownAs("Shows")).
@@ -161,7 +161,11 @@ func Module() *schema.ModuleDef {
 		Attribute("page", "int64", schema.Required()).
 		Attribute("start", "int64", schema.Required()).
 		Attribute("end", "int64", schema.Required()).
-		Attribute("numberText", "string", schema.Required(), label("Printed text"), masked).
+		// A number's printed text. Every store filled before bank codes had
+		// their own type holds a number's and a bank's printed text under
+		// text, and keeps it until the next load replaces that document, so
+		// text stays masked.
+		Attribute("text", "string", schema.Required(), label("Printed text"), masked).
 		Attribute("valid", "bool", label("Check passes")).
 		Attribute("tier", "string", schema.Required(), tier, label("Tier"))
 	m.Relation("ShowsCode").Label("Shows bank code").
@@ -170,7 +174,7 @@ func Module() *schema.ModuleDef {
 		Attribute("page", "int64", schema.Required()).
 		Attribute("start", "int64", schema.Required()).
 		Attribute("end", "int64", schema.Required()).
-		Attribute("text", "string", schema.Required()).
+		Attribute("printedText", "string", schema.Required()).
 		Attribute("valid", "bool").
 		Attribute("tier", "string", schema.Required(), tier)
 	m.Relation("HeldAt").Label("Held at").

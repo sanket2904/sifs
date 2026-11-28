@@ -171,9 +171,9 @@ func asBase(facts interpreter.RecordFacts) interpreter.RecordFacts {
 				via[j] = old.Replace(v.(string))
 			}
 		}
-		if text, ok := r.Attributes[pack.NumberText]; ok {
+		if text, ok := r.Attributes[pack.PrintedText]; ok {
 			r.Attributes[pack.Text] = text
-			delete(r.Attributes, pack.NumberText)
+			delete(r.Attributes, pack.PrintedText)
 		}
 		to, ok := types[r.TypeID]
 		if !ok {

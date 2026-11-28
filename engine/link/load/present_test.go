@@ -82,7 +82,8 @@ func rowValue(p show.Page, group, label string) []string {
 // the pack does not know are masked, on their page and in the printed text
 // of the row that shows them; a bank's printed name is shown in full.
 // Mutations: put "bic" out of PublicKinds, and the BIC's page is no page;
-// mask Mentions' text in the pack, and the bank's printed name is masked.
+// mask Mentions' printed text in the pack, and the bank's printed name is
+// masked.
 func TestPublicShownPrivateMasked(t *testing.T) {
 	stores(t, func(t *testing.T, ctx context.Context, reopen func() *Engine) {
 		mustLoad(t, ctx, reopen(), &extract.Output{Format: 3, Documents: []extract.DocOut{letter()}})

@@ -112,7 +112,7 @@
                 ]
               },
               {
-                "attribute": "files.numberText",
+                "attribute": "files.text",
                 "label": "Printed text",
                 "values": [
                   "••••••••••••••••••3 00"

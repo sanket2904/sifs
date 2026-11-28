@@ -118,10 +118,11 @@ func beforeNames(run *extract.Output) func(extract.DocOut) interpreter.RecordFac
 // A person's store filled before the pack named anything. Opening it with
 // the pack finds things by the names the store already holds at once; the
 // printed names come with the next load, which rewrites each document whose
-// facts were written otherwise (all 41 of the committed run's, as every one
-// prints a name or a number), turns none down and leaves the store equal to
-// one this loader filled. Mutation: drop the name index rebuild in open,
-// and "hdfc bank" finds nothing on opening.
+// facts were written otherwise (39 of the committed run's 41: a rent
+// receipt and a visa print only a person's numbers, written as they were),
+// turns none down and leaves the store equal to one this loader filled.
+// Mutation: drop the name index rebuild in open, and "hdfc bank" finds
+// nothing on opening.
 func TestExistingStore(t *testing.T) {
 	run := committedRun(t)
 	hdfcBank := sortedIDs(OrgID("IFSC HDFC"), OrgID("name:email-fee-payment:hdfcbank"), OrgID("name:hdfc-branch-letter:hdfcbank"), OrgID("name:hdfc-card-statement:hdfcbank"),
@@ -131,7 +132,7 @@ func TestExistingStore(t *testing.T) {
 		eq(t, "hdfc bank on opening", resolve(t, ctx, e, "HDFC Bank"), hdfcBank)
 		eq(t, "kalpit on opening", resolve(t, ctx, e, "kalpit"), kalpit)
 		eq(t, "hdfc ltd, printed only, on opening", resolve(t, ctx, e, "HDFC Ltd"), []string(nil))
-		eq(t, "first load", mustLoad(t, ctx, e, run), Report{Written: 41, TurnedDown: []TurnDown{}, LeftOut: committedLeftOut})
+		eq(t, "first load", mustLoad(t, ctx, e, run), Report{Written: 39, Unchanged: 2, TurnedDown: []TurnDown{}, LeftOut: committedLeftOut})
 		eq(t, "hdfc ltd after the load", resolve(t, ctx, e, "HDFC Ltd"), []string{OrgID("name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation")})
 		eq(t, "the store after the load", held(t, ctx, reopen()), freshly(t, ctx, run))
 		eq(t, "second load", mustLoad(t, ctx, reopen(), run), Report{Unchanged: 41, TurnedDown: []TurnDown{}, LeftOut: committedLeftOut})

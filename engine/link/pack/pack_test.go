@@ -62,7 +62,7 @@ var things = map[string]struct {
 }
 
 var (
-	masked = []string{pack.NumberText, pack.Value}
+	masked = []string{pack.Text, pack.Value}
 	hidden = []string{pack.DirectoryID, pack.End, pack.ExpiryEnd, pack.ExpiryPage, pack.ExpiryStart, pack.Key, pack.SettledBy, pack.Start}
 )
 

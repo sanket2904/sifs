@@ -96,7 +96,7 @@ func Facts(doc extract.DocOut, cards map[string]extract.Card) interpreter.Record
 		if m.Org == nil {
 			continue
 		}
-		attrs := spanAttrs(m.Span)
+		attrs := spanAttrs(m.Span, pack.PrintedText)
 		if m.SettledBy != nil {
 			attrs[pack.SettledBy] = *m.SettledBy
 		}
@@ -104,17 +104,14 @@ func Facts(doc extract.DocOut, cards map[string]extract.Card) interpreter.Record
 			player(pack.Mentions, "document", f.doc), player(pack.Mentions, "organisation", f.org(*m.Org)))
 	}
 	for _, ident := range doc.Identifiers {
-		attrs := spanAttrs(ident.Span)
+		kind, typeID, role, text := "shows", pack.Shows, "identifier", pack.Text
+		if public(ident.ID) {
+			kind, typeID, role, text = "showsCode", pack.ShowsCode, "code", pack.PrintedText
+		}
+		attrs := spanAttrs(ident.Span, text)
 		attrs[pack.Tier] = string(ident.Tier)
 		if ident.Valid != nil {
 			attrs[pack.Valid] = *ident.Valid
-		}
-		kind, typeID, role := "shows", pack.Shows, "identifier"
-		if public(ident.ID) {
-			kind, typeID, role = "showsCode", pack.ShowsCode, "code"
-		} else {
-			attrs[pack.NumberText] = attrs[pack.Text]
-			delete(attrs, pack.Text)
 		}
 		f.relation(ref(kind, doc.ID, ident.Page, ident.Start, ident.End), typeID, attrs,
 			player(typeID, "document", f.doc), player(typeID, role, idents[ident.ID]))
@@ -379,8 +376,9 @@ func player(relation, role, id string) ontology.RolePlayer {
 	return ontology.RolePlayer{RoleTypeID: relation + ":" + role, PlayerID: id, PlayerKind: ontology.PlayerEntity}
 }
 
-func spanAttrs(s extract.Span) map[string]any {
-	return map[string]any{pack.Page: int64(s.Page), pack.Start: int64(s.Start), pack.End: int64(s.End), pack.Text: s.Text}
+// spanAttrs is where a span is, and its text under text.
+func spanAttrs(s extract.Span, text string) map[string]any {
+	return map[string]any{pack.Page: int64(s.Page), pack.Start: int64(s.Start), pack.End: int64(s.End), text: s.Text}
 }
 
 // ref is a link's id: its kind and the parts format 3 names the claim by.
