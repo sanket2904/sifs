@@ -27,13 +27,13 @@ type held struct {
 	all            []string
 	things         map[string]*ontology.Entity
 	schema         map[string]bool
-	titles         []string
+	pages          map[string]string
 }
 
 func holds(t *testing.T, interp *interpreter.Interpreter) held {
 	t.Helper()
 	ctx := context.Background()
-	h := held{box: interp.TBox(), things: map[string]*ontology.Entity{}, schema: map[string]bool{}}
+	h := held{box: interp.TBox(), things: map[string]*ontology.Entity{}, schema: map[string]bool{}, pages: map[string]string{}}
 	add := func(attrs map[string][]any) {
 		for attrID, vs := range attrs {
 			d := h.display(attrID)
@@ -105,9 +105,11 @@ func (h held) display(attrID string) *ontology.AttributeDisplay {
 //   - a type, label, link, role or attribute: a name the schema declares, or
 //     text with no value kept from a person in it;
 //   - a proof's fact and each line of what it ruled out: the titles of the
-//     things it names, each as that thing's own page gives it and only when
-//     that title passes as a title, and around them text with no value kept
-//     from a person in it;
+//     things that same node's own data names, each only when it is the
+//     title that thing's own page gives it and it passes as a title; the
+//     values that same node's claim gives, each only when it passes as a
+//     value of its attribute; and around them text with no value kept from
+//     a person in it;
 //   - every other text (ids, sources, claims and reasons): text with no
 //     value kept from a person in it.
 //
@@ -132,11 +134,14 @@ func (h held) leaks(read []byte, reveal bool) []string {
 			}
 		}
 	}
-	line := func(path, s string) {
-		for _, v := range kept {
-			text, isText := v.(string)
-			if isText && text != "" && h.outsideTitles(s, text) || !isText && s == fmt.Sprint(v) {
-				out = append(out, fmt.Sprintf("%s %q gives %q", path, s, fmt.Sprint(v)))
+	line := func(node map[string]any) func(path, s string) {
+		aside := h.aside(node, kept, reveal)
+		return func(path, s string) {
+			for _, v := range kept {
+				text, isText := v.(string)
+				if isText && text != "" && outside(s, text, aside) || !isText && s == fmt.Sprint(v) {
+					out = append(out, fmt.Sprintf("%s %q gives %q", path, s, fmt.Sprint(v)))
+				}
 			}
 		}
 	}
@@ -174,7 +179,7 @@ func (h held) leaks(read []byte, reveal bool) []string {
 						}
 					})
 				case k == "fact" || k == "line":
-					walk(p, sub, line)
+					walk(p, sub, line(t))
 				case k == "type" || k == "label" || k == "link" || k == "role" || k == "attribute":
 					walk(p, sub, func(path, s string) {
 						if !h.schema[s] {
@@ -215,30 +220,65 @@ func gives(s string, v any) bool {
 	return s == fmt.Sprint(v)
 }
 
-// excuse lets a proof line name the thing id by title, the one its page
-// gives it, when that title passes as a title: a value of the thing's own
-// that is shown as it is, or text with no value kept from a person in it.
-func (h *held) excuse(id, title string, reveal bool) {
-	kept := h.hidden
-	if !reveal {
-		kept = slices.Concat(h.masked, h.hidden)
+// titled records the title the page of the thing id gives it.
+func (h held) titled(id, title string) { h.pages[id] = title }
+
+// aside are what a proof's fact or a ruled-out line, node, may hold whole:
+// the title of each thing node's own data names, when it is the title that
+// thing's page gives it and it passes as a title (a value of the thing's
+// own that is shown as it is, or text with no value kept from a person in
+// it), and each value node's claim gives that passes as a value of its
+// attribute (none of a hidden one; of a masked one, only as a page may
+// show it).
+func (h held) aside(node map[string]any, kept []any, reveal bool) []string {
+	var out []string
+	for _, thing := range slices.Concat(claimThings(object(node["claim"])), list(node["for"])) {
+		id, title := text(thing["id"]), text(thing["title"])
+		own := slices.ContainsFunc(h.shownAsIs(id, reveal), func(v any) bool { return gives(title, v) })
+		if title != "" && h.pages[id] == title && (own || !holdsAny(title, kept)) {
+			out = append(out, title)
+		}
 	}
-	own := slices.ContainsFunc(h.shownAsIs(id, reveal), func(v any) bool { return gives(title, v) })
-	free := !slices.ContainsFunc(kept, func(v any) bool {
-		text, isText := v.(string)
-		return isText && text != "" && holdsWhole(title, text) || !isText && title == fmt.Sprint(v)
-	})
-	if title != "" && (own || free) {
-		h.titles = append(h.titles, title)
+	for _, c := range claimValues(object(node["claim"])) {
+		d := h.display(text(c["attribute"]))
+		if c["attribute"] != nil && !d.Hidden && (!d.Mask || reveal || !holdsAny(text(c["value"]), kept)) {
+			out = append(out, text(c["value"]))
+		}
 	}
+	return out
 }
 
-// outsideTitles reports whether v stands whole in s somewhere that no
-// whole title a proof line may name covers.
-func (h held) outsideTitles(s, v string) bool {
+// claimValues are the claims at any depth of c that give a value.
+func claimValues(c map[string]any) []map[string]any {
+	if c == nil {
+		return nil
+	}
+	var out []map[string]any
+	if text(c["value"]) != "" {
+		out = append(out, c)
+	}
+	out = append(out, claimValues(object(c["with"]))...)
+	for _, part := range list(c["of"]) {
+		out = append(out, claimValues(part)...)
+	}
+	return out
+}
+
+// holdsAny reports whether s gives any of kept: a text whole, any other
+// value by being it.
+func holdsAny(s string, kept []any) bool {
+	return slices.ContainsFunc(kept, func(v any) bool {
+		text, isText := v.(string)
+		return isText && text != "" && holdsWhole(s, text) || !isText && s == fmt.Sprint(v)
+	})
+}
+
+// outside reports whether v stands whole in s somewhere that no whole text
+// of aside covers.
+func outside(s, v string, aside []string) bool {
 	for _, at := range wholeAt(s, v) {
-		covered := slices.ContainsFunc(h.titles, func(title string) bool {
-			return slices.ContainsFunc(wholeAt(s, title), func(t int) bool { return t <= at && at+len(v) <= t+len(title) })
+		covered := slices.ContainsFunc(aside, func(a string) bool {
+			return slices.ContainsFunc(wholeAt(s, a), func(t int) bool { return t <= at && at+len(v) <= t+len(a) })
 		})
 		if !covered {
 			return true
@@ -318,7 +358,7 @@ func reportLeaks(t *testing.T, h held, reads [][]byte, reveal bool) {
 	for _, read := range reads {
 		var page struct{ ID, Title string }
 		if json.Unmarshal(read, &page) == nil && page.ID != "" {
-			h.excuse(page.ID, page.Title, reveal)
+			h.titled(page.ID, page.Title)
 		}
 	}
 	n := 0
@@ -384,47 +424,79 @@ func TestMaskedAndHidden(t *testing.T) {
 }
 
 // plantedLines are proof lines planted in a page beside a store's own
-// things: one named by a made-up period whose title holds a short masked
-// value whole, and one titled by the raw masked value raw. Each is found
-// where a value kept from a person stands outside a title a line may name,
-// and only there.
+// things, each found where a value kept from a person stands outside the
+// titles of the things that line's own data names and the values its claim
+// gives, and only there: a title or a value excuses nothing unless it
+// passes its own check.
 func plantedLines(t *testing.T, h held, raw, hidden string) {
 	t.Helper()
-	const period, short = "2031-07-01 to 2031-07-31", "07"
+	const period, short, end, depot = "2031-07-01 to 2031-07-31", "07", "2031-07-31", "Lagos Depot"
 	p := h
 	p.masked = append(slices.Clone(h.masked), short)
 	p.things = maps.Clone(h.things)
-	p.things["planted:period"] = &ontology.Entity{ID: "planted:period", TypeID: "planted", Attributes: map[string][]any{"planted.period": {period}}}
-	p.things["planted:raw"] = &ontology.Entity{ID: "planted:raw", TypeID: "planted"}
-	p.excuse("planted:period", period, false)
-	p.excuse("planted:raw", raw, false)
+	p.pages = maps.Clone(h.pages)
+	plant := func(id, title string, attrs map[string][]any) show.Thing {
+		p.things[id] = &ontology.Entity{ID: id, TypeID: "planted", Attributes: attrs}
+		p.titled(id, title)
+		return show.Thing{ID: id, Type: "planted", Title: title}
+	}
+	statement := plant("planted:period", period, map[string][]any{"planted.period": {period}, "planted.to": {end}})
+	titledRaw := plant("planted:raw", raw, nil)
+	twin := plant("planted:twin", raw, map[string][]any{"planted.name": {raw}})
+	lagos := plant("planted:depot", depot, map[string][]any{"planted.name": {depot}, "planted.code": {raw}})
+	misnamed := lagos
+	misnamed.Title = raw
+	var maskedAttr, hiddenAttr string
+	for _, id := range sortedIDs(h.box.AttributeTypes) {
+		switch d := h.display(id); {
+		case d.Mask && maskedAttr == "":
+			maskedAttr = id
+		case d.Hidden && hiddenAttr == "":
+			hiddenAttr = id
+		}
+	}
+	link := func(things ...show.Thing) *show.Claim {
+		c := &show.Claim{Test: "link", Link: "planted", LinkLabel: "Planted", Ends: []show.End{}}
+		for _, thing := range things {
+			c.Ends = append(c.Ends, show.End{Role: "planted", Label: "Thing", Thing: thing})
+		}
+		return c
+	}
+	value := func(thing show.Thing, attr, v string) *show.Claim {
+		return &show.Claim{Test: "is", Thing: &thing, Attribute: attr, Label: "Value", Value: v}
+	}
 	for _, c := range []struct {
-		name  string
-		proof show.Proof
-		found bool
+		name          string
+		proof         show.Proof
+		found, inData bool
 	}{
-		{"a masked value in a fact", show.Proof{Fact: "Statement account: Account " + raw}, true},
-		{"a masked value in a ruled-out line", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: a match (for " + raw + ", Statement " + period + ")"}}}, true},
-		{"a hidden value in a fact", show.Proof{Fact: "Held at: Key " + hidden}, true},
-		{"a short masked value inside a title the line names", show.Proof{Fact: "Latest statement: Statement " + period}, false},
-		{"the same value beside that title", show.Proof{Fact: "Latest statement: Statement " + period + "; Key " + short}, true},
-		{"a thing titled by a raw masked value, named", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Older statements (for " + raw + ")"}}}, true},
+		{"a masked value in a fact", show.Proof{Fact: "Statement account: Account " + raw}, true, false},
+		{"a masked value in a ruled-out line", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: a match (for " + raw + ", Statement " + period + ")"}}}, true, false},
+		{"a hidden value in a fact", show.Proof{Fact: "Held at: Key " + hidden}, true, false},
+		{"a short masked value inside a title the line names", show.Proof{Fact: "Latest statement: Statement " + period, Claim: link(statement)}, false, false},
+		{"the same value beside that title", show.Proof{Fact: "Latest statement: Statement " + period + "; Key " + short, Claim: link(statement)}, true, false},
+		{"a thing titled by a raw masked value, named", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Older statements (for " + raw + ")"}}}, true, false},
+		{"a masked value raw, the same text as the public title of a thing the data does not name", show.Proof{Fact: "Planted: Thing " + depot + ", Thing " + raw, Claim: link(lagos)}, true, false},
+		{"the same text, that thing named", show.Proof{Fact: "Planted: Thing " + raw, Claim: link(twin)}, false, false},
+		{"a masked value raw before the titles", show.Proof{Fact: raw + " Planted: Thing " + depot + ", Thing " + period, Claim: link(lagos, statement)}, true, false},
+		{"a masked value raw after the titles", show.Proof{Fact: "Planted: Thing " + depot + ", Thing " + period + " " + raw, Claim: link(lagos, statement)}, true, false},
+		{"a masked value raw between the titles", show.Proof{Fact: "Planted: Thing " + depot + ", " + raw + ", Thing " + period, Claim: link(lagos, statement)}, true, false},
+		{"a public date given as the value, a short masked value inside it", show.Proof{Fact: period + " Value " + end, Claim: value(statement, "planted.to", end)}, false, false},
+		{"that short value outside the title and the value", show.Proof{Fact: period + " Value " + end + "; " + short, Claim: value(statement, "planted.to", end)}, true, false},
+		{"a masked attribute's value given raw as the value", show.Proof{Fact: depot + " Value " + raw, Claim: value(lagos, maskedAttr, raw)}, true, true},
+		{"a hidden attribute's value given as the value", show.Proof{Fact: depot + " Value " + hidden, Claim: value(lagos, hiddenAttr, hidden)}, true, true},
+		{"a thing named by a title that is not its page's", show.Proof{Fact: "Planted: Thing " + raw, Claim: link(misnamed)}, true, false},
+		{"a title that is itself a raw masked value", show.Proof{Fact: "Planted: Thing " + raw, Claim: link(titledRaw)}, true, true},
 	} {
 		read := encode(t, show.Page{Thing: show.Thing{ID: "planted", Type: "planted", Title: "planted"},
 			Links: []show.LinkGroup{{Link: "planted", Rows: []show.Link{{Ends: []show.End{}, Proof: &c.proof}}}}})
 		got := p.leaks(read, false)
-		inProof := slices.ContainsFunc(got, func(leak string) bool { return strings.Contains(leak, ".proof.") })
-		if inProof != c.found || !c.found && len(got) > 0 {
-			t.Errorf("%s: found %v, want %v: %q", c.name, inProof, c.found, got)
+		inLine := slices.ContainsFunc(got, func(leak string) bool {
+			return strings.HasPrefix(leak, ".links[0].rows[0].proof.fact ") || strings.HasPrefix(leak, ".links[0].rows[0].proof.ruled_out[0].line ")
+		})
+		inData := slices.ContainsFunc(got, func(leak string) bool { return strings.HasPrefix(leak, ".links[0].rows[0].proof.claim.") })
+		if inLine != c.found || inData != c.inData || !c.found && len(got) > 0 {
+			t.Errorf("%s: found in the line %v, want %v; in the data %v, want %v: %q", c.name, inLine, c.found, inData, c.inData, got)
 		}
-	}
-	twin := p
-	twin.things = maps.Clone(p.things)
-	twin.things["planted:twin"] = &ontology.Entity{ID: "planted:twin", TypeID: "planted", Attributes: map[string][]any{"planted.name": {raw}}}
-	twin.excuse("planted:twin", raw, false)
-	read := encode(t, show.Page{Thing: show.Thing{ID: "planted", Type: "planted", Title: "planted"},
-		Links: []show.LinkGroup{{Link: "planted", Rows: []show.Link{{Ends: []show.End{}, Proof: &show.Proof{Fact: "Statement account: Account " + raw}}}}}})
-	if got := twin.leaks(read, false); !slices.ContainsFunc(got, func(leak string) bool { return strings.Contains(leak, ".proof.fact") }) {
-		t.Errorf("a masked value raw in a fact, the same text as the public title of a thing the fact's data does not name: not found: %q", got)
 	}
 }
