@@ -310,8 +310,10 @@ fn standard_output_past_the_cap_ends_the_tool() {
     assert_eq!(finished(runner.run(&exact, [""; 0], LONG)).1.len(), STDOUT_CAP, "the cap itself fits");
     let ran = runner.run(&over, [""; 0], LONG);
     assert!(matches!(ran, Ran::WroteTooMuch), "{ran:?}");
-    let ran = runner.run(&endless, [scratch.file("y")], Duration::from_secs(20));
+    let started_at = Instant::now();
+    let ran = runner.run(&endless, [scratch.file("y")], Duration::from_secs(60));
     assert!(matches!(ran, Ran::WroteTooMuch), "{ran:?}");
+    assert!(started_at.elapsed() < Duration::from_secs(30), "ended by the cap, long before its deadline");
     let pid = pid_in(&scratch.file("y")).unwrap();
     assert!(within(GONE, || gone(pid)), "the endless tool is ended");
 }
