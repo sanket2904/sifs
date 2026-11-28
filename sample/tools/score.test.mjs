@@ -1952,6 +1952,17 @@ test('every JSON block in FORMAT.md holds against the committed text and the sco
 	}
 });
 
+test("a document's file is accepted and not scored: a run scores the same with and without it", () => {
+	for (const name of ['go-m1a-on-text', 'go-m1a-off-text', 'go-m1a-on-text-ocr', 'go-m1a-off-text-ocr']) {
+		const withFile = JSON.parse(readFileSync(new URL(`runs/${name}.json`, SAMPLE), 'utf8'));
+		const set = sets[withFile.text_set];
+		for (const d of withFile.documents) assert.equal(d.file, set.docs.get(d.id).file, `${name} ${d.id}`);
+		const without = structuredClone(withFile);
+		for (const d of without.documents) delete d.file;
+		assert.deepEqual(run(withFile), run(without), name);
+	}
+});
+
 // A copy of sample/ reached through a symlink, as /tmp is on macOS.
 function linkedCopy() {
 	const dir = mkdtempSync(join(tmpdir(), 'score-test-'));
