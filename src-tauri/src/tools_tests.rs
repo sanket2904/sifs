@@ -457,3 +457,20 @@ fn a_bad_variable_is_refused_and_never_falls_back() {
         assert_eq!(look(&beside, Some(OsStr::new(value))), Err(NotFound::NotAbsolute(value.into())), "{value:?}");
     }
 }
+
+// A source guard: it reads app.rs as text and does not prove the order the
+// app runs in. What stop does is proven by its own tests above.
+#[test]
+fn source_guard_the_app_looks_for_the_tools_once_and_stops_them_on_exit() {
+    let app = include_str!("app.rs");
+    assert_eq!(app.matches("tools::look(").count(), 1, "the tools are looked for once");
+    assert_eq!(app.matches("TOOLS_DIR_VAR").count(), 1, "the variable is read in one place");
+    assert_eq!(app.matches("Runner::default()").count(), 1, "one runner");
+    let hook = "app.run(|app, event| {\n        if let RunEvent::Exit = event {\n            app.state::<Runner>().stop();";
+    assert_eq!(app.matches(hook).count(), 1, "the run closure stops the runner on Exit");
+    assert_eq!(app.matches("app.run(").count(), 1, "the app runs in one place");
+    let at = |text: &str| app.find(text).unwrap();
+    assert!(at("data::data_dir(") < at("tools::look("), "the tools folder follows the data folder");
+    assert!(at("tools::look(") < at("app.manage(tools)"), "what was found is kept");
+    assert!(at("app.manage(tools)") < at("app.run("), "before the app runs");
+}
