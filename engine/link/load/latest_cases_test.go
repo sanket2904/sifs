@@ -173,9 +173,9 @@ func TestSameEndDifferentStarts(t *testing.T) {
 // a later statement of its own; the number has not. The statement is the
 // latest of the number and not of the IBAN, and each account's page says
 // its own latest.
-// Mutation: make the latest a fact of the statement alone (the account
-// dropped from the later statement's rule), and the statement is the
-// latest of neither.
+// Mutation: let a later statement of any of the statement's accounts
+// count, so that not being the latest is a fact of the statement alone,
+// and the statement is the latest of neither.
 func TestStatementOfTwoAccounts(t *testing.T) {
 	stores(t, func(t *testing.T, ctx context.Context, reopen func() *Engine) {
 		e := reopen()
