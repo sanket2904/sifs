@@ -189,17 +189,17 @@ pub(crate) fn open_read_only(db: &Path) -> Result<Connection> {
 }
 
 /// A file the index has read inside, before its text is taken.
-struct Listed {
+pub(crate) struct Listed {
     file_id: i64,
-    path: String,
+    pub(crate) path: String,
     name: String,
     ext: String,
-    modified: i64,
+    pub(crate) modified: i64,
     reader: String,
 }
 
 /// Every file the index holds what was read from, in path order.
-fn listed(conn: &Connection) -> Result<Vec<Listed>> {
+pub(crate) fn listed(conn: &Connection) -> Result<Vec<Listed>> {
     let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     if version < 1 {
         bail!("this index has not read inside any file (schema version {version})");
