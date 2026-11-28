@@ -52,7 +52,7 @@ fn read_json(path: &Path) -> serde_json::Value {
     serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
 }
 
-/// The exported documents, by file name.
+/// The exported documents, by their `file`.
 fn by_file(out: &Path) -> BTreeMap<String, serde_json::Value> {
     let index = read_json(&out.join("index.json"));
     index["documents"]
@@ -325,19 +325,19 @@ fn each_kind_of_part_maps_to_pages() {
     let docs = by_file(&db.out("one"));
     let page = |text: &str, scanned| (text.to_string(), scanned);
     let want: BTreeMap<&str, Vec<(String, bool)>> = BTreeMap::from([
-        ("a-mixed.pdf", vec![page("one", false), page("", true), page("three", false)]),
-        ("b-scan.pdf", vec![page("", true), page("", true)]),
-        ("c-cut.pdf", vec![page("one", false), page("tw", false)]),
-        ("d-photo.jpg", vec![page("RECEIPT\nTOTAL 12.00", true)]),
-        ("e-blank.png", vec![page("", true)]),
-        ("f-notes.txt", vec![page("line one\nline two\n", false)]),
-        ("g-book.xlsx", vec![page("a\tb\n", false), page("c\n", false)]),
-        ("h-deck.pptx", vec![page("title\n", false), page("say hi\n", false)]),
+        ("/r/a-mixed.pdf", vec![page("one", false), page("", true), page("three", false)]),
+        ("/r/b-scan.pdf", vec![page("", true), page("", true)]),
+        ("/r/c-cut.pdf", vec![page("one", false), page("tw", false)]),
+        ("/r/d-photo.jpg", vec![page("RECEIPT\nTOTAL 12.00", true)]),
+        ("/r/e-blank.png", vec![page("", true)]),
+        ("/r/f-notes.txt", vec![page("line one\nline two\n", false)]),
+        ("/r/g-book.xlsx", vec![page("a\tb\n", false), page("c\n", false)]),
+        ("/r/h-deck.pptx", vec![page("title\n", false), page("say hi\n", false)]),
     ]);
     let got: BTreeMap<&str, Vec<(String, bool)>> = docs.iter().map(|(f, d)| (f.as_str(), pages_of(d))).collect();
     assert_eq!(got, want, "empty, failed and skipped files with no page are left out");
 
-    let doc = &docs["a-mixed.pdf"];
+    let doc = &docs["/r/a-mixed.pdf"];
     assert_eq!(doc["id"], doc_id("a-mixed.pdf", "/r/a-mixed.pdf"));
     assert_eq!(doc["format"], "pdf");
     assert_eq!(doc["lang"], "");
@@ -460,7 +460,8 @@ fn the_sample_files_export_like_their_text_set() {
             unread.push(id);
             continue;
         }
-        let got = docs.get(file).unwrap_or_else(|| panic!("{file} was read but not exported"));
+        let path = folder.join(file);
+        let got = docs.get(path.to_str().unwrap()).unwrap_or_else(|| panic!("{file} was read but not exported"));
         let (want, got) = (pages_of(&want), pages_of(got));
         compared += 1;
         let result = match first_difference(&want, &got) {

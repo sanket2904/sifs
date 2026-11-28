@@ -21,6 +21,7 @@ pub struct Page {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Document {
     pub id: String,
+    /// The file's full path, as the index holds it.
     pub file: String,
     /// The index holds no hash, and the exporter reads nothing but the index.
     pub sha256: Option<String>,
@@ -259,7 +260,7 @@ pub fn export(db: &Path, out: &Path, reference_date: &str) -> Result<Exported> {
         if !pages.is_empty() {
             docs.push(Document {
                 id: doc_id(&file.name, &file.path),
-                file: file.name,
+                file: file.path,
                 sha256: None,
                 format: file.ext,
                 lang: String::new(),
