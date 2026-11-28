@@ -25,10 +25,12 @@ Requirements: Rust (stable, Apple Silicon toolchain; `rust-toolchain.toml` pins 
 
 ```bash
 npm install
-npm run tauri dev          # run the app
+npm run app                # run a development build
 npm run tauri build -- --bundles app   # build SIFS.app
 cd src-tauri && cargo test --no-default-features --lib   # index and reading tests (no Tauri needed, so Linux too)
 ```
+
+A development build keeps away from the installed app's data. `npm run app` runs it with its own identifier, `com.sanket2904.sifs.dev` (`src-tauri/tauri.dev.conf.json`), so the window's own storage is separate too. Every debug build keeps its index in `~/Library/Application Support/com.sanket2904.sifs.dev/sifs.db`, or in `SIFS_DATA_DIR` when that is set, for example `SIFS_DATA_DIR=$(mktemp -d) npm run app`. `SIFS_DATA_DIR` must be an absolute path: when it is empty or relative, the app does not start. A development build also refuses any folder named `com.sanket2904.sifs`, the installed app's, or anything inside one, wherever it is. The installed app is unchanged: without `SIFS_DATA_DIR` it keeps its index where it always has.
 
 Measure the index on real folders without the app (read-only; writes only the index file given):
 
@@ -88,6 +90,7 @@ Tests a hosted runner cannot run, for a reason of the runner and not the code, a
 ```text
 src/routes/+page.svelte   search box, results, folder settings
 src-tauri/src/app.rs      Tauri commands, background scans, watcher, tray
+src-tauri/src/data.rs     where the app keeps its data, for the installed app and development builds
 src-tauri/src/index/      the index: db (SQLite), migrations, crawl, watch, search, ignore rules, tests
 src-tauri/src/extract/    reading inside files: readers, decoding, the queue, the background worker, tests
 src-tauri/tests/fixtures/ sample files for the tests
