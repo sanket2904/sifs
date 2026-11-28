@@ -78,6 +78,25 @@ fn a_development_build_refuses_the_installed_folder_however_spelled() {
 }
 
 #[test]
+fn a_development_build_refuses_the_installed_folder_under_either_unicode_spelling_of_a_parent() {
+    // The Mac's disk takes both spellings of an accented name as one folder.
+    let (composed, decomposed) = ("/x/Caf\u{e9}", "/x/Cafe\u{301}");
+    assert_ne!(composed.as_bytes(), decomposed.as_bytes());
+    let mut allowed = Vec::new();
+    for (system_parent, chosen_parent) in [(composed, decomposed), (decomposed, composed)] {
+        for identifier in [INSTALLED, DEVELOPMENT] {
+            let system = Path::new(system_parent).join(identifier);
+            for chosen in [Path::new(chosen_parent).join(INSTALLED), Path::new(chosen_parent).join(INSTALLED).join("child")] {
+                if !matches!(data_dir(Build::Development, &system, Some(chosen.as_os_str())), Err(Refusal::Installed { .. })) {
+                    allowed.push(format!("{chosen:?} with {system:?}"));
+                }
+            }
+        }
+    }
+    assert!(allowed.is_empty(), "allowed {} of 8: {allowed:#?}", allowed.len());
+}
+
+#[test]
 fn a_development_build_takes_folders_that_only_look_alike() {
     for value in [
         "/Users/someone/Library/Application Support/com.sanket2904.sifs.dev",
