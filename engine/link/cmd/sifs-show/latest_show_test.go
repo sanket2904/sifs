@@ -79,11 +79,11 @@ func title(row show.Link) string { return row.Ends[0].Thing.Title }
 // account's page has no "Probably the latest statement" row.
 func TestLatestStatementReads(t *testing.T) {
 	dir := loaded(t)
-	for _, c := range []struct{ country, kind, value, statement, period, end, masked string }{
-		{"German", "iban", "DE89370400440532013000", "commerzbank-kontoauszug", "2026-10-01 to 2026-10-31", "2026-10-31", "••••••••••••••••••3000"},
-		{"Dutch", "iban", "NL91ABNA0417164300", "abn-amro-statement", "2026-08-01 to 2026-08-31", "2026-08-31", "••••••••••••••4300"},
-		{"Japanese", "account", "12345678", "mizuho-statement-ja", "2026-08-01 to 2026-08-31", "2026-08-31", "••••5678"},
-		{"British", "iban", "GB29NWBK60161331926819", "natwest-statement", "2026-09-01 to 2026-09-30", "2026-09-30", "••••••••••••••••••6819"},
+	for _, c := range []struct{ country, kind, value, statement, period, masked string }{
+		{"German", "iban", "DE89370400440532013000", "commerzbank-kontoauszug", "2026-10-01 to 2026-10-31", "••••••••••••••••••3000"},
+		{"Dutch", "iban", "NL91ABNA0417164300", "abn-amro-statement", "2026-08-01 to 2026-08-31", "••••••••••••••4300"},
+		{"Japanese", "account", "12345678", "mizuho-statement-ja", "2026-08-01 to 2026-08-31", "••••5678"},
+		{"British", "iban", "GB29NWBK60161331926819", "natwest-statement", "2026-09-01 to 2026-09-30", "••••••••••••••••••6819"},
 	} {
 		t.Run(c.country, func(t *testing.T) {
 			account := shownPage(t, dir, load.IdentifierID(c.kind, c.value))
@@ -91,7 +91,7 @@ func TestLatestStatementReads(t *testing.T) {
 			want := []string{
 				fmt.Sprintf("Statement account: Statement %s, Account %s", c.period, c.masked),
 				fmt.Sprintf("%s Period tier likely", c.period),
-				fmt.Sprintf("%s To %s", c.period, c.end),
+				fmt.Sprintf("%s has To", c.period),
 				fmt.Sprintf("and no: A later statement exists (for %s, %s)", c.masked, c.period),
 				fmt.Sprintf("and no: Another statement's end is not known (for %s, %s)", c.masked, c.period),
 			}

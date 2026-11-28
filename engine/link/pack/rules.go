@@ -63,7 +63,7 @@ func rules(m *schema.ModuleDef) {
 	pair("ProbablyLatestStatement", "Probably the latest statement", "Probably the latest statement of", "Probably the latest statement")
 	latest := func(name, linkType string, sure ...schema.ConditionDef) {
 		m.Rule(name).When(append(append([]schema.ConditionDef{schema.RelatedVars("StatementAccount", "s", "a")}, sure...),
-			schema.BindAttr("to", "s", "end"),
+			schema.AttrExists("to"),
 			schema.NotRelatedVars("LaterStatement", "s", "a"),
 			schema.NotRelatedVars("EndNotKnown", "s", "a"),
 		)...).Then(schema.AddRelationVars(linkType, "s", "a"))

@@ -284,3 +284,20 @@ func TestFutureStatementComparedByPeriod(t *testing.T) {
 		))
 	})
 }
+
+// An account whose one statement has no end that can be read gets no
+// latest; a Dutch account beside it keeps its own.
+// Mutation: drop "has an end" from the rule for the latest, and the
+// Japanese statement is called the latest.
+func TestOneStatementNoEnd(t *testing.T) {
+	stores(t, func(t *testing.T, ctx context.Context, reopen func() *Engine) {
+		e := reopen()
+		loaded(t, ctx, e, madeRun(
+			likely("torihiki-no-end", "2026-08-01", "cannot-tell", jpAccount),
+			likely("afschrift-08", "2026-08-01", "2026-08-31", nlAccount),
+		))
+		eq(t, "derived", derived(t, ctx, e), derivedFacts(
+			fact("ProbablyLatestStatement", "afschrift-08", nlAccount),
+		))
+	})
+}
