@@ -9,13 +9,14 @@ use crate::index::ignore::Rules;
 use crate::index::search::{self, Hit};
 use crate::index::stop::Until;
 use crate::index::watch::Watch;
+use crate::tools::{self, Runner};
 use serde::Serialize;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
 use tauri_plugin_opener::OpenerExt;
 
 struct AppState {
@@ -325,8 +326,17 @@ pub fn run() {
             std::process::exit(2);
         }
     };
+    let tools = tools::look(&data, std::env::var_os(tools::TOOLS_DIR_VAR).as_deref());
     app.manage(data);
-    app.run(|_, _| {});
+    app.manage(tools);
+    app.manage(Runner::default());
+    // Exit comes on the tray's Quit and on Cmd-Q, and the process ends only
+    // after this returns. Closing the window only hides it.
+    app.run(|app, event| {
+        if let RunEvent::Exit = event {
+            app.state::<Runner>().stop();
+        }
+    });
 }
 
 fn show_main(app: &AppHandle) {
