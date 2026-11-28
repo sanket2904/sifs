@@ -89,13 +89,15 @@ const (
 	ExpiryStart = module + ".expiryStart"
 	ExpiryEnd   = module + ".expiryEnd"
 	ExpiryText  = module + ".expiryText"
+	ExpiryDay   = module + ".expiryDay"
 	Current     = module + ".current"
 	CurrentTier = module + ".currentTier"
 )
 
 // Module declares the files schema. A date is a timestamp at midnight UTC
 // of the day format 3 gives, shown as a date. A statement is titled by its
-// period, a text the loader spells from those days.
+// period, a text the loader spells from those days, and a passport by its
+// expiry as printed or else by its expiry's day, spelt the same way.
 //
 // Names. An organisation is found by its card's name, by every text a
 // document prints for it and by the institution code its key stands for,
@@ -139,9 +141,10 @@ func Module() *schema.ModuleDef {
 		Attribute("expiryStart", "int64", label("Expiry start"), hidden).
 		Attribute("expiryEnd", "int64", label("Expiry end"), hidden).
 		Attribute("expiryText", "string", label("Expiry as printed")).
+		Attribute("expiryDay", "string", label("Expiry day")).
 		Attribute("current", "bool", label("Current")).
 		Attribute("currentTier", "string", tier, label("Current tier")).
-		Display(schema.Title("expiryText"), schema.Collection(ontology.CollectionDocuments))
+		Display(schema.Title("expiryText", "expiryDay"), schema.Collection(ontology.CollectionDocuments))
 	m.Entity("Holder").Label("Passport holder").
 		Attribute("surname", "string", label("Surname"), names).
 		Attribute("given", "string", label("Given names"), names).

@@ -178,7 +178,7 @@ func TestDatesAndTitles(t *testing.T) {
 						switch {
 						case pp.ExpiryAt != nil:
 							eq(t, doc.ID+" title", p.Title, pp.ExpiryAt.Text)
-						case pp.Expiry != nil && isDay(*pp.Expiry):
+						case pp.Expiry != nil && runDay(*pp.Expiry):
 							eq(t, doc.ID+" title", p.Title, *pp.Expiry)
 						default:
 							t.Errorf("the run gives %s no expiry to title it by", doc.ID)
@@ -219,7 +219,7 @@ func TestDatesAndTitles(t *testing.T) {
 	}
 }
 
-func isDay(s string) bool {
+func runDay(s string) bool {
 	_, err := time.Parse(time.DateOnly, s)
 	return err == nil
 }

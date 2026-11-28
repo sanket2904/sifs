@@ -168,6 +168,8 @@ func (f *facts) passport(p *extract.PassportOut, idents map[string]string) {
 	}
 	if at := p.ExpiryAt; at != nil {
 		attrs[pack.ExpiryPage], attrs[pack.ExpiryStart], attrs[pack.ExpiryEnd], attrs[pack.ExpiryText] = int64(at.Page), int64(at.Start), int64(at.End), at.Text
+	} else if p.Expiry != nil && isDay(*p.Expiry) {
+		attrs[pack.ExpiryDay] = *p.Expiry
 	}
 	if p.Current != nil {
 		attrs[pack.Current] = *p.Current
@@ -259,11 +261,14 @@ func putDate(attrs map[string]any, attr string, date *string) {
 // period is a statement's title: its first and last day as format 3 spells
 // them, or the one of the two that is a day.
 func period(from, to string) string {
-	days := slices.DeleteFunc([]string{from, to}, func(d string) bool {
-		_, err := time.Parse(time.DateOnly, d)
-		return err != nil
-	})
+	days := slices.DeleteFunc([]string{from, to}, func(d string) bool { return !isDay(d) })
 	return strings.Join(days, " to ")
+}
+
+// isDay reports whether a format 3 date is a day, spelt YYYY-MM-DD.
+func isDay(date string) bool {
+	_, err := time.Parse(time.DateOnly, date)
+	return err == nil
 }
 
 func (f *facts) org(key string) string {

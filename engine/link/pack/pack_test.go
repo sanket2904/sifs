@@ -57,7 +57,7 @@ var things = map[string]struct {
 	pack.Identifier:   {ontology.CollectionAccounts, []string{pack.Value}, []string{pack.Kind}, []string{pack.Value}},
 	pack.BankCode:     {ontology.CollectionOrganisations, []string{pack.Code}, []string{pack.Kind}, []string{pack.Code}},
 	pack.Statement:    {ontology.CollectionDocuments, []string{pack.Period}, nil, nil},
-	pack.Passport:     {ontology.CollectionDocuments, []string{pack.ExpiryText}, nil, nil},
+	pack.Passport:     {ontology.CollectionDocuments, []string{pack.ExpiryText, pack.ExpiryDay}, nil, nil},
 	pack.Holder:       {ontology.CollectionPeople, []string{pack.Surname}, []string{pack.Given}, []string{pack.Surname, pack.Given}},
 }
 
