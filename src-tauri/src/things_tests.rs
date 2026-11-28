@@ -671,7 +671,8 @@ fn r3_each_change_to_the_index_or_the_tools_reads_once() {
     scratch.read_once(&things);
     let mut loads = 1;
     let first = paths(0, 1).remove(0);
-    let changes: [(&str, Box<dyn Fn()>); 6] = [
+    type Change<'a> = (&'a str, Box<dyn Fn() + 'a>);
+    let changes: [Change; 6] = [
         (
             "one file's modified time",
             Box::new(|| scratch.touch(&first, 1_700_000_001)),
@@ -820,4 +821,690 @@ fn join(thread: JoinHandle<()>) {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || tx.send(thread.join().is_ok()));
     assert_eq!(rx.recv_timeout(BOUND), Ok(true), "the thread ended");
+}
+
+/// Each line of a stand-in's arguments, as it wrote them down.
+fn lines(args: &[&dyn AsRef<Path>]) -> String {
+    args.iter()
+        .map(|a| format!("{}\n", a.as_ref().display()))
+        .collect()
+}
+
+/// Whether the system has no live process with this pid (a zombie is dead).
+fn gone(pid: libc::pid_t) -> bool {
+    let out = std::process::Command::new("/bin/ps")
+        .args(["-o", "stat=", "-p", &pid.to_string()])
+        .output()
+        .unwrap();
+    let stat = String::from_utf8_lossy(&out.stdout);
+    stat.trim().is_empty() || stat.trim().starts_with('Z')
+}
+
+/// Waits for every pid to be gone, or fails the test.
+fn all_gone(pids: &[libc::pid_t]) {
+    let until = Instant::now() + BOUND;
+    while !pids.iter().all(|&pid| gone(pid)) {
+        assert!(
+            Instant::now() < until,
+            "still alive: {:?}",
+            pids.iter().filter(|&&p| !gone(p)).collect::<Vec<_>>()
+        );
+        thread::yield_now();
+    }
+}
+
+// --- R1: the steps ---
+
+#[test]
+fn r1_a_reading_runs_export_extract_and_load_in_order_with_their_arguments() {
+    let scratch = Scratch::new();
+    scratch.add(&paths(0, 2));
+    scratch.add_one("/r/folder two/notes.txt");
+    let things = scratch.machine();
+    assert!(!scratch.work().exists(), "no work folder before");
+    let state = scratch.read_once(&things);
+    assert_eq!(
+        state,
+        State::Read {
+            when: WALL,
+            documents: 3,
+            turned_down: 0
+        }
+    );
+    assert_eq!(
+        fs::read_to_string(scratch.tools.join("log")).unwrap(),
+        "m1a-extract\nsifs-load\n",
+        "extract, then load"
+    );
+    let (work, data) = (scratch.work(), scratch.data.path().to_path_buf());
+    assert!(data.to_str().unwrap().contains(' ') && scratch.tools.to_str().unwrap().contains(' '));
+    let (text, run) = (work.join("text"), work.join("run.json"));
+    let (banks, registry) = (
+        scratch.tool(Piece::Banks),
+        scratch.tool(Piece::IbanRegistry),
+    );
+    assert_eq!(
+        scratch.noted(Piece::Extract, "args.1").unwrap(),
+        lines(&[
+            &"-text",
+            &text,
+            &"-directory",
+            &banks,
+            &"-iban-registry",
+            &registry,
+            &"-out",
+            &run
+        ])
+    );
+    assert_eq!(
+        scratch.noted(Piece::Load, "args.1").unwrap(),
+        lines(&[&"--run", &run, &"--data-dir", &data])
+    );
+    assert_eq!(
+        scratch.noted(Piece::Extract, "work.1").unwrap(),
+        "text\n",
+        "the extractor's work folder held the text set"
+    );
+    assert_eq!(
+        scratch.noted(Piece::Load, "work.1").unwrap(),
+        "run.json\ntext\n",
+        "the loader's held the text set and the run"
+    );
+    let index: serde_json::Value =
+        serde_json::from_str(&scratch.noted(Piece::Extract, "index.1").unwrap()).unwrap();
+    assert_eq!(index["reference_date"], TODAY);
+    assert_eq!(scratch.exported(1).len(), 3);
+    assert!(!work.exists(), "the work folder is gone after");
+    assert!(scratch.fingerprint_file().exists());
+}
+
+#[test]
+fn r1_exit_1_of_the_load_is_read_with_the_turned_down_count() {
+    let scratch = Scratch::new();
+    scratch.add(&paths(0, 3));
+    scratch.tell(
+        Piece::Load,
+        "print",
+        "{\"documents\":{\"written\":1},\"turned_down\":[{\"record\":\"a\"},{\"record\":\"b\"}]}\n",
+    );
+    scratch.tell(Piece::Load, "exit", "1");
+    let things = scratch.machine();
+    assert_eq!(
+        scratch.read_once(&things),
+        State::Read {
+            when: WALL,
+            documents: 3,
+            turned_down: 2
+        }
+    );
+    assert!(
+        scratch.fingerprint_file().exists(),
+        "the others loaded: read"
+    );
+}
+
+#[test]
+fn r1_a_load_that_does_not_finish_fails_at_the_load_with_what_was_said() {
+    for (case, said) in [
+        (
+            "exit 2",
+            "exited with code 2: sifs-load: the store is locked",
+        ),
+        (
+            "a signal",
+            "ended on signal 15: sifs-load: the store is locked",
+        ),
+        (
+            "no output line",
+            "the loader printed no line saying what it loaded",
+        ),
+        (
+            "a line with no count",
+            "the loader printed no line saying what it loaded",
+        ),
+        ("too long", "took too long"),
+    ] {
+        let mut scratch = Scratch::new();
+        scratch.add(&paths(0, 3));
+        scratch.tell(Piece::Load, "say", "sifs-load: the store is locked\n");
+        match case {
+            "exit 2" => scratch.tell(Piece::Load, "exit", "2"),
+            "a signal" => scratch.tell(Piece::Load, "signal", ""),
+            "no output line" => scratch.tell(Piece::Load, "print", ""),
+            "a line with no count" => scratch.tell(Piece::Load, "print", "{\"documents\":{}}\n"),
+            _ => {
+                scratch.limits.load = Duration::from_millis(300);
+                scratch.tell(Piece::Load, "hold", "");
+            }
+        }
+        let things = scratch.machine();
+        let state = scratch.read_once(&things);
+        assert_eq!(
+            state,
+            State::Failed {
+                step: Step::Load,
+                said: said.into()
+            },
+            "{case}"
+        );
+        assert!(!scratch.work().exists(), "{case}: the work folder is gone");
+        assert!(
+            !scratch.fingerprint_file().exists(),
+            "{case}: nothing recorded as read"
+        );
+        if case == "too long" {
+            let pid = |what| {
+                scratch
+                    .noted(Piece::Load, what)
+                    .unwrap()
+                    .trim()
+                    .parse()
+                    .unwrap()
+            };
+            all_gone(&[pid("pid"), pid("child")]);
+        }
+    }
+}
+
+#[test]
+fn r1_a_failed_export_or_extract_never_starts_the_load() {
+    let scratch = Scratch::new();
+    scratch.add(&paths(0, 3));
+    // A PDF whose part is not labelled as a page cannot be exported.
+    let conn = scratch.conn();
+    conn.execute(
+        "UPDATE extracts SET reader = 'pdf' WHERE file_id = (SELECT MIN(id) FROM files)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE contents SET label = 'cover' WHERE file_id = (SELECT MIN(id) FROM files)",
+        [],
+    )
+    .unwrap();
+    let things = scratch.machine();
+    let state = scratch.read_once(&things);
+    assert!(
+        matches!(&state, State::Failed { step: Step::Export, said } if said.contains("not \"page N\"")),
+        "{state:?}"
+    );
+    assert_eq!(
+        (scratch.runs(Piece::Extract), scratch.runs(Piece::Load)),
+        (0, 0)
+    );
+    assert!(!scratch.work().exists());
+
+    let scratch = Scratch::new();
+    scratch.add(&paths(0, 3));
+    scratch.tell(Piece::Extract, "exit", "2");
+    scratch.tell(
+        Piece::Extract,
+        "say",
+        "m1a-extract: index.json: bad format\n",
+    );
+    let things = scratch.machine();
+    let state = scratch.read_once(&things);
+    assert_eq!(
+        state,
+        State::Failed {
+            step: Step::Extract,
+            said: "exited with code 2: m1a-extract: index.json: bad format".into()
+        }
+    );
+    assert_eq!(
+        (scratch.runs(Piece::Extract), scratch.runs(Piece::Load)),
+        (1, 0)
+    );
+    assert!(!scratch.work().exists());
+    assert!(!scratch.fingerprint_file().exists());
+}
+
+// --- R4: quitting ---
+
+#[test]
+fn r4_quitting_during_each_step_ends_the_reading_and_its_thread() {
+    for step in [Step::Export, Step::Extract, Step::Load] {
+        let scratch = Scratch::new();
+        scratch.add(&paths(0, 3));
+        let things = scratch.machine();
+        scratch.read_once(&things);
+        let recorded = fs::read(scratch.fingerprint_file()).unwrap();
+        scratch.add(&paths(3, 1));
+        let driver = things.drive().expect("a thread");
+        let holder = match step {
+            Step::Export => None,
+            Step::Extract => Some(Piece::Extract),
+            Step::Load => Some(Piece::Load),
+        };
+        match holder {
+            None => scratch.stop_after_export.store(true, Ordering::SeqCst),
+            Some(piece) => scratch.tell(piece, "hold", ""),
+        }
+        things.read_again();
+        let pids = holder.map(|piece| holding(&scratch, piece));
+        if pids.is_some() {
+            scratch.runner.stop();
+        }
+        join(driver);
+        let state = things.state();
+        assert!(matches!(state, State::Failed { .. }), "{step:?}: {state:?}");
+        if let Some((tool, child)) = pids {
+            all_gone(&[tool, child]);
+        }
+        assert_eq!(
+            fs::read(scratch.fingerprint_file()).unwrap(),
+            recorded,
+            "{step:?}: the fingerprint is unchanged"
+        );
+        assert!(!scratch.work().exists(), "{step:?}");
+        let runs = (scratch.runs(Piece::Extract), scratch.runs(Piece::Load));
+        things.read_again();
+        scratch.pass(&things, QUIET);
+        assert_eq!(
+            (scratch.runs(Piece::Extract), scratch.runs(Piece::Load)),
+            runs,
+            "{step:?}: nothing more starts"
+        );
+        let expected = match step {
+            Step::Export => (1, 1),
+            Step::Extract => (2, 1),
+            Step::Load => (2, 2),
+        };
+        assert_eq!(runs, expected, "{step:?}: no step after the one stopped");
+    }
+}
+
+#[test]
+fn r4_a_work_folder_left_by_a_killed_app_is_cleared_by_the_next_reading() {
+    let scratch = Scratch::new();
+    scratch.add(&paths(0, 3));
+    fs::create_dir_all(scratch.work().join("text")).unwrap();
+    fs::write(scratch.work().join("text").join("old-0000.json"), "{}").unwrap();
+    fs::write(scratch.work().join("run.json"), "{}").unwrap();
+    let things = scratch.machine();
+    assert!(is_read(&scratch.read_once(&things)), "{:?}", things.state());
+    assert_eq!(
+        scratch.noted(Piece::Extract, "work.1").unwrap(),
+        "text\n",
+        "no old run beside the text set"
+    );
+    assert_eq!(scratch.exported(1).len(), 3);
+    assert!(!scratch.work().exists());
+}
+
+// --- R5: what the app is given ---
+
+#[test]
+fn r5_with_the_tools_missing_nothing_runs_and_no_work_folder_is_made() {
+    let scratch = Scratch::new();
+    scratch.add(&paths(0, 3));
+    let missing = scratch.dir.path().join("no tools");
+    let why = Tools::find(&missing).unwrap_err();
+    let things = Things::new(Setup {
+        tools: Err(why.clone()),
+        ..scratch.setup()
+    });
+    assert!(things.drive().is_none(), "no thread");
+    let state = State::NoTools {
+        said: why.to_string(),
+    };
+    assert_eq!(things.state(), state);
+    things.changed();
+    things.read_again();
+    scratch.pass(&things, QUIET * 2);
+    assert_eq!(things.state(), state);
+    assert!(!scratch.work().exists() && !scratch.fingerprint_file().exists());
+    assert!(scratch.seen.all().is_empty(), "nothing to tell");
+}
+
+#[test]
+fn r5_the_state_goes_to_the_screen_tagged() {
+    let shown = |state: State| serde_json::to_value(state).unwrap();
+    assert_eq!(
+        shown(State::Reading {
+            step: Step::Load,
+            owed: true
+        }),
+        serde_json::json!({"state": "reading", "step": "load", "owed": true})
+    );
+    assert_eq!(
+        shown(State::Read {
+            when: WALL,
+            documents: 3,
+            turned_down: 1
+        }),
+        serde_json::json!({"state": "read", "when": WALL, "documents": 3, "turned_down": 1})
+    );
+    assert_eq!(
+        shown(State::Failed {
+            step: Step::Extract,
+            said: "x".into()
+        }),
+        serde_json::json!({"state": "failed", "step": "extract", "said": "x"})
+    );
+    assert_eq!(
+        shown(State::Waiting { owed: false }),
+        serde_json::json!({"state": "waiting", "owed": false})
+    );
+    assert_eq!(
+        shown(State::NoTools { said: "x".into() }),
+        serde_json::json!({"state": "no_tools", "said": "x"})
+    );
+    assert_eq!(shown(State::Idle), serde_json::json!({"state": "idle"}));
+}
+
+#[test]
+fn r5_nothing_waiting_only_when_the_queue_is_empty() {
+    let scratch = Scratch::new();
+    scratch.add(&paths(0, 1));
+    assert!(nothing_waiting(&scratch.data.index()));
+    scratch.conn().execute("INSERT INTO extract_queue (file_id, priority, modified, size, attempts) SELECT id, 0, 0, 0, 0 FROM files", []).unwrap();
+    assert!(!nothing_waiting(&scratch.data.index()));
+    assert!(
+        !nothing_waiting(&scratch.dir.path().join("no index.db")),
+        "no index: not idle"
+    );
+}
+
+// A source guard: it reads app.rs as text. What the machine does is proven
+// by the tests above; this catches the wiring coming undone.
+#[test]
+fn source_guard_the_app_feeds_the_machine_and_registers_its_two_commands() {
+    let app = include_str!("app.rs");
+    let start = app
+        .find("tauri::generate_handler![")
+        .expect("one handler list");
+    let handler = &app[start..start + app[start..].find(']').unwrap()];
+    let registered: Vec<&str> = handler
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|w| !w.is_empty())
+        .collect();
+    for (command, signature) in [
+        (
+            "things_state",
+            "fn things_state(things: State<Things>) -> things::State {\n    things.state()\n}",
+        ),
+        (
+            "read_again",
+            "fn read_again(things: State<Things>) {\n    things.read_again();\n}",
+        ),
+    ] {
+        assert_eq!(
+            registered.iter().filter(|&&w| w == command).count(),
+            1,
+            "{command} is registered once"
+        );
+        assert_eq!(
+            app.matches(&format!("#[tauri::command]\n{signature}"))
+                .count(),
+            1,
+            "{command}: {signature}"
+        );
+    }
+    assert_eq!(app.matches("Things::start(").count(), 1, "one machine");
+    assert_eq!(
+        app.matches("tools: app.state::<Result<Tools, NotFound>>().inner().clone(),")
+            .count(),
+        1,
+        "given the tools looked for"
+    );
+    assert_eq!(
+        app.matches("runner.state::<Runner>().run(program, args, time)")
+            .count(),
+        1,
+        "the tools run through the app's runner"
+    );
+    assert_eq!(
+        app.matches("idle: Arc::new(move || scans.idle() && things::nothing_waiting(&queue)),")
+            .count(),
+        1
+    );
+    assert_eq!(
+        app.matches("let _ = told.emit(\"things-state\", state);")
+            .count(),
+        1,
+        "each change goes to the screen"
+    );
+    assert_eq!(app.matches("app.manage(things.clone());").count(), 1);
+    let at = |text: &str| {
+        app.find(text)
+            .unwrap_or_else(|| panic!("app.rs has {text}"))
+    };
+    assert!(
+        at("Things::start(") < at("Worker::start("),
+        "made before the reader of files reports"
+    );
+    let progress = &app[at("on_progress: Arc::new(")..at("..WorkerOptions::default()")];
+    assert!(
+        progress.contains("read.changed();"),
+        "the reader of files feeds it: {progress}"
+    );
+    let watched = &app[at("Watch::start(")..at(".map_err(|e| log::warn!(\"watching for changes")];
+    assert!(
+        watched.contains("things.changed();"),
+        "the watcher feeds it"
+    );
+    let events = &app[at("fn folder_event(")..at("pub fn run()")];
+    assert!(events.ends_with("    if let Some(things) = app.try_state::<Things>() {\n        things.changed();\n    }\n}\n\n"), "every scan and removal event feeds it");
+    let exit = &app[at("if let RunEvent::Exit = event {")..];
+    assert!(exit.contains("app.state::<Runner>().stop();\n            if let Some(things) = app.try_state::<Things>() {\n                things.stop();"), "quitting stops it");
+    assert_eq!(
+        app.matches(".changed()").count(),
+        3,
+        "only notes: the callbacks never wait for a reading"
+    );
+}
+
+// --- R6: with the real tools ---
+
+/// The tools SIFS_TOOLS_DIR names. Unset, the test says so by name and
+/// passes.
+fn real_tools(test: &str) -> Option<Tools> {
+    let Some(folder) = std::env::var_os(crate::tools::TOOLS_DIR_VAR) else {
+        eprintln!(
+            "{test}: NOT RUN, {} is not set",
+            crate::tools::TOOLS_DIR_VAR
+        );
+        return None;
+    };
+    Some(Tools::find(Path::new(&folder)).unwrap_or_else(|reason| panic!("{reason}")))
+}
+
+/// Indexes folder and reads inside its files, as the app does.
+fn index_folder(db: &Path, folder: &Path, home: &Path) {
+    use crate::extract::{store, worker::run_until_empty, Registry, WorkerOptions};
+    use crate::index::{crawl::scan, ignore::Rules};
+    let mut index = Index::open(db).unwrap();
+    let registry = Registry::platform();
+    store::register_kinds(&mut index, &registry).unwrap();
+    let rules = Rules::new(&Rules::default_patterns(), home.to_str().unwrap()).unwrap();
+    scan(&mut index, folder.to_str().unwrap(), &rules, |_| {}).unwrap();
+    let stats = run_until_empty(&mut index, &registry, &WorkerOptions::default()).unwrap();
+    assert!(stats.errors.is_empty(), "{:?}", stats.errors);
+}
+
+fn folder_size(folder: &Path) -> u64 {
+    walkdir::WalkDir::new(folder)
+        .into_iter()
+        .filter_map(|e| e.ok()?.metadata().ok())
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
+        .sum()
+}
+
+#[test]
+fn r6_with_the_real_tools_the_store_follows_the_files() {
+    let Some(tools) = real_tools("r6_with_the_real_tools_the_store_follows_the_files") else {
+        return;
+    };
+    let scratch = Scratch::new();
+    let files = scratch.dir.path().join("my files");
+    fs::create_dir_all(&files).unwrap();
+    let sample = Path::new(env!("CARGO_MANIFEST_DIR")).join("../sample/files");
+    for entry in fs::read_dir(&sample).unwrap() {
+        let entry = entry.unwrap();
+        fs::copy(entry.path(), files.join(entry.file_name())).unwrap();
+    }
+    let home = scratch.dir.path().join("home");
+    let started = Instant::now();
+    index_folder(&scratch.data.index(), &files, &home);
+    eprintln!("r6: index built in {} ms", started.elapsed().as_millis());
+    // Each loader line, and the largest the work folder grew.
+    let lines: Arc<Mutex<Vec<serde_json::Value>>> = Arc::default();
+    let largest: Arc<Mutex<u64>> = Arc::default();
+    let (runner, l, w, work) = (
+        scratch.runner.clone(),
+        lines.clone(),
+        largest.clone(),
+        scratch.work(),
+    );
+    let timed: Arc<Mutex<Vec<(State, Instant)>>> = Arc::default();
+    let t = timed.clone();
+    let things = Things::new(Setup {
+        tools: Ok(tools.clone()),
+        run: Arc::new(move |program, args, time| {
+            if program.ends_with(Piece::Load.name()) {
+                let mut largest = w.lock().unwrap();
+                *largest = (*largest).max(folder_size(&work));
+            }
+            let ran = runner.run(program, args, time);
+            if let Ran::Finished { stdout, .. } = &ran {
+                if program.ends_with(Piece::Load.name()) {
+                    l.lock()
+                        .unwrap()
+                        .push(serde_json::from_slice(stdout).unwrap());
+                }
+            }
+            ran
+        }),
+        idle: Arc::new(|| true),
+        on_change: Arc::new(move |state| t.lock().unwrap().push((state.clone(), Instant::now()))),
+        ..scratch.setup()
+    });
+    let things_in_store = || {
+        let answer = crate::reader::ask(
+            &scratch.runner,
+            &Ok(tools.clone()),
+            &scratch.data,
+            &crate::reader::Question::Kinds,
+        )
+        .unwrap();
+        let kinds: serde_json::Value = serde_json::from_str(answer.as_str()).unwrap();
+        kinds["kinds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|k| k["count"].as_u64().unwrap())
+            .sum::<u64>()
+    };
+    let step_times = |timed: &[(State, Instant)]| -> Vec<u128> {
+        let at =
+            |want: &dyn Fn(&State) -> bool| timed.iter().rev().find(|(s, _)| want(s)).unwrap().1;
+        let export = at(&|s| {
+            matches!(
+                s,
+                State::Reading {
+                    step: Step::Export,
+                    ..
+                }
+            )
+        });
+        let extract = at(&|s| {
+            matches!(
+                s,
+                State::Reading {
+                    step: Step::Extract,
+                    ..
+                }
+            )
+        });
+        let load = at(&|s| {
+            matches!(
+                s,
+                State::Reading {
+                    step: Step::Load,
+                    ..
+                }
+            )
+        });
+        let done = at(&|s| is_read(s));
+        vec![
+            (extract - export).as_millis(),
+            (load - extract).as_millis(),
+            (done - load).as_millis(),
+        ]
+    };
+
+    let state = scratch.read_once(&things);
+    let State::Read {
+        documents,
+        turned_down: 0,
+        ..
+    } = state
+    else {
+        panic!("{state:?}")
+    };
+    assert!(documents > 30, "{documents}");
+    let total = things_in_store();
+    assert!(total > documents as u64, "the store holds things: {total}");
+    eprintln!(
+        "r6: first reading of {documents} documents, export/extract/load ms {:?}, work folder at most {} bytes, index {} bytes",
+        step_times(&timed.lock().unwrap()),
+        largest.lock().unwrap(),
+        fs::metadata(scratch.data.index()).unwrap().len()
+    );
+
+    // The extractor writes a document only for a file it found something in.
+    let stored = lines.lock().unwrap()[0]["documents"]["written"]
+        .as_u64()
+        .unwrap();
+    assert!(stored > 30 && stored <= documents as u64, "{stored}");
+
+    scratch.read_once(&things);
+    assert_eq!(
+        lines.lock().unwrap().len(),
+        1,
+        "nothing changed: the loader did not run"
+    );
+
+    things.read_again();
+    things.tick();
+    let line = lines.lock().unwrap()[1].clone();
+    assert_eq!(
+        line["documents"],
+        serde_json::json!({"written": 0, "unchanged": stored, "removed": 0}),
+        "{line}"
+    );
+    eprintln!(
+        "r6: read again, export/extract/load ms {:?}",
+        step_times(&timed.lock().unwrap())
+    );
+
+    for name in [
+        "kalpit-statement-a.pdf",
+        "passport-rohan.pdf",
+        "rent-receipt-october.pdf",
+    ] {
+        fs::remove_file(files.join(name)).unwrap();
+    }
+    index_folder(&scratch.data.index(), &files, &home);
+    let state = scratch.read_once(&things);
+    assert!(
+        matches!(state, State::Read { documents: d, .. } if d == documents - 3),
+        "{state:?}"
+    );
+    let line = lines.lock().unwrap()[2].clone();
+    assert_eq!(
+        line["documents"],
+        serde_json::json!({"written": 0, "unchanged": stored - 3, "removed": 3}),
+        "{line}"
+    );
+    assert!(
+        things_in_store() < total,
+        "what only those files gave is gone"
+    );
+    eprintln!(
+        "r6: three files removed, export/extract/load ms {:?}",
+        step_times(&timed.lock().unwrap())
+    );
 }

@@ -10,6 +10,7 @@ use crate::index::search::{self, Hit};
 use crate::index::stop::Until;
 use crate::index::watch::Watch;
 use crate::reader::{self, NoAnswer, Question, Unopened};
+use crate::things::{self, Limits, SystemClock, Things};
 use crate::tools::{self, NotFound, Runner, Tools};
 use serde::Serialize;
 use std::sync::atomic::AtomicU64;
@@ -227,13 +228,28 @@ async fn open_source(app: AppHandle, record: String) -> Result<(), Unopened> {
     open_file(&app, &path).map_err(|said| Unopened::CouldNotOpen { said })
 }
 
+/// The store of things: whether it is being read, and how the last reading
+/// went. The event things-state carries each change.
+#[tauri::command]
+fn things_state(things: State<Things>) -> things::State {
+    things.state()
+}
+
+/// Reads the files into the store as soon as the index is idle, even if
+/// nothing changed.
+#[tauri::command]
+fn read_again(things: State<Things>) {
+    things.read_again();
+}
+
 #[tauri::command]
 fn reveal_path(app: AppHandle, path: String) -> Result<(), String> {
     app.opener().reveal_item_in_dir(path).map_err(err)
 }
 
-/// Passes the background scans' and removals' news on to the window, and
-/// wakes the reader of files when a scan ends (it waits for scans).
+/// Passes the background scans' and removals' news on to the window, wakes
+/// the reader of files when a scan ends (it waits for scans), and tells the
+/// store of things that the index changed.
 fn folder_event(app: &AppHandle, reading: &OnceLock<Waker>, event: Event) {
     match event {
         Event::Progress { root, indexed } => {
@@ -252,6 +268,9 @@ fn folder_event(app: &AppHandle, reading: &OnceLock<Waker>, event: Event) {
     }
     if let Some(reading) = reading.get() {
         reading.wake();
+    }
+    if let Some(things) = app.try_state::<Things>() {
+        things.changed();
     }
 }
 
@@ -280,13 +299,31 @@ pub fn run() {
             let folders = Folders::new(db_path.clone(), home.clone(), Duration::from_secs(5), move |event| {
                 folder_event(&handle, &woken, event)
             });
-            let (busy, progress) = (folders.clone(), app.handle().clone());
+            // Made after the tools were looked for. It reads the index into
+            // the store only while the reader of files has nothing waiting
+            // and no scan or removal runs.
+            let (runner, scans, queue, told) = (app.handle().clone(), folders.clone(), db_path.clone(), app.handle().clone());
+            let things = Things::start(things::Setup {
+                data: data.clone(),
+                tools: app.state::<Result<Tools, NotFound>>().inner().clone(),
+                run: Arc::new(move |program, args, time| runner.state::<Runner>().run(program, args, time)),
+                idle: Arc::new(move || scans.idle() && things::nothing_waiting(&queue)),
+                clock: Arc::new(SystemClock),
+                quiet: things::QUIET,
+                limits: Limits::default(),
+                on_change: Arc::new(move |state| {
+                    let _ = told.emit("things-state", state);
+                }),
+            });
+            app.manage(things.clone());
+            let (busy, progress, read) = (folders.clone(), app.handle().clone(), things.clone());
             let worker = Worker::start(
                 db_path.clone(),
                 registry,
                 WorkerOptions {
                     pause: Arc::new(move || busy.is_scanning()),
                     on_progress: Arc::new(move |p: &extract::Progress| {
+                        read.changed();
                         let _ = progress.emit("extract-progress", p);
                     }),
                     ..WorkerOptions::default()
@@ -300,6 +337,7 @@ pub fn run() {
                 if applied > 0 {
                     let _ = handle.emit("index-changed", applied);
                     reading.wake();
+                    things.changed();
                 }
             })
             .map_err(|e| log::warn!("watching for changes: {e:#}"))
@@ -360,7 +398,9 @@ pub fn run() {
             reader_kinds,
             reader_find,
             reader_page,
-            open_source
+            open_source,
+            things_state,
+            read_again
         ])
         .build(tauri::generate_context!())
         .expect("error while building SIFS");
@@ -383,6 +423,9 @@ pub fn run() {
     app.run(|app, event| {
         if let RunEvent::Exit = event {
             app.state::<Runner>().stop();
+            if let Some(things) = app.try_state::<Things>() {
+                things.stop();
+            }
         }
     });
 }
