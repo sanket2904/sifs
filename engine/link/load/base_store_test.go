@@ -119,11 +119,12 @@ func baseModule() *schema.ModuleDef {
 	return m
 }
 
-// asBase is a document's facts as sifs-load wrote them at 6c6f1d6: a bank
-// code is a number with the id, type, links and printed text of one; an
-// organisation has no institution code; a statement has no period; a
-// passport has no expiry day; a date is the string format 3 gives, and an
-// expiry the run cannot tell is the word `cannot-tell`.
+// asBase is a document's facts as sifs-load wrote them at 6c6f1d6: a
+// document has no file name or folder; a bank code is a number with the id,
+// type, links and printed text of one; an organisation has no institution
+// code; a statement has no period; a passport has no expiry day; a date is
+// the string format 3 gives, and an expiry the run cannot tell is the word
+// `cannot-tell`.
 func asBase(facts interpreter.RecordFacts) interpreter.RecordFacts {
 	var pairs []string
 	for _, e := range facts.Entities {
@@ -140,6 +141,8 @@ func asBase(facts interpreter.RecordFacts) interpreter.RecordFacts {
 	for i := range facts.Entities {
 		e := &facts.Entities[i]
 		switch e.TypeID {
+		case pack.Document:
+			e.Attributes = withoutFile(e.Attributes)
 		case pack.BankCode:
 			e.ID, e.TypeID = old.Replace(e.ID), pack.Identifier
 			e.Attributes = map[string]any{pack.Kind: e.Attributes[pack.Kind], pack.Value: e.Attributes[pack.Code]}

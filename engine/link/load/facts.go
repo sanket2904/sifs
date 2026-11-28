@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -81,7 +82,7 @@ func checkRefs(doc extract.DocOut) error {
 // organisation holds, as printed, the text of each of this document's
 // mentions of it: what this document prints for that key, nothing more.
 func Facts(doc extract.DocOut, cards map[string]extract.Card) interpreter.RecordFacts {
-	f := newFacts(doc.ID, cards)
+	f := newFacts(doc.ID, doc.File, cards)
 	for _, m := range doc.Orgs {
 		if m.Org != nil {
 			f.printed[*m.Org] = append(f.printed[*m.Org], m.Span.Text)
@@ -231,10 +232,23 @@ func (c *claim) tier() extract.Tier {
 	return tier
 }
 
-func newFacts(docID string, cards map[string]extract.Card) *facts {
+func newFacts(docID, filePath string, cards map[string]extract.Card) *facts {
 	f := &facts{docID: docID, cards: cards, printed: map[string][]string{}, entities: map[string]ontology.ObservedEntity{}, relations: map[string]ontology.ObservedRelation{}, claims: map[string]*claim{}}
-	f.doc = f.entity(DocumentPrefix+docID, pack.Document, nil)
+	f.doc = f.entity(DocumentPrefix+docID, pack.Document, file(filePath))
 	return f
+}
+
+// file is a document's file name and, when the file is in a folder, that
+// folder, from a format 3 path with "/" between its parts.
+func file(p string) map[string]any {
+	if p == "" {
+		return nil
+	}
+	attrs := map[string]any{pack.FileName: path.Base(p)}
+	if dir := path.Dir(p); dir != "." {
+		attrs[pack.Folder] = dir
+	}
+	return attrs
 }
 
 // DocumentPrefix starts the id of every document's thing.

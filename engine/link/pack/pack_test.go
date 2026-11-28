@@ -44,15 +44,15 @@ func eq[T any](t *testing.T, what string, got, want T) {
 	}
 }
 
-// How each kind of thing is shown and found. A document has no attribute
-// in format 3, so nothing can title it; a statement is titled by its
-// period.
+// How each kind of thing is shown and found. A document is titled and
+// found by its file's name, with its folder as its subtitle; a statement is
+// titled by its period.
 var things = map[string]struct {
 	collection      ontology.Collection
 	title, subtitle []string
 	names           []string
 }{
-	pack.Document:     {collection: ontology.CollectionDocuments},
+	pack.Document:     {ontology.CollectionDocuments, []string{pack.FileName}, []string{pack.Folder}, []string{pack.FileName}},
 	pack.Organisation: {ontology.CollectionOrganisations, []string{pack.Name, pack.Printed, pack.Institution}, []string{pack.Printed}, []string{pack.Name, pack.Printed, pack.Institution}},
 	pack.Identifier:   {ontology.CollectionAccounts, []string{pack.Value}, []string{pack.Kind}, []string{pack.Value}},
 	pack.BankCode:     {ontology.CollectionOrganisations, []string{pack.Code}, []string{pack.Kind}, []string{pack.Code}},

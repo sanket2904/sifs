@@ -44,7 +44,7 @@
                 "thing": {
                   "id": "document:abn-amro-statement",
                   "type": "files.Document",
-                  "title": "document:abn-amro-statement"
+                  "title": "rekeningafschrift-aug.pdf"
                 }
               },
               {
@@ -92,7 +92,7 @@
                 "thing": {
                   "id": "document:abn-amro-statement",
                   "type": "files.Document",
-                  "title": "document:abn-amro-statement"
+                  "title": "rekeningafschrift-aug.pdf"
                 }
               }
             ],
@@ -265,7 +265,7 @@
                 "thing": {
                   "id": "document:abn-amro-statement",
                   "type": "files.Document",
-                  "title": "document:abn-amro-statement"
+                  "title": "rekeningafschrift-aug.pdf"
                 }
               }
             ],
@@ -365,7 +365,7 @@
                 "thing": {
                   "id": "document:commerzbank-kontoauszug",
                   "type": "files.Document",
-                  "title": "document:commerzbank-kontoauszug"
+                  "title": "kontoauszug-oktober.pdf"
                 }
               }
             ],
@@ -404,7 +404,7 @@
                 "thing": {
                   "id": "document:commerzbank-kontoauszug",
                   "type": "files.Document",
-                  "title": "document:commerzbank-kontoauszug"
+                  "title": "kontoauszug-oktober.pdf"
                 }
               },
               {
@@ -446,7 +446,7 @@
                 "thing": {
                   "id": "document:commerzbank-kontoauszug",
                   "type": "files.Document",
-                  "title": "document:commerzbank-kontoauszug"
+                  "title": "kontoauszug-oktober.pdf"
                 }
               },
               {
@@ -593,7 +593,7 @@
                 "thing": {
                   "id": "document:passport-bad-mrz",
                   "type": "files.Document",
-                  "title": "document:passport-bad-mrz"
+                  "title": "passport-eriksson.pdf"
                 }
               }
             ],
