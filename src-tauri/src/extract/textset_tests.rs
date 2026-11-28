@@ -223,6 +223,82 @@ fn ids_are_stable_distinct_and_plain() {
     assert!(doc_id("取引明細.pdf", "/r/x").starts_with("file-"));
 }
 
+// --- T5: a document gives its file's full path ---
+
+/// Paths as the index holds them, each beside the `file` its document must
+/// give. The names are kept in the Unicode form they were stored in: one
+/// folder is decomposed (e + U+0301, as HFS+ stores names), one composed.
+const PATHS: [(&str, &str); 11] = [
+    ("/Users/ana/Tax Papers/2031/return.pdf", "/Users/ana/Tax Papers/2031/return.pdf"),
+    ("/Users/ana/Gene\u{301}ve/bail.pdf", "/Users/ana/Gene\u{301}ve/bail.pdf"),
+    ("/Users/ana/Gen\u{e8}ve/bail.pdf", "/Users/ana/Gen\u{e8}ve/bail.pdf"),
+    ("/Users/ana/Receipts #12/till.txt", "/Users/ana/Receipts #12/till.txt"),
+    ("/Users/ana/100% done/notes.txt", "/Users/ana/100% done/notes.txt"),
+    ("/Users/ana/Ana's \"best\" files/list.txt", "/Users/ana/Ana's \"best\" files/list.txt"),
+    ("/Users/ana/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/deep.txt", "/Users/ana/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/deep.txt"),
+    ("/Volumes/Backup/scan 2031.pdf", "/Volumes/Backup/scan 2031.pdf"),
+    ("/Users/ana/Inbox/back\\slash.txt", "/Users/ana/Inbox/back\\slash.txt"),
+    ("/top.txt", "/top.txt"),
+    ("/Users/ana/Banks/statement.pdf", "/Users/ana/Banks/statement.pdf"),
+];
+
+/// Each exported document's `file`, by its id.
+fn files_by_id(out: &Path) -> BTreeMap<String, String> {
+    let index = read_json(&out.join("index.json"));
+    index["documents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|id| {
+            let id = id.as_str().unwrap();
+            let doc = read_json(&out.join(format!("{id}.json")));
+            (id.to_string(), doc["file"].as_str().unwrap().to_string())
+        })
+        .collect()
+}
+
+#[test]
+fn each_document_gives_its_files_full_path() {
+    let db = db();
+    for (path, _) in PATHS {
+        db.add(path, "text", "done", &[("", "x")], &[]);
+    }
+    export(&db.path, &db.out("one"), "2026-11-22").unwrap();
+    let got = files_by_id(&db.out("one"));
+    let want: BTreeMap<String, String> = PATHS
+        .iter()
+        .map(|(path, file)| (doc_id(path.rsplit('/').next().unwrap(), path), file.to_string()))
+        .collect();
+    assert_eq!(got, want);
+}
+
+#[test]
+fn two_files_of_one_name_are_two_documents() {
+    let db = db();
+    db.add("/Users/ana/Banks/statement.pdf", "text", "done", &[("", "one")], &[]);
+    db.add("/Users/ana/Old Banks/statement.pdf", "text", "done", &[("", "two")], &[]);
+    export(&db.path, &db.out("one"), "2026-11-22").unwrap();
+    assert_eq!(
+        files_by_id(&db.out("one")),
+        BTreeMap::from([
+            ("statement-de21a520cd1150b5".to_string(), "/Users/ana/Banks/statement.pdf".to_string()),
+            ("statement-e1895903ccfebd18".to_string(), "/Users/ana/Old Banks/statement.pdf".to_string()),
+        ])
+    );
+}
+
+/// The ids written before a document gave its path, pinned: a person's
+/// documents keep their ids.
+#[test]
+fn ids_are_as_before_the_path_was_given() {
+    let db = db();
+    for path in ["/Users/ana/Banks/statement.pdf", "/Users/ana/Old Banks/statement.pdf", "/Volumes/Backup/scan 2031.pdf"] {
+        db.add(path, "text", "done", &[("", "x")], &[]);
+    }
+    let exported = export(&db.path, &db.out("one"), "2026-11-22").unwrap();
+    assert_eq!(exported.documents, ["statement-de21a520cd1150b5", "statement-e1895903ccfebd18", "scan-2031-aec8d8326d234c02"]);
+}
+
 // --- T2: parts to pages ---
 
 #[test]
