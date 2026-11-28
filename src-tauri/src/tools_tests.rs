@@ -474,3 +474,94 @@ fn source_guard_the_app_looks_for_the_tools_once_and_stops_them_on_exit() {
     assert!(at("tools::look(") < at("app.manage(tools)"), "what was found is kept");
     assert!(at("app.manage(tools)") < at("app.run("), "before the app runs");
 }
+
+/// The tools SIFS_TOOLS_DIR names, for the tests that run the real ones.
+/// Unset, the test says so by name and passes.
+fn real_tools(test: &str) -> Option<Tools> {
+    let Some(folder) = std::env::var_os(TOOLS_DIR_VAR) else {
+        eprintln!("{test}: NOT RUN, {TOOLS_DIR_VAR} is not set");
+        return None;
+    };
+    Some(Tools::find(Path::new(&folder)).unwrap_or_else(|reason| panic!("{reason}")))
+}
+
+const SAMPLE_RUN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../sample/runs/go-m1a-on-text.json");
+const REAL_TIME: Duration = Duration::from_secs(120);
+
+/// The output with its timing field zeroed, the one part that differs from
+/// run to run.
+fn untimed(output: &[u8]) -> String {
+    let timing = regex::Regex::new(r#""(load|query)_ms":\d+"#).unwrap();
+    timing.replace_all(&String::from_utf8_lossy(output), "\"${1}_ms\":0").into_owned()
+}
+
+fn load_args(data: &Path) -> [&OsStr; 4] {
+    [OsStr::new("--run"), OsStr::new(SAMPLE_RUN), OsStr::new("--data-dir"), data.as_os_str()]
+}
+
+fn directly(program: &Path, args: &[&OsStr]) -> std::process::Output {
+    Command::new(program).args(args).stdin(Stdio::null()).output().unwrap()
+}
+
+#[test]
+fn real_tools_print_through_the_runner_what_they_print_run_directly() {
+    let Some(tools) = real_tools("real_tools_print_through_the_runner_what_they_print_run_directly") else {
+        return;
+    };
+    let scratch = Scratch::new();
+    let runner = Runner::default();
+    let (ours, theirs) = (scratch.0.path().join("ours"), scratch.0.path().join("theirs"));
+    let (code, loaded, _) = finished(runner.run(&tools.path(Piece::Load), load_args(&ours), REAL_TIME));
+    assert_eq!(code, 0);
+    let direct = directly(&tools.path(Piece::Load), &load_args(&theirs));
+    assert_eq!(direct.status.code(), Some(0));
+    assert_eq!(untimed(&loaded), untimed(&direct.stdout));
+
+    let show = |args: &[&str]| {
+        let mut all = vec![OsStr::new("--data-dir"), ours.as_os_str()];
+        all.extend(args.iter().map(OsStr::new));
+        let ran = finished(runner.run(&tools.path(Piece::Show), &all, REAL_TIME));
+        let direct = directly(&tools.path(Piece::Show), &all);
+        assert_eq!(ran.0, direct.status.code().unwrap(), "{args:?}");
+        assert_eq!(untimed(&ran.1), untimed(&direct.stdout), "{args:?}");
+        assert_eq!(ran.2, direct.stderr, "{args:?}");
+        ran
+    };
+    assert_eq!(show(&["--kinds"]).0, 0);
+    let (code, found, _) = show(&["--find", "Commerzbank"]);
+    assert_eq!(code, 0);
+    let found: serde_json::Value = serde_json::from_slice(&found).unwrap();
+    let id = found["groups"][0]["things"][0]["id"].as_str().expect("Commerzbank is found").to_owned();
+    assert_eq!(show(&["--page", &id]).0, 0);
+    let (code, stdout, stderr) = show(&["--page", "no-such-thing"]);
+    assert_eq!(code, 2);
+    assert!(stdout.is_empty() && !stderr.is_empty(), "the message is on standard error");
+}
+
+#[test]
+fn real_tools_stop_during_a_load_ends_it() {
+    let Some(tools) = real_tools("real_tools_stop_during_a_load_ends_it") else {
+        return;
+    };
+    let scratch = Scratch::new();
+    for attempt in 0..5 {
+        let runner = Arc::new(Runner::default());
+        let data = scratch.0.path().join(format!("data-{attempt}"));
+        let (tx, rx) = mpsc::channel();
+        let (load, aside) = (tools.path(Piece::Load), runner.clone());
+        thread::spawn(move || tx.send(aside.run(&load, load_args(&data), REAL_TIME)));
+        assert!(within(START, || !scratch.marked().is_empty() || rx.try_recv().is_ok()), "the load started");
+        if scratch.marked().is_empty() {
+            continue;
+        }
+        runner.stop();
+        let ran = rx.recv_timeout(GONE).expect("the run returned");
+        if matches!(ran, Ran::Finished { .. }) {
+            continue;
+        }
+        assert!(matches!(ran, Ran::Stopped), "{ran:?}");
+        assert!(within(GONE, || scratch.marked().is_empty()), "alive after stop: {:?}", scratch.marked());
+        return;
+    }
+    panic!("in five tries no load was still running to be stopped");
+}
