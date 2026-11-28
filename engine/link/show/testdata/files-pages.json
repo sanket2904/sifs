@@ -133,6 +133,157 @@
         ]
       },
       {
+        "link": "files.ProbablyLatestStatement",
+        "role": "files.ProbablyLatestStatement:account",
+        "label": "Probably the latest statement",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.ProbablyLatestStatement:statement",
+                "label": "Statement",
+                "thing": {
+                  "id": "statement:abn-amro-statement",
+                  "type": "files.Statement",
+                  "title": "2026-08-01 to 2026-08-31"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [],
+            "proof": {
+              "fact": "Probably the latest statement: Statement 2026-08-01 to 2026-08-31, Account ••••••••••••••4300",
+              "status": "derived",
+              "rule": "files.probably-latest-statement",
+              "claim": {
+                "test": "link",
+                "link": "files.ProbablyLatestStatement",
+                "link_label": "Probably the latest statement",
+                "ends": [
+                  {
+                    "role": "files.ProbablyLatestStatement:statement",
+                    "label": "Statement",
+                    "thing": {
+                      "id": "statement:abn-amro-statement",
+                      "type": "files.Statement",
+                      "title": "2026-08-01 to 2026-08-31"
+                    }
+                  },
+                  {
+                    "role": "files.ProbablyLatestStatement:account",
+                    "label": "Account",
+                    "thing": {
+                      "id": "identifier:2288ef2e20318bbd",
+                      "type": "files.Identifier",
+                      "title": "••••••••••••••4300",
+                      "subtitle": "iban"
+                    }
+                  }
+                ]
+              },
+              "because": [
+                {
+                  "fact": "Statement account: Statement 2026-08-01 to 2026-08-31, Account ••••••••••••••4300",
+                  "status": "asserted",
+                  "sources": [
+                    "abn-amro-statement"
+                  ],
+                  "claim": {
+                    "test": "link",
+                    "link": "files.StatementAccount",
+                    "link_label": "Statement account",
+                    "ends": [
+                      {
+                        "role": "files.StatementAccount:statement",
+                        "label": "Statement",
+                        "thing": {
+                          "id": "statement:abn-amro-statement",
+                          "type": "files.Statement",
+                          "title": "2026-08-01 to 2026-08-31"
+                        }
+                      },
+                      {
+                        "role": "files.StatementAccount:account",
+                        "label": "Account",
+                        "thing": {
+                          "id": "identifier:2288ef2e20318bbd",
+                          "type": "files.Identifier",
+                          "title": "••••••••••••••4300",
+                          "subtitle": "iban"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "fact": "2026-08-01 to 2026-08-31 Period tier likely",
+                  "status": "asserted",
+                  "sources": [
+                    "abn-amro-statement"
+                  ]
+                },
+                {
+                  "fact": "2026-08-01 to 2026-08-31 has To",
+                  "status": "asserted",
+                  "sources": [
+                    "abn-amro-statement"
+                  ],
+                  "claim": {
+                    "test": "has",
+                    "attribute": "files.to",
+                    "label": "To"
+                  }
+                }
+              ],
+              "ruled_out": [
+                {
+                  "line": "and no: A later statement exists (for ••••••••••••••4300, 2026-08-01 to 2026-08-31)",
+                  "claim": {
+                    "test": "link",
+                    "link": "files.LaterStatement",
+                    "link_label": "A later statement exists"
+                  },
+                  "for": [
+                    {
+                      "id": "identifier:2288ef2e20318bbd",
+                      "type": "files.Identifier",
+                      "title": "••••••••••••••4300",
+                      "subtitle": "iban"
+                    },
+                    {
+                      "id": "statement:abn-amro-statement",
+                      "type": "files.Statement",
+                      "title": "2026-08-01 to 2026-08-31"
+                    }
+                  ]
+                },
+                {
+                  "line": "and no: Another statement's end is not known (for ••••••••••••••4300, 2026-08-01 to 2026-08-31)",
+                  "claim": {
+                    "test": "link",
+                    "link": "files.EndNotKnown",
+                    "link_label": "Another statement's end is not known"
+                  },
+                  "for": [
+                    {
+                      "id": "identifier:2288ef2e20318bbd",
+                      "type": "files.Identifier",
+                      "title": "••••••••••••••4300",
+                      "subtitle": "iban"
+                    },
+                    {
+                      "id": "statement:abn-amro-statement",
+                      "type": "files.Statement",
+                      "title": "2026-08-01 to 2026-08-31"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
         "link": "files.StatementAccount",
         "role": "files.StatementAccount:account",
         "label": "Statements",
@@ -306,6 +457,158 @@
             "sources": [
               "abn-amro-statement"
             ]
+          }
+        ]
+      },
+      {
+        "link": "files.ProbablyLatestStatement",
+        "role": "files.ProbablyLatestStatement:statement",
+        "label": "Probably the latest statement of",
+        "rows": [
+          {
+            "ends": [
+              {
+                "role": "files.ProbablyLatestStatement:account",
+                "label": "Account",
+                "thing": {
+                  "id": "identifier:2288ef2e20318bbd",
+                  "type": "files.Identifier",
+                  "title": "••••••••••••••4300",
+                  "subtitle": "iban"
+                }
+              }
+            ],
+            "attributes": [],
+            "sources": [],
+            "proof": {
+              "fact": "Probably the latest statement: Statement 2026-08-01 to 2026-08-31, Account ••••••••••••••4300",
+              "status": "derived",
+              "rule": "files.probably-latest-statement",
+              "claim": {
+                "test": "link",
+                "link": "files.ProbablyLatestStatement",
+                "link_label": "Probably the latest statement",
+                "ends": [
+                  {
+                    "role": "files.ProbablyLatestStatement:statement",
+                    "label": "Statement",
+                    "thing": {
+                      "id": "statement:abn-amro-statement",
+                      "type": "files.Statement",
+                      "title": "2026-08-01 to 2026-08-31"
+                    }
+                  },
+                  {
+                    "role": "files.ProbablyLatestStatement:account",
+                    "label": "Account",
+                    "thing": {
+                      "id": "identifier:2288ef2e20318bbd",
+                      "type": "files.Identifier",
+                      "title": "••••••••••••••4300",
+                      "subtitle": "iban"
+                    }
+                  }
+                ]
+              },
+              "because": [
+                {
+                  "fact": "Statement account: Statement 2026-08-01 to 2026-08-31, Account ••••••••••••••4300",
+                  "status": "asserted",
+                  "sources": [
+                    "abn-amro-statement"
+                  ],
+                  "claim": {
+                    "test": "link",
+                    "link": "files.StatementAccount",
+                    "link_label": "Statement account",
+                    "ends": [
+                      {
+                        "role": "files.StatementAccount:statement",
+                        "label": "Statement",
+                        "thing": {
+                          "id": "statement:abn-amro-statement",
+                          "type": "files.Statement",
+                          "title": "2026-08-01 to 2026-08-31"
+                        }
+                      },
+                      {
+                        "role": "files.StatementAccount:account",
+                        "label": "Account",
+                        "thing": {
+                          "id": "identifier:2288ef2e20318bbd",
+                          "type": "files.Identifier",
+                          "title": "••••••••••••••4300",
+                          "subtitle": "iban"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "fact": "2026-08-01 to 2026-08-31 Period tier likely",
+                  "status": "asserted",
+                  "sources": [
+                    "abn-amro-statement"
+                  ]
+                },
+                {
+                  "fact": "2026-08-01 to 2026-08-31 has To",
+                  "status": "asserted",
+                  "sources": [
+                    "abn-amro-statement"
+                  ],
+                  "claim": {
+                    "test": "has",
+                    "attribute": "files.to",
+                    "label": "To"
+                  }
+                }
+              ],
+              "ruled_out": [
+                {
+                  "line": "and no: A later statement exists (for ••••••••••••••4300, 2026-08-01 to 2026-08-31)",
+                  "claim": {
+                    "test": "link",
+                    "link": "files.LaterStatement",
+                    "link_label": "A later statement exists"
+                  },
+                  "for": [
+                    {
+                      "id": "identifier:2288ef2e20318bbd",
+                      "type": "files.Identifier",
+                      "title": "••••••••••••••4300",
+                      "subtitle": "iban"
+                    },
+                    {
+                      "id": "statement:abn-amro-statement",
+                      "type": "files.Statement",
+                      "title": "2026-08-01 to 2026-08-31"
+                    }
+                  ]
+                },
+                {
+                  "line": "and no: Another statement's end is not known (for ••••••••••••••4300, 2026-08-01 to 2026-08-31)",
+                  "claim": {
+                    "test": "link",
+                    "link": "files.EndNotKnown",
+                    "link_label": "Another statement's end is not known"
+                  },
+                  "for": [
+                    {
+                      "id": "identifier:2288ef2e20318bbd",
+                      "type": "files.Identifier",
+                      "title": "••••••••••••••4300",
+                      "subtitle": "iban"
+                    },
+                    {
+                      "id": "statement:abn-amro-statement",
+                      "type": "files.Statement",
+                      "title": "2026-08-01 to 2026-08-31"
+                    }
+                  ]
+                }
+              ]
+            }
           }
         ]
       }
