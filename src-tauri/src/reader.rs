@@ -79,9 +79,65 @@ fn shown<S: Serializer>(why: &NotFound, s: S) -> Result<S::Ok, S::Error> {
 /// Asks the reader in tools one question about the store in data, within
 /// [`TIME`].
 pub fn ask(runner: &Runner, tools: &Result<Tools, NotFound>, data: &DataDir, question: &Question) -> Result<Answer, NoAnswer> {
-    let _ = (runner, tools, data, question, Piece::Show, OsString::new());
-    let _: Option<Ran> = None;
-    todo!()
+    let tools = tools.as_ref().map_err(|why| NoAnswer::NoTools { why: why.clone() })?;
+    if let Ok(false) = data.path().join(STORE_FILE).try_exists() {
+        return Err(NoAnswer::NothingReadYet);
+    }
+    let could_not = |said: String| NoAnswer::CouldNotAnswer { said: kept(said) };
+    match runner.run(&tools.path(Piece::Show), arguments(data, question), TIME) {
+        Ran::Finished { code: 0, stdout, .. } => {
+            one_document(stdout).ok_or_else(|| could_not("the reader's answer is not one JSON document".into()))
+        }
+        Ran::Finished { code, stderr, .. } => {
+            Err(could_not(last_line(&stderr).unwrap_or_else(|| format!("the reader stopped with exit code {code}"))))
+        }
+        Ran::CouldNotStart(e) => Err(could_not(format!("the reader could not be started: {e}"))),
+        Ran::TimedOut => Err(NoAnswer::TookTooLong),
+        Ran::WroteTooMuch => Err(could_not("the reader's answer is too large".into())),
+        Ran::Stopped => Err(NoAnswer::Quitting),
+        Ran::Signalled { signal, stderr } => {
+            Err(could_not(last_line(&stderr).unwrap_or_else(|| format!("the reader ended on signal {signal}"))))
+        }
+    }
+}
+
+/// Each value is part of its flag's own argument, so no word or id can be
+/// read as a flag.
+fn arguments(data: &DataDir, question: &Question) -> [OsString; 2] {
+    let mut dir = OsString::from("--data-dir=");
+    dir.push(data.path());
+    let asked = match question {
+        Question::Kinds => "--kinds".to_string(),
+        Question::Find(words) => format!("--find={words}"),
+        Question::Page(id) => format!("--page={id}"),
+    };
+    [dir, asked.into()]
+}
+
+/// The output as it is, when it is exactly one JSON document, with
+/// whitespace around it.
+fn one_document(stdout: Vec<u8>) -> Option<Answer> {
+    let text = String::from_utf8(stdout).ok()?;
+    serde_json::from_str::<serde::de::IgnoredAny>(&text).ok()?;
+    Some(Answer(text))
+}
+
+fn last_line(stderr: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(stderr);
+    text.lines().map(str::trim_end).rfind(|line| !line.is_empty()).map(str::to_string)
+}
+
+/// At most [`SAID_KEPT`] bytes, cut at a character.
+fn kept(mut said: String) -> String {
+    if said.len() > SAID_KEPT {
+        let mut end = SAID_KEPT - '…'.len_utf8();
+        while !said.is_char_boundary(end) {
+            end -= 1;
+        }
+        said.truncate(end);
+        said.push('…');
+    }
+    said
 }
 
 /// Why a source's file is not opened.
@@ -90,13 +146,18 @@ pub fn ask(runner: &Runner, tools: &Result<Tools, NotFound>, data: &DataDir, que
 pub enum Unopened {
     /// The index holds no file read inside with this document id.
     NotFound,
-    CouldNotOpen { said: String },
+    CouldNotOpen {
+        said: String,
+    },
 }
 
 /// The path of the file the index holds for a source's document id.
 pub fn source_file(data: &DataDir, record: &str) -> Result<String, Unopened> {
-    let _ = (data, record, textset::file_of);
-    todo!()
+    match textset::file_of(&data.index(), record) {
+        Ok(Some(path)) => Ok(path),
+        Ok(None) => Err(Unopened::NotFound),
+        Err(e) => Err(Unopened::CouldNotOpen { said: kept(format!("{e:#}")) }),
+    }
 }
 
 #[cfg(test)]

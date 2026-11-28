@@ -9,11 +9,13 @@ use crate::index::ignore::Rules;
 use crate::index::search::{self, Hit};
 use crate::index::stop::Until;
 use crate::index::watch::Watch;
-use crate::tools::{self, Runner};
+use crate::reader::{self, NoAnswer, Question, Unopened};
+use crate::tools::{self, NotFound, Runner, Tools};
 use serde::Serialize;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tauri::ipc::Response;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
@@ -176,11 +178,53 @@ fn set_ignore(state: State<AppState>, patterns: Vec<String>) -> Result<(), Strin
     Ok(())
 }
 
-#[tauri::command]
-fn open_path(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
+fn open_file(app: &AppHandle, path: &str) -> Result<(), String> {
     // If it is waiting to be read inside, it is read next.
-    state.extract.opened(&path);
+    app.state::<AppState>().extract.opened(path);
     app.opener().open_path(path, None::<&str>).map_err(err)
+}
+
+#[tauri::command]
+fn open_path(app: AppHandle, path: String) -> Result<(), String> {
+    open_file(&app, &path)
+}
+
+/// Asks the engine's reader, off the main thread. The screen gets the
+/// document the reader printed, as it printed it, or why there is none.
+async fn ask(app: AppHandle, question: Question) -> Result<Response, NoAnswer> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let tools = app.state::<Result<Tools, NotFound>>();
+        reader::ask(&app.state::<Runner>(), &tools, &app.state::<DataDir>(), &question)
+    })
+    .await
+    .unwrap_or_else(|e| Err(NoAnswer::CouldNotAnswer { said: e.to_string() }))
+    .map(|answer| Response::new(answer.into_string()))
+}
+
+#[tauri::command]
+async fn reader_kinds(app: AppHandle) -> Result<Response, NoAnswer> {
+    ask(app, Question::Kinds).await
+}
+
+#[tauri::command]
+async fn reader_find(app: AppHandle, words: String) -> Result<Response, NoAnswer> {
+    ask(app, Question::Find(words)).await
+}
+
+#[tauri::command]
+async fn reader_page(app: AppHandle, id: String) -> Result<Response, NoAnswer> {
+    ask(app, Question::Page(id)).await
+}
+
+/// Opens the file the index holds for a source's document id, as open_path
+/// opens a file.
+#[tauri::command]
+async fn open_source(app: AppHandle, record: String) -> Result<(), Unopened> {
+    let data = app.state::<DataDir>().inner().clone();
+    let path = tauri::async_runtime::spawn_blocking(move || reader::source_file(&data, &record))
+        .await
+        .unwrap_or_else(|e| Err(Unopened::CouldNotOpen { said: e.to_string() }))?;
+    open_file(&app, &path).map_err(|said| Unopened::CouldNotOpen { said })
 }
 
 #[tauri::command]
@@ -312,7 +356,11 @@ pub fn run() {
             set_ignore,
             open_path,
             reveal_path,
-            content_failures
+            content_failures,
+            reader_kinds,
+            reader_find,
+            reader_page,
+            open_source
         ])
         .build(tauri::generate_context!())
         .expect("error while building SIFS");

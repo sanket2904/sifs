@@ -188,8 +188,18 @@ pub(crate) fn open_read_only(db: &Path) -> Result<Connection> {
     Ok(conn)
 }
 
+/// A file the index has read inside, before its text is taken.
+struct Listed {
+    file_id: i64,
+    path: String,
+    name: String,
+    ext: String,
+    modified: i64,
+    reader: String,
+}
+
 /// Every file the index holds what was read from, in path order.
-pub(crate) fn read_stored(conn: &Connection) -> Result<Vec<Stored>> {
+fn listed(conn: &Connection) -> Result<Vec<Listed>> {
     let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     if version < 1 {
         bail!("this index has not read inside any file (schema version {version})");
@@ -198,30 +208,50 @@ pub(crate) fn read_stored(conn: &Connection) -> Result<Vec<Stored>> {
         "SELECT f.id, f.path, f.name, f.ext, f.modified, e.reader FROM files f JOIN extracts e ON e.file_id = f.id
          WHERE e.status IN ('done', 'empty') AND {NOT_REMOVING} ORDER BY f.path"
     ))?;
-    let mut parts = conn.prepare("SELECT label, text FROM contents WHERE file_id = ?1 ORDER BY part")?;
-    let mut facts = conn.prepare("SELECT key, value FROM facts WHERE file_id = ?1 AND key IN (?2, ?3)")?;
     let rows = files.query_map([], |r| {
-        Ok((r.get::<_, i64>(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+        Ok(Listed { file_id: r.get(0)?, path: r.get(1)?, name: r.get(2)?, ext: r.get(3)?, modified: r.get(4)?, reader: r.get(5)? })
     })?;
-    let mut stored = Vec::new();
-    for row in rows {
-        let (file_id, path, name, ext, modified, reader) = row?;
-        let parts = parts
-            .query_map(params![file_id], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<rusqlite::Result<Vec<(String, String)>>>()?;
-        let (mut page_count, mut truncated) = (None, false);
-        for fact in facts.query_map(params![file_id, fact::PAGES, fact::TRUNCATED], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-        })? {
-            let (key, value) = fact?;
-            match key.as_str() {
-                fact::PAGES => page_count = value.parse().ok(),
-                _ => truncated = true,
-            }
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// What the index holds for a listed file.
+fn stored(conn: &Connection, file: Listed) -> Result<Stored> {
+    let mut parts = conn.prepare_cached("SELECT label, text FROM contents WHERE file_id = ?1 ORDER BY part")?;
+    let mut facts = conn.prepare_cached("SELECT key, value FROM facts WHERE file_id = ?1 AND key IN (?2, ?3)")?;
+    let parts = parts
+        .query_map(params![file.file_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<Vec<(String, String)>>>()?;
+    let (mut page_count, mut truncated) = (None, false);
+    for fact in facts.query_map(params![file.file_id, fact::PAGES, fact::TRUNCATED], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })? {
+        let (key, value) = fact?;
+        match key.as_str() {
+            fact::PAGES => page_count = value.parse().ok(),
+            _ => truncated = true,
         }
-        stored.push(Stored { path, name, ext, modified, reader, parts, page_count, truncated });
     }
-    Ok(stored)
+    let Listed { path, name, ext, modified, reader, .. } = file;
+    Ok(Stored { path, name, ext, modified, reader, parts, page_count, truncated })
+}
+
+/// Every file the index holds what was read from, in path order.
+pub(crate) fn read_stored(conn: &Connection) -> Result<Vec<Stored>> {
+    listed(conn)?.into_iter().map(|file| stored(conn, file)).collect()
+}
+
+/// The document a file gives, or None when it has no page.
+fn document(file: Stored) -> Result<Option<Document>> {
+    let pages = pages(&file)?;
+    Ok((!pages.is_empty()).then(|| Document {
+        id: doc_id(&file.name, &file.path),
+        file: file.path,
+        sha256: None,
+        format: file.ext,
+        lang: String::new(),
+        created: utc(file.modified),
+        pages,
+    }))
 }
 
 /// What an export wrote.
@@ -256,18 +286,7 @@ pub fn export(db: &Path, out: &Path, reference_date: &str) -> Result<Exported> {
     drop(conn);
     let mut docs = Vec::with_capacity(stored.len());
     for file in stored {
-        let pages = pages(&file)?;
-        if !pages.is_empty() {
-            docs.push(Document {
-                id: doc_id(&file.name, &file.path),
-                file: file.path,
-                sha256: None,
-                format: file.ext,
-                lang: String::new(),
-                created: utc(file.modified),
-                pages,
-            });
-        }
+        docs.extend(document(file)?);
     }
     std::fs::create_dir_all(out).with_context(|| format!("create {}", out.display()))?;
     let mut documents = Vec::with_capacity(docs.len());
@@ -282,9 +301,14 @@ pub fn export(db: &Path, out: &Path, reference_date: &str) -> Result<Exported> {
 
 /// The `file` of the document an export of the index at db writes with
 /// this id, or None when it writes none.
+/// The index is read as export reads it, but only the matching file's text.
 pub fn file_of(db: &Path, id: &str) -> Result<Option<String>> {
-    let _ = (db, id);
-    todo!()
+    let conn = open_read_only(db)?;
+    let snapshot = conn.unchecked_transaction()?;
+    let Some(file) = listed(&snapshot)?.into_iter().find(|file| doc_id(&file.name, &file.path) == id) else {
+        return Ok(None);
+    };
+    Ok(document(stored(&snapshot, file)?)?.map(|doc| doc.file))
 }
 
 /// Writes value as JSON to a file that must not exist yet: two documents
