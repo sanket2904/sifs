@@ -58,7 +58,7 @@ go run ./cmd/sifs-load --data-dir /tmp/sifs-data --counts
 It prints one line of JSON: documents written, unchanged and removed, the records the engine turned down with the engine's message, the rows of the run it left out by kind, the counts of things and links by kind, and the load time in milliseconds. A turned-down record does not stop the others, and the exit status is then 1. The first load of the committed run prints:
 
 ```json
-{"documents":{"written":41,"unchanged":0,"removed":0},"turned_down":[],"left_out":{"unused_organisations":0,"mentions_without_organisation":1,"answers":16},"things":{"Document":41,"Holder":5,"Identifier":56,"Organisation":67,"Passport":5,"Statement":14},"links":{"HeldAt":53,"HolderOf":5,"IssuedBy":14,"Mentions":61,"PassportMRZ":5,"PassportNumber":5,"PassportOf":5,"SameOrg":22,"Shows":71,"StatementAccount":15,"StatementOf":14},"load_ms":924}
+{"documents":{"written":41,"unchanged":0,"removed":0},"turned_down":[],"left_out":{"unused_organisations":0,"mentions_without_organisation":1,"answers":16},"things":{"BankCode":16,"Document":41,"Holder":5,"Identifier":40,"Organisation":67,"Passport":5,"Statement":14},"links":{"CodeOf":22,"HeldAt":31,"HolderOf":5,"IssuedBy":14,"Mentions":61,"PassportMRZ":5,"PassportNumber":5,"PassportOf":5,"SameOrg":22,"Shows":49,"ShowsCode":22,"StatementAccount":15,"StatementOf":14},"load_ms":970}
 ```
 
 `left_out` counts rows the loader does not store, and they do not change the exit status. A mention whose `org` is `null` names no organisation to link to, and an organisation card that no stored row uses has nothing to stand on. The `answers` are judgements over many documents, which the engine is to work out itself, so they are not stored.
