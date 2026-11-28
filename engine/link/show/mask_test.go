@@ -484,9 +484,34 @@ func plantedLines(t *testing.T, h held, raw, hidden string) {
 	deep := &show.Claim{Test: "all_of", Of: []show.Claim{{Test: "any_of", Of: []show.Claim{{Test: "link", Link: "planted", LinkLabel: "Planted", With: condition(maskedAttr, raw)}}}}}
 	sinceLine := "Planted: Thing " + osakaDepot + ", Thing " + depot + "; Since: "
 	hiddenLine := osakaDepot + " has a value that is not shown"
+	attrLabel := func(id string) string { return h.box.AttributeTypes[id].Label }
+	kinds := sortedIDs(h.box.EntityTypes)
+	kind := kinds[slices.IndexFunc(kinds, func(id string) bool { return !holdsAny(h.box.EntityTypes[id].Label, slices.Concat(p.masked, p.hidden)) })]
+	kindLabel := h.box.EntityTypes[kind].Label
+	other := slices.IndexFunc(public, func(id string) bool { return attrLabel(id) != attrLabel(code) })
+	p.pages[printed.ID]["links"] = []any{map[string]any{"link": "planted", "rows": []any{map[string]any{
+		"ends":       []any{map[string]any{"thing": map[string]any{"id": lagos.ID, "title": depot}}},
+		"attributes": []any{map[string]any{"attribute": code, "values": []any{raw}}},
+	}}}}
+	both := &show.Claim{Test: "is", Thing: &osaka, Link: "planted", LinkLabel: "Planted", Ends: []show.End{{Role: "planted", Label: "Thing", Thing: printed}, {Role: "planted", Label: "Thing", Thing: lagos}},
+		Attribute: code, Label: attrLabel(code), Value: raw}
+	nested := &show.Claim{Test: "type", Thing: &osaka, Type: kind, Label: kindLabel, With: &show.Claim{Of: []show.Claim{{With: condition(name, raw)}}}}
+	hiddenLink := link(osaka)
+	hiddenLink.Test, hiddenLink.Label = "has", hiddenLabel
+	twoSubjects := &show.Claim{Test: "is", Thing: &osaka, Attribute: name, Label: attrLabel(name), Value: osakaDepot,
+		With: &show.Claim{Test: "is", Thing: &lagos, Attribute: code, Label: attrLabel(code), Value: raw}}
+	untyped := func(proof show.Proof, change func(node, claim map[string]any)) map[string]any {
+		var node map[string]any
+		if err := json.Unmarshal(encode(t, proof), &node); err != nil {
+			t.Fatal(err)
+		}
+		change(node, object(node["claim"]))
+		return node
+	}
+	osakaLine := "Planted: Thing " + osakaDepot
 	for _, c := range []struct {
 		name   string
-		proof  show.Proof
+		proof  any
 		line   string
 		inData bool
 	}{
@@ -528,9 +553,23 @@ func plantedLines(t *testing.T, h held, raw, hidden string) {
 		{"a condition's constant, a masked value given raw", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Value: " + raw, Claim: condition(maskedAttr, raw), For: []show.Thing{}}}}, found, true},
 		{"a condition's constant, a masked value given raw under a public attribute's id", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Value: " + raw, Claim: condition(name, raw), For: []show.Thing{}}}}, found, true},
 		{"a masked value raw three levels down, in the data only", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Planted, one with Value: ••••9221", Claim: deep, For: []show.Thing{}}}}, notMade, true},
+
+		{"a claim that names a thing and a link's ends, its value on the link row of another thing", show.Proof{Fact: osakaDepot + " " + attrLabel(code) + " " + raw, Claim: both}, notMade, true},
+		{"a line its data makes, with nested data it does not say: a masked value raw under a public attribute's id", show.Proof{Fact: osakaDepot + wordIs + kindLabel, Claim: nested}, notMade, true},
+		{"a hidden attribute's label in a fact, with no hidden mark and no attribute", show.Proof{Fact: osakaDepot + wordHas + hiddenLabel, Claim: &show.Claim{Test: "has", Thing: &osaka, Label: hiddenLabel}}, notMade, false},
+		{"a hidden attribute's label in a link fact, with no hidden mark and no attribute", show.Proof{Fact: osakaLine + "; has " + hiddenLabel, Claim: hiddenLink}, notMade, false},
+		{"a field no claim has", untyped(show.Proof{Fact: osakaLine, Claim: link(osaka)}, func(_, c map[string]any) { c["extra"] = raw }), notMade, true},
+		{"a label with no id", show.Proof{Fact: osakaDepot + wordIs + kindLabel, Claim: &show.Claim{Test: "type", Thing: &osaka, Label: kindLabel}}, notMade, false},
+		{"a label that is another id's label", show.Proof{Fact: period + " " + attrLabel(public[other]) + " " + end, Claim: &show.Claim{Test: "is", Thing: &statement, Attribute: code, Label: attrLabel(public[other]), Value: end}}, notMade, false},
+		{"a for on a fact", untyped(show.Proof{Fact: osakaLine, Claim: link(osaka)}, func(n, _ map[string]any) {
+			n["for"] = []any{map[string]any{"id": lagos.ID, "type": "planted", "title": depot}}
+		}), notMade, false},
+		{"a fact's claim with no test", untyped(show.Proof{Fact: osakaLine, Claim: link(osaka)}, func(_, c map[string]any) { delete(c, "test") }), notMade, false},
+		{"a condition's claim with no test", show.Proof{RuledOut: []show.RuledOut{{Line: wordAndNo + attrLabel(name) + ": Lima", Claim: &show.Claim{Attribute: name, Label: attrLabel(name), Value: "Lima"}, For: []show.Thing{}}}}, notMade, false},
+		{"a fact with a second subject at depth two", show.Proof{Fact: osakaDepot + " " + attrLabel(name) + " " + osakaDepot, Claim: twoSubjects}, notMade, true},
 	} {
-		read := encode(t, show.Page{Thing: show.Thing{ID: "planted", Type: "planted", Title: "planted"},
-			Links: []show.LinkGroup{{Link: "planted", Rows: []show.Link{{Ends: []show.End{}, Proof: &c.proof}}}}})
+		read := encode(t, map[string]any{"id": "planted", "type": "planted", "title": "planted",
+			"links": []any{map[string]any{"link": "planted", "rows": []any{map[string]any{"ends": []any{}, "proof": c.proof}}}}})
 		got := p.leaks(read, false)
 		var inLine []string
 		for _, leak := range got {
