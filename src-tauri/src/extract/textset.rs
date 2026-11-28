@@ -280,6 +280,13 @@ pub fn export(db: &Path, out: &Path, reference_date: &str) -> Result<Exported> {
     Ok(Exported { documents })
 }
 
+/// The `file` of the document an export of the index at db writes with
+/// this id, or None when it writes none.
+pub fn file_of(db: &Path, id: &str) -> Result<Option<String>> {
+    let _ = (db, id);
+    todo!()
+}
+
 /// Writes value as JSON to a file that must not exist yet: two documents
 /// with one id fail here rather than one replacing the other.
 fn write_new(path: &Path, value: &impl Serialize) -> Result<()> {
