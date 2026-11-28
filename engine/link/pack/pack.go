@@ -234,6 +234,7 @@ func Module() *schema.ModuleDef {
 	m.Relation("PassportMRZ").Label("Machine-readable zone").
 		Role("passport", "Passport", one, label("Passport"), shownAs("Machine-readable zone")).
 		Role("identifier", "Identifier", one, label("Zone"), shownAs("Zone of passport"))
+	rules(m)
 	return m
 }
 
