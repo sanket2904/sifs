@@ -91,7 +91,7 @@ func TestLatestStatementReads(t *testing.T) {
 			want := []string{
 				fmt.Sprintf("Statement account: Statement %s, Account %s", c.period, c.masked),
 				fmt.Sprintf("%s Period tier likely", c.period),
-				fmt.Sprintf("%s has To", c.period),
+				fmt.Sprintf("%s has End date", c.period),
 				fmt.Sprintf("and no: A later statement exists (for %s, %s)", c.masked, c.period),
 				fmt.Sprintf("and no: Another statement's end is not known (for %s, %s)", c.masked, c.period),
 			}
@@ -127,8 +127,8 @@ func TestOlderStatementNamesTheLater(t *testing.T) {
 	got := why(row)
 	slices.Sort(got)
 	eq(t, "why", got, []string{
-		"2026-08-01 to 2026-08-31 To 2026-08-31",
-		"2026-09-01 to 2026-09-30 To 2026-09-30",
+		"2026-08-01 to 2026-08-31 End date 2026-08-31",
+		"2026-09-01 to 2026-09-30 End date 2026-09-30",
 		"Statement account: Statement 2026-08-01 to 2026-08-31, Account ••••••••••3958",
 		"Statement account: Statement 2026-09-01 to 2026-09-30, Account ••••••••••3958",
 	})

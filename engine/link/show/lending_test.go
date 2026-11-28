@@ -281,7 +281,7 @@ func TestDerivedLinkSaysWhy(t *testing.T) {
 	want := []string{
 		"Aiko Tanaka is Member | fees-osaka-2026.pdf, loan-slip-0107.pdf, registration-osaka.pdf",
 		"Registered at: Member Aiko Tanaka, Branch Osaka Central; Standing: good | registration-osaka.pdf",
-		"Registered at: Member Aiko Tanaka, Branch Osaka Central; has Checked by | registration-osaka.pdf",
+		"Registered at: Member Aiko Tanaka, Branch Osaka Central; has a value that is not shown | registration-osaka.pdf",
 		"Paid fees at: Member Aiko Tanaka, Branch Osaka Central; Receipt: ••••••••••8213 | fees-osaka-2026.pdf",
 	}
 	for name, open := range lendingStores() {
@@ -408,7 +408,8 @@ func TestLendingGoldens(t *testing.T) {
 
 // A proof gives a value only as the page gives that attribute: a masked
 // value masked unless revealed, in the text and the data of a premise; a
-// hidden value never, while the premise still says the attribute has one.
+// hidden value never, while the premise says it rests on a value that is
+// not shown.
 // Every read of the library is searched field by field as for the other
 // schemas.
 func TestProofKeepsMaskedAndHidden(t *testing.T) {
@@ -445,7 +446,7 @@ func TestProofKeepsMaskedAndHidden(t *testing.T) {
 				}
 				for _, page := range []string{"member:aiko", "branch:osaka"} {
 					b := string(encode(t, doc(t, r, page)))
-					if !strings.Contains(b, "; has Checked by") || page == "member:aiko" && !strings.Contains(b, "Aiko Tanaka has Note") {
+					if !strings.Contains(b, "; has a value that is not shown") || page == "member:aiko" && !strings.Contains(b, "Aiko Tanaka has a value that is not shown") {
 						t.Errorf("reveal %v: %s does not say a hidden attribute has a value", reveal, page)
 					}
 					for _, v := range []string{aikoChecker, aikoNote} {

@@ -237,20 +237,54 @@
           "fact": "INV-0041 is Large invoice",
           "status": "derived",
           "rule": "bakery.large-invoice",
+          "claim": {
+            "test": "type",
+            "thing": {
+              "id": "invoice:0041",
+              "type": "bakery.Invoice",
+              "title": "INV-0041",
+              "subtitle": "2026-10-02"
+            },
+            "type": "bakery.LargeInvoice",
+            "label": "Large invoice"
+          },
           "because": [
             {
               "fact": "INV-0041 is Invoice",
               "status": "asserted",
               "sources": [
                 "invoice-0041.pdf"
-              ]
+              ],
+              "claim": {
+                "test": "type",
+                "thing": {
+                  "id": "invoice:0041",
+                  "type": "bakery.Invoice",
+                  "title": "INV-0041",
+                  "subtitle": "2026-10-02"
+                },
+                "type": "bakery.Invoice",
+                "label": "Invoice"
+              }
             },
             {
               "fact": "INV-0041 Total 1250",
               "status": "asserted",
               "sources": [
                 "invoice-0041.pdf"
-              ]
+              ],
+              "claim": {
+                "test": "is",
+                "thing": {
+                  "id": "invoice:0041",
+                  "type": "bakery.Invoice",
+                  "title": "INV-0041",
+                  "subtitle": "2026-10-02"
+                },
+                "attribute": "bakery.total",
+                "label": "Total",
+                "value": "1250"
+              }
             }
           ]
         }

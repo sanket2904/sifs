@@ -165,8 +165,8 @@ func TestDatesAndTitles(t *testing.T) {
 				for _, doc := range run.Documents {
 					if s := doc.Statement; s != nil {
 						p := page(t, ctx, r, "statement:"+doc.ID)
-						day(doc.ID+" from", value(p, "From"), &s.From)
-						day(doc.ID+" to", value(p, "To"), &s.To)
+						day(doc.ID+" from", value(p, "Start date"), &s.From)
+						day(doc.ID+" to", value(p, "End date"), &s.To)
 						eq(t, doc.ID+" title", p.Title, s.From+" to "+s.To)
 						titled[doc.ID] = p.Title
 					}

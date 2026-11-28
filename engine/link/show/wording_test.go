@@ -31,7 +31,7 @@ var gardenRules = []struct {
 	{"Open", schema.Or(schema.AttrEquals("size", int64(0)), schema.AttrExists("closedOn")), "and no: Size: 0 or has Closed on (for Plot 7)"},
 	{"Running", schema.And(schema.AttrEquals("size", int64(30)), schema.AttrExists("closedOn")), "and no: Size: 30 and has Closed on (for Plot 7)"},
 	{"Own gate", schema.AttrEquals("gateCode", "GATE-0000"), "and no: Gate code: •••••0000 (for Plot 7)"},
-	{"Quiet", schema.AttrEquals("notes", "keeps bees"), "and no: Notes: a hidden value (for Plot 7)"},
+	{"Quiet", schema.AttrEquals("notes", "keeps bees"), "and no: a value that is not shown (for Plot 7)"},
 	{"Not closed", schema.AttrElapsed("closedOn", 0), "and no: Closed on in the past (for Plot 7)"},
 }
 
