@@ -15,6 +15,7 @@ This is phase 1 of the plan in `ontology-framework/plans/sifs-intelligence-backe
   - typo-tolerant;
   - ranked by how well the name matches and how recently the file changed.
 - **Reads inside files** in the background, at low priority and never during a scan: text, Markdown, CSV, code, JSON, HTML and files without an extension (README, Makefile), in any common encoding. Files over 4 MB (1 MB for JSON and files without an extension) are skipped, and at most a million characters are kept per file. A file is read again only when it changes. Settings show how far it has got, and which files couldn't be read and why.
+- **Keeps the store of things up to date** in the background, when the engine's tools are in place (`sample/tools/build-tools.sh`): ten seconds after the index last changed, once nothing waits to be read and no scan runs, it exports what was read, runs the extractor and loads the result. It does so only when the files or the tools changed since the last load, and a half-read index never empties the store.
 - **Keyboard:** ↑↓ to move, Enter to open, ⌘Enter to show in Finder. Closing the window keeps it in the menu bar.
 
 Measured on one Mac's whole home folder: 1.9 million items indexed in 99 s, a 0.97 GB index, 27 MB peak memory while indexing, searches in 1 to 12 ms.
@@ -91,6 +92,7 @@ Tests a hosted runner cannot run, for a reason of the runner and not the code, a
 src/routes/+page.svelte   search box, results, folder settings
 src-tauri/src/app.rs      Tauri commands, background scans, watcher, tray
 src-tauri/src/data.rs     where the app keeps its data, for the installed app and development builds
+src-tauri/src/things.rs   keeps the store of things up to date: when to read, and the three steps
 src-tauri/src/index/      the index: db (SQLite), migrations, crawl, watch, search, ignore rules, tests
 src-tauri/src/extract/    reading inside files: readers, decoding, the queue, the background worker, tests
 src-tauri/tests/fixtures/ sample files for the tests

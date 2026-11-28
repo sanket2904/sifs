@@ -124,6 +124,12 @@ impl Scratch {
         fs::create_dir_all(&data_path).unwrap();
         let data = data_dir(Build::Development, &data_path, Some(data_path.as_os_str())).unwrap();
         drop(Index::open(&data.index()).unwrap());
+        // A reader takes text files, as the app registers its readers: a
+        // changed file is queued again and keeps what was read from it.
+        rusqlite::Connection::open(data.index())
+            .unwrap()
+            .execute("INSERT INTO extract_kinds (ext, reader, version, priority) VALUES ('txt', 'text', 1, 0)", [])
+            .unwrap();
         let tools = dir.path().join("tool box");
         fs::create_dir_all(&tools).unwrap();
         for piece in [Piece::Extract, Piece::Load, Piece::Show] {
@@ -257,6 +263,8 @@ impl Scratch {
             )
             .unwrap();
         }
+        // And read them.
+        tx.execute("DELETE FROM extract_queue", []).unwrap();
         tx.commit().unwrap();
     }
 
@@ -264,15 +272,27 @@ impl Scratch {
         self.add(&[path.to_string()]);
     }
 
+    /// A file that changed and was read again.
     fn touch(&self, path: &str, modified: i64) {
+        let conn = self.conn();
+        let changed = conn
+            .execute(
+                "UPDATE files SET modified = ?2 WHERE path = ?1",
+                params![path, modified],
+            )
+            .unwrap();
+        assert_eq!(changed, 1);
         assert_eq!(
-            self.conn()
-                .execute(
-                    "UPDATE files SET modified = ?2 WHERE path = ?1",
-                    params![path, modified]
-                )
-                .unwrap(),
-            1
+            conn.execute("DELETE FROM extract_queue", []).unwrap(),
+            1,
+            "it was queued to be read again"
+        );
+        let listed = textset::listed(&conn).unwrap();
+        assert!(
+            listed
+                .iter()
+                .any(|f| f.path == path && f.modified == modified),
+            "and is listed as it is now"
         );
     }
 
