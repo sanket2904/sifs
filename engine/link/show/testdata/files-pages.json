@@ -145,7 +145,7 @@
                 "thing": {
                   "id": "statement:abn-amro-statement",
                   "type": "files.Statement",
-                  "title": "statement:abn-amro-statement"
+                  "title": "2026-08-01 to 2026-08-31"
                 }
               }
             ],
@@ -169,7 +169,7 @@
   "a Dutch statement": {
     "id": "statement:abn-amro-statement",
     "type": "files.Statement",
-    "title": "statement:abn-amro-statement",
+    "title": "2026-08-01 to 2026-08-31",
     "label": "Statement",
     "also": [],
     "values": [
@@ -177,7 +177,18 @@
         "attribute": "files.from",
         "label": "From",
         "values": [
-          "2026-08-01T00:00:00Z"
+          "2026-08-01"
+        ],
+        "status": "accepted",
+        "sources": [
+          "abn-amro-statement"
+        ]
+      },
+      {
+        "attribute": "files.period",
+        "label": "Period",
+        "values": [
+          "2026-08-01 to 2026-08-31"
         ],
         "status": "accepted",
         "sources": [
@@ -199,7 +210,7 @@
         "attribute": "files.to",
         "label": "To",
         "values": [
-          "2026-08-31T00:00:00Z"
+          "2026-08-31"
         ],
         "status": "accepted",
         "sources": [
@@ -527,7 +538,7 @@
         "attribute": "files.issued",
         "label": "Issued",
         "values": [
-          "2021-04-16T00:00:00Z"
+          "2021-04-16"
         ],
         "status": "accepted",
         "sources": [

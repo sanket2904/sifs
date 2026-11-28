@@ -121,8 +121,8 @@ func baseModule() *schema.ModuleDef {
 
 // asBase is a document's facts as sifs-load wrote them at 6c6f1d6: a bank
 // code is a number with the id, type, links and printed text of one; an
-// organisation has no institution code; a date is the string format 3
-// gives, and an expiry the run cannot tell is the word `cannot-tell`.
+// organisation has no institution code; a statement has no period; a date
+// is the string format 3 gives, and an expiry the run cannot tell is the word `cannot-tell`.
 func asBase(facts interpreter.RecordFacts) interpreter.RecordFacts {
 	var pairs []string
 	for _, e := range facts.Entities {
@@ -145,6 +145,7 @@ func asBase(facts interpreter.RecordFacts) interpreter.RecordFacts {
 		case pack.Organisation:
 			delete(e.Attributes, pack.Institution)
 		case pack.Statement:
+			delete(e.Attributes, pack.Period)
 			day(e.Attributes, pack.From)
 			day(e.Attributes, pack.To)
 		case pack.Passport:

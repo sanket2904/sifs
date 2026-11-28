@@ -11,10 +11,10 @@ import (
 )
 
 // shown decides, for the whole reader, what of a value a person is given: a
-// value of a hidden attribute is never given, and a value of a masked
-// attribute keeps its last four characters unless the reader reveals. Every
-// value, title, subtitle and matched name the reader returns passes through
-// it.
+// value of a hidden attribute is never given, a value of a masked attribute
+// keeps its last four characters unless the reader reveals, and a time of
+// an attribute shown as a date is its day in UTC. Every value, title,
+// subtitle and matched name the reader returns passes through it.
 type shown struct {
 	box    *ontology.TBox
 	reveal bool
@@ -31,8 +31,9 @@ func (s shown) hidden(attrID string) bool { return s.display(attrID).Hidden }
 
 // value is one value of an attribute as a person reads it.
 func (s shown) value(attrID string, v any) string {
-	text := plain(v)
-	if s.display(attrID).Mask && !s.reveal {
+	d := s.display(attrID)
+	text := plain(v, d.Kind)
+	if d.Mask && !s.reveal {
 		return mask(text)
 	}
 	return text
@@ -71,11 +72,14 @@ func mask(text string) string {
 	return strings.Repeat("•", n-4) + string(runes[n-4:])
 }
 
-func plain(v any) string {
+func plain(v any, kind ontology.DisplayKind) string {
 	switch t := v.(type) {
 	case string:
 		return t
 	case time.Time:
+		if kind == ontology.DisplayDate {
+			return t.UTC().Format(time.DateOnly)
+		}
 		return t.UTC().Format(time.RFC3339)
 	case float64:
 		if t == float64(int64(t)) {

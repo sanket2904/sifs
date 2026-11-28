@@ -78,6 +78,7 @@ const (
 	Via         = module + ".via"
 	From        = module + ".from"
 	To          = module + ".to"
+	Period      = module + ".period"
 	PeriodTier  = module + ".periodTier"
 	Surname     = module + ".surname"
 	Given       = module + ".given"
@@ -93,8 +94,8 @@ const (
 )
 
 // Module declares the files schema. A date is a timestamp at midnight UTC
-// of the day format 3 gives, shown as a date. A statement holds only
-// dates and declares no title.
+// of the day format 3 gives, shown as a date. A statement is titled by its
+// period, a text the loader spells from those days.
 //
 // Names. An organisation is found by its card's name, by every text a
 // document prints for it and by the institution code its key stands for,
@@ -127,8 +128,9 @@ func Module() *schema.ModuleDef {
 	m.Entity("Statement").Label("Statement").
 		Attribute("from", "timestamp", label("From"), date).
 		Attribute("to", "timestamp", label("To"), date).
+		Attribute("period", "string", label("Period")).
 		Attribute("periodTier", "string", tier, label("Period tier")).
-		Display(schema.Collection(ontology.CollectionDocuments))
+		Display(schema.Title("period"), schema.Collection(ontology.CollectionDocuments))
 	m.Entity("Passport").Label("Passport").
 		Attribute("issued", "timestamp", label("Issued"), date).
 		Attribute("expiry", "timestamp", label("Expires"), date).

@@ -130,14 +130,15 @@ func TestPublicShownPrivateMasked(t *testing.T) {
 	})
 }
 
-// Dates are the day the run gives, at midnight UTC, wherever the loader and
-// the reader run: two zones a day apart. A passport's expiry the run cannot
-// tell is no value and no word; its tier stays. Every organisation and
-// every passport the run prints an expiry for has a title of its own.
-// Mutations: parse a date in time.Local in putDate, and the dates move a
-// day; store `cannot-tell` as an expiry, and the passport is turned down;
-// drop "institution" from the organisation's title, and three
-// organisations are titled by their id.
+// Dates read as the day the run gives, wherever the loader and the reader
+// run: two zones a day apart. A passport's expiry the run cannot tell is no
+// value and no word; its tier stays. Every organisation, every statement
+// and every passport the run prints an expiry for has a title of its own; a
+// statement's is its first and last day. Mutations: parse a date in
+// time.Local in putDate, and the dates move a day; store `cannot-tell` as
+// an expiry, and the passport is turned down; drop "institution" from the
+// organisation's title, and three organisations are titled by their id;
+// drop the statement's period, and every statement is titled by its id.
 func TestDatesAndTitles(t *testing.T) {
 	run := committedRun(t)
 	defer func(local *time.Location) { time.Local = local }(time.Local)
@@ -154,15 +155,16 @@ func TestDatesAndTitles(t *testing.T) {
 						eq(t, what, got, []string(nil))
 						return
 					}
-					if len(got) != 1 || !strings.HasPrefix(got[0], *want+"T") {
-						t.Errorf("%s: got %q, want the day %s", what, got, *want)
-					}
+					eq(t, what, got, []string{*want})
 				}
+				titled := map[string]string{}
 				for _, doc := range run.Documents {
 					if s := doc.Statement; s != nil {
 						p := page(t, ctx, r, "statement:"+doc.ID)
 						day(doc.ID+" from", value(p, "From"), &s.From)
 						day(doc.ID+" to", value(p, "To"), &s.To)
+						eq(t, doc.ID+" title", p.Title, s.From+" to "+s.To)
+						titled[doc.ID] = p.Title
 					}
 					if pp := doc.Passport; pp != nil {
 						p := page(t, ctx, r, "passport:"+doc.ID)
@@ -172,6 +174,11 @@ func TestDatesAndTitles(t *testing.T) {
 						if pp.ExpiryAt != nil {
 							eq(t, doc.ID+" title", p.Title, pp.ExpiryAt.Text)
 						}
+					}
+				}
+				for _, id := range []string{"natwest-statement", "abn-amro-statement", "commerzbank-kontoauszug", "mizuho-statement-ja", "hdfc-statement-aug"} {
+					if titled[id] == "" {
+						t.Errorf("the run has no statement %s", id)
 					}
 				}
 				things, err := e.interp.QueryEntities(ctx, store.EntityPattern{})
@@ -193,4 +200,34 @@ func TestDatesAndTitles(t *testing.T) {
 			})
 		})
 	}
+}
+
+// A statement whose run gives one day is titled by that day, and one with
+// none has no title, so the reader titles it by its id. Mutation: join the
+// two dates whether or not each is a day, and the titles read " to ".
+func TestStatementWithOneDay(t *testing.T) {
+	statement := func(id, from, to string) extract.DocOut {
+		return extract.DocOut{ID: id, Statement: &extract.StmtOut{From: from, To: to, Tiers: map[string]extract.Tier{"period": extract.Likely}}}
+	}
+	run := &extract.Output{Format: 3, Documents: []extract.DocOut{
+		statement("lloyds-from-only", "2026-05-01", ""),
+		statement("ing-to-only", "", "2026-05-31"),
+		statement("westpac-none", "", ""),
+	}}
+	stores(t, func(t *testing.T, ctx context.Context, reopen func() *Engine) {
+		eq(t, "turned down", mustLoad(t, ctx, reopen(), run).TurnedDown, []TurnDown{})
+		r := show.New(reopen().interp, false)
+		for _, c := range []struct {
+			id, title string
+			period    []string
+		}{
+			{"lloyds-from-only", "2026-05-01", []string{"2026-05-01"}},
+			{"ing-to-only", "2026-05-31", []string{"2026-05-31"}},
+			{"westpac-none", "statement:westpac-none", nil},
+		} {
+			p := page(t, ctx, r, "statement:"+c.id)
+			eq(t, c.id+" title", p.Title, c.title)
+			eq(t, c.id+" period", value(p, "Period"), c.period)
+		}
+	})
 }

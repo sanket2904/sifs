@@ -142,6 +142,9 @@ func Facts(doc extract.DocOut, cards map[string]extract.Card) interpreter.Record
 		attrs := map[string]any{pack.PeriodTier: string(s.Tiers["period"])}
 		putDate(attrs, pack.From, &s.From)
 		putDate(attrs, pack.To, &s.To)
+		if p := period(s.From, s.To); p != "" {
+			attrs[pack.Period] = p
+		}
 		stmt := f.entity("statement:"+doc.ID, pack.Statement, attrs)
 		f.relation(ref("statementOf", doc.ID), pack.StatementOf, nil, player(pack.StatementOf, "statement", stmt), player(pack.StatementOf, "document", f.doc))
 		for _, a := range s.Accounts {
@@ -254,6 +257,16 @@ func putDate(attrs map[string]any, attr string, date *string) {
 	if day, err := time.Parse(time.DateOnly, *date); err == nil {
 		attrs[attr] = day
 	}
+}
+
+// period is a statement's title: its first and last day as format 3 spells
+// them, or the one of the two that is a day.
+func period(from, to string) string {
+	days := slices.DeleteFunc([]string{from, to}, func(d string) bool {
+		_, err := time.Parse(time.DateOnly, d)
+		return err != nil
+	})
+	return strings.Join(days, " to ")
 }
 
 func (f *facts) org(key string) string {

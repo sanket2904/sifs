@@ -45,8 +45,8 @@ func eq[T any](t *testing.T, what string, got, want T) {
 }
 
 // How each kind of thing is shown and found. A document has no attribute
-// in format 3, so nothing can title it; a statement holds only dates and
-// declares no title.
+// in format 3, so nothing can title it; a statement is titled by its
+// period.
 var things = map[string]struct {
 	collection      ontology.Collection
 	title, subtitle []string
@@ -56,7 +56,7 @@ var things = map[string]struct {
 	pack.Organisation: {ontology.CollectionOrganisations, []string{pack.Name, pack.Printed, pack.Institution}, []string{pack.Printed}, []string{pack.Name, pack.Printed, pack.Institution}},
 	pack.Identifier:   {ontology.CollectionAccounts, []string{pack.Value}, []string{pack.Kind}, []string{pack.Value}},
 	pack.BankCode:     {ontology.CollectionOrganisations, []string{pack.Code}, []string{pack.Kind}, []string{pack.Code}},
-	pack.Statement:    {collection: ontology.CollectionDocuments},
+	pack.Statement:    {ontology.CollectionDocuments, []string{pack.Period}, nil, nil},
 	pack.Passport:     {ontology.CollectionDocuments, []string{pack.ExpiryText}, nil, nil},
 	pack.Holder:       {ontology.CollectionPeople, []string{pack.Surname}, []string{pack.Given}, []string{pack.Surname, pack.Given}},
 }
