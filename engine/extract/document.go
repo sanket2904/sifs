@@ -76,6 +76,7 @@ type Join struct {
 // the document's own; a code's key is the same in every document.
 type DocResult struct {
 	ID          string
+	File        string
 	Mentions    []Mention
 	Identifiers []Identifier
 	Links       []Link
@@ -91,7 +92,7 @@ type DocResult struct {
 // groups the mentions until spellNames spells it from all of them.
 func readDocument(doc Document, reg *IBANRegistry, ref Date) DocResult {
 	lines := splitLines(doc)
-	r := DocResult{ID: doc.ID, Identifiers: findIdentifiers(lines, reg)}
+	r := DocResult{ID: doc.ID, File: doc.File, Identifiers: findIdentifiers(lines, reg)}
 	var names []Mention
 	for _, l := range lines {
 		for _, m := range findNames(l) {

@@ -2,6 +2,7 @@ package load
 
 import (
 	"context"
+	"path"
 	"slices"
 	"strings"
 	"testing"
@@ -52,9 +53,9 @@ func sortedIDs(ids ...string) []string {
 var kalpit = []string{"holder:passport-asha-current", "holder:passport-asha-expired", "holder:passport-meera-1988", "holder:passport-rohan"}
 
 // runNames is every name the committed run gives a thing, by the thing's
-// id: an organisation's card name, each text a document prints for its key
-// and an institution code's key itself, a number's or a bank code's value,
-// a holder's surname and given names.
+// id: a document's file name, an organisation's card name, each text a
+// document prints for its key and an institution code's key itself, a
+// number's or a bank code's value, a holder's surname and given names.
 func runNames(run *extract.Output) map[string][]string {
 	names := map[string][]string{}
 	for _, doc := range run.Documents {
@@ -85,6 +86,9 @@ func runNames(run *extract.Output) map[string][]string {
 		}
 	}
 	for _, doc := range run.Documents {
+		if doc.File != "" {
+			names[DocumentPrefix+doc.ID] = []string{path.Base(doc.File)}
+		}
 		for _, m := range doc.Orgs {
 			if m.Org != nil {
 				names[OrgID(*m.Org)] = append(names[OrgID(*m.Org)], m.Span.Text)
@@ -105,11 +109,11 @@ func runNames(run *extract.Output) map[string][]string {
 }
 
 // The engine's own name lookup on the committed run. Each expectation is
-// read from the run file: the organisations whose card name, printed text
-// or institution code's key starts with the typed word (case aside), the
-// numbers and bank codes whose value does, the holders whose surname or
-// given names do. Mutations: drop Alias from
-// the holder's surname in the pack, and kalpit finds nothing; drop the
+// read from the run file: the documents whose file name starts with the
+// typed word (case aside), the organisations whose card name, printed text
+// or institution code's key does, the numbers and bank codes whose value
+// does, the holders whose surname or given names do. Mutations: drop Alias
+// from the holder's surname in the pack, and kalpit finds nothing; drop the
 // printed names in Facts, and HDFC Ltd finds nothing and hdfc finds no exact
 // match.
 func TestNames(t *testing.T) {
@@ -126,7 +130,7 @@ func TestNames(t *testing.T) {
 		{"HDFC Bank", sortedIDs(OrgID("IFSC HDFC"), OrgID("name:email-fee-payment:hdfcbank"), OrgID("name:hdfc-branch-letter:hdfcbank"), OrgID("name:hdfc-card-statement:hdfcbank"),
 			OrgID("name:hdfc-statement-aug:hdfcbank"), OrgID("name:hdfc-statement-jul:hdfcbank"), OrgID("name:hdfc-statement-sep:hdfcbank"), OrgID("name:neft-receipt-tied:hdfcbank"))},
 		{"HDFC Ltd", sortedIDs(OrgID("name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation"))},
-		{"KALPIT", kalpit},
+		{"KALPIT", sortedIDs(append([]string{"document:hdfc-statement-aug", "document:hdfc-statement-jul", "document:hdfc-statement-sep"}, kalpit...)...)},
 		{"anna maria", []string{"holder:passport-bad-mrz"}},
 		{"50100417263958", sortedIDs(IdentifierID("account", "50100417263958"))},
 		{"SMBK", sortedIDs(BankCodeID("bic", "SMBKCAT0XXX"), BankCodeID("bic", "SMBKGB20XXX"), OrgID("name:credit-advice-smbk-ca:smbk"), OrgID("name:payroll-release-smbk-gb:smbk"))},

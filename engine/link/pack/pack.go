@@ -59,6 +59,8 @@ func Public(kind string) bool { return slices.Contains(PublicKinds, kind) }
 // Attributes, by the name the loader writes them under.
 const (
 	Key         = module + ".key"
+	FileName    = module + ".fileName"
+	Folder      = module + ".folder"
 	Name        = module + ".name"
 	Printed     = module + ".printed"
 	Institution = module + ".institution"
@@ -99,11 +101,16 @@ const (
 // period, a text the loader spells from those days, and a passport by its
 // expiry as printed or else by its expiry's day, spelt the same way.
 //
-// Names. An organisation is found by its card's name, by every text a
-// document prints for it and by the institution code its key stands for,
-// a number by its value, a bank code by its code, a holder by either name. A
-// document, a statement and a passport have no name of their own in format
-// 3; they are reached through the things they link to.
+// A document is titled by its file's name, shown as it is, with the folder
+// it is in as its subtitle. A document from a run that gives no file has
+// neither, so it is titled by its id.
+//
+// Names. A document is found by its file's name, an organisation by its
+// card's name, by every text a document prints for it and by the
+// institution code its key stands for, a number by its value, a bank code by
+// its code, a holder by either name. A statement and a passport have no
+// name of their own in format 3; they are reached through the things they
+// link to.
 func Module() *schema.ModuleDef {
 	tier := schema.Annotations(ontology.ValuesAnnotation("certain", "likely"))
 	m := schema.NewModule(module, "1")
@@ -111,7 +118,9 @@ func Module() *schema.ModuleDef {
 	one, date := schema.One(), schema.Shown(ontology.DisplayDate)
 
 	m.Entity("Document").Label("Document").
-		Display(schema.Collection(ontology.CollectionDocuments))
+		Attribute("fileName", "string", label("File name"), names).
+		Attribute("folder", "string", label("Folder")).
+		Display(schema.Title("fileName"), schema.Subtitle("folder"), schema.Collection(ontology.CollectionDocuments))
 	m.Entity("Organisation").Label("Organisation").
 		Attribute("key", "string", schema.Required(), label("Key"), hidden).
 		Attribute("name", "string", label("Name"), names).

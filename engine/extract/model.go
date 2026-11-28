@@ -13,9 +13,11 @@ type Page struct {
 	Scanned bool   `json:"scanned"`
 }
 
-// Document is one file of a text set.
+// Document is one file of a text set. File is the file's path in the
+// folder that was read, as the text set gives it.
 type Document struct {
 	ID    string `json:"id"`
+	File  string `json:"file"`
 	Lang  string `json:"lang"`
 	Pages []Page `json:"pages"`
 }

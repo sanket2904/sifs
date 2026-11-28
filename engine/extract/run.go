@@ -41,9 +41,11 @@ type Card struct {
 	Directory *string `json:"directory"`
 }
 
-// DocOut is one document's entry.
+// DocOut is one document's entry. File is absent in a run written before
+// runs carried it.
 type DocOut struct {
 	ID          string       `json:"id"`
+	File        string       `json:"file,omitempty"`
 	Orgs        []OrgOut     `json:"orgs"`
 	Identifiers []IdentOut   `json:"identifiers"`
 	Links       []LinkOut    `json:"links"`
@@ -148,7 +150,7 @@ func render(results []DocResult, dir *Directory) Output {
 	names := map[orgkey.Key]map[string]int{} // key -> texts the key is spelt from
 	cards := map[orgkey.Key]bool{}
 	for _, r := range results {
-		d := DocOut{ID: r.ID, Orgs: []OrgOut{}, Identifiers: []IdentOut{}, Links: []LinkOut{}, SameOrg: []SameOrgOut{}}
+		d := DocOut{ID: r.ID, File: r.File, Orgs: []OrgOut{}, Identifiers: []IdentOut{}, Links: []LinkOut{}, SameOrg: []SameOrgOut{}}
 		used := map[orgkey.Key]bool{}
 		for _, m := range r.Mentions {
 			o := OrgOut{Span: m.Span}

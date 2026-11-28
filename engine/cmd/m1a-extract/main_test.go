@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -116,6 +117,51 @@ func TestKeysTheScorerAccepts(t *testing.T) {
 	}
 	if named != len(keyPages) {
 		t.Errorf("%d printed names have a key, want %d: %v", named, len(keyPages), o.Organisations)
+	}
+	scorerAccepts(t, dir, out)
+}
+
+// Each document of the run carries its file's path as the text set gives
+// it, folders and all. Mutation: leave File out of the document's entry in
+// render, and every document has none.
+func TestRunCarriesTheFile(t *testing.T) {
+	dir := t.TempDir()
+	text := filepath.Join(dir, "text")
+	if err := os.Mkdir(text, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"giro-march":    "Bank/2026/Kontoauszug März.pdf",
+		"invoice-tokyo": "請求書 2026-08.pdf",
+		"receipt-lagos": "receipts/receipt.pdf",
+	}
+	var ids []string
+	for id, file := range want {
+		ids = append(ids, id)
+		page := "Payment confirmation\nBank: Example Bank\nAccount: 98123456" + strings.Repeat("0", len(ids))
+		writeJSON(t, filepath.Join(text, id+".json"), map[string]any{"id": id, "file": file, "lang": "en", "pages": []map[string]any{{"text": page, "scanned": false}}})
+	}
+	writeJSON(t, filepath.Join(text, "index.json"), map[string]any{"format": 1, "text_set": "text", "reference_date": "2026-11-22", "documents": ids})
+	out := filepath.Join(dir, "out.json")
+	if err := run(text, "", "../../../sample/iban-registry.json", out, "go-m1a"); err != nil {
+		t.Fatal(err)
+	}
+	var o struct {
+		Documents []struct {
+			ID   string `json:"id"`
+			File string `json:"file"`
+		} `json:"documents"`
+	}
+	raw, _ := os.ReadFile(out)
+	if err := json.Unmarshal(raw, &o); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, d := range o.Documents {
+		got[d.ID] = d.File
+	}
+	if !maps.Equal(got, want) {
+		t.Errorf("the run's files are %v, want %v", got, want)
 	}
 	scorerAccepts(t, dir, out)
 }

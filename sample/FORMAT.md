@@ -52,6 +52,7 @@ A document entry holds:
 | Field | Entries |
 | --- | --- |
 | `id` | The document id. |
+| `file` | The file's path in the folder that was read, with `/` between its parts, as the text set's `file` gives it: in the sample, the file name in `files/`. It may be left out: a run without it still loads and scores, and a document with none is shown by its id. The scorer does not score it. |
 | `orgs` | An organisation mention: a span, `org` (a key, or `null` for a name that is no organisation the extractor can settle), and `settled_by`: `name`, `mention` or `code` when the document settles it (the README's evidence kinds), `directory` when only a directory lookup does, or `null`. |
 | `identifiers` | A span, `id` (the extractor's own, unique in the document), `kind` (a README identifier kind), `value` (as "Values" below gives it), `valid` (`true`, `false`, or `null` for a kind with no check), and `tier`, the tier of the kind ("Identifier tiers"). |
 | `links` | Identifier held at organisation: `identifier` (an identifier `id`), `org` (a key), `reasons` (README link reasons), `via` (an identifier `id`), which a link with `paired-code` must give, and `tier`. |
@@ -85,6 +86,7 @@ A run with the directory on writes, among the other documents:
   },
   "documents": [{
     "id": "hdfc-statement-sep",
+    "file": "kalpit-statement-a.pdf",
     "orgs": [{"page": 1, "start": 60, "end": 73, "text": "HDFC Bank Ltd", "org": "name:hdfc-statement-sep:hdfcbank", "settled_by": "name"}],
     "identifiers": [
       {"id": "i1", "page": 1, "start": 193, "end": 207, "text": "50100417263958", "kind": "account", "value": "50100417263958", "valid": null, "tier": "likely"},
