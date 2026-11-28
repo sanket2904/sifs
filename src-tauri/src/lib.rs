@@ -1,6 +1,7 @@
 pub mod data;
 pub mod extract;
 pub mod index;
+pub mod reader;
 pub mod tools;
 
 #[cfg(feature = "app")]

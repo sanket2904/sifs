@@ -485,3 +485,125 @@ fn the_sample_files_export_like_their_text_set() {
     assert!(compared > 0);
     assert_eq!(compared + unread.len(), sample_index["documents"].as_array().unwrap().len());
 }
+
+// --- The file behind a document id ---
+
+/// Records a file the index holds but has not read inside.
+fn add_unread(db: &Db, path: &str) {
+    let conn = rusqlite::Connection::open(&db.path).unwrap();
+    let name = path.rsplit('/').next().unwrap();
+    conn.execute(
+        "INSERT INTO files (path, root, name, ext, is_dir, size, modified, inode) VALUES (?1, '/r', ?2, 'txt', 0, 1, 1700000000, 1)",
+        params![path, name],
+    )
+    .unwrap();
+}
+
+fn id_of(path: &str) -> String {
+    doc_id(path.rsplit('/').next().unwrap(), path)
+}
+
+#[test]
+fn file_of_gives_the_file_of_every_document_an_export_writes() {
+    let db = db();
+    for (path, _) in PATHS {
+        db.add(path, "text", "done", &[("", "x")], &[]);
+    }
+    db.add("/Users/ana/Old Banks/statement.pdf", "text", "done", &[("", "two")], &[]);
+    db.add("/Users/ana/取引 明細/Relevé de compte.txt", "text", "done", &[("", "x")], &[]);
+    db.add("/r/a-mixed.pdf", "pdf", "done", &[("page 1", "one")], &[("pages", "3")]);
+    db.add("/r/b-scan.pdf", "pdf", "empty", &[], &[("pages", "2"), ("textless_pages", "2")]);
+    db.add("/r/e-blank.png", "image", "empty", &[], &[]);
+    let left_out = ["/r/i-empty.txt", "/r/j-broken.pdf", "/r/k-big.txt", "/r/never-read.txt"];
+    db.add(left_out[0], "text", "empty", &[], &[]);
+    db.add(left_out[1], "pdf", "failed", &[], &[]);
+    db.add(left_out[2], "text", "skipped", &[], &[]);
+    add_unread(&db, left_out[3]);
+    let before = fs::read(&db.path).unwrap();
+
+    export(&db.path, &db.out("one"), "2026-11-22").unwrap();
+    let exported = files_by_id(&db.out("one"));
+    assert_eq!(exported.len(), PATHS.len() + 5);
+    for (id, file) in &exported {
+        assert_eq!(file_of(&db.path, id).unwrap().as_deref(), Some(file.as_str()), "{id}");
+    }
+    let banks = [id_of("/Users/ana/Banks/statement.pdf"), id_of("/Users/ana/Old Banks/statement.pdf")];
+    assert_ne!(banks[0], banks[1]);
+    assert_eq!(file_of(&db.path, &banks[0]).unwrap().as_deref(), Some("/Users/ana/Banks/statement.pdf"));
+    assert_eq!(file_of(&db.path, &banks[1]).unwrap().as_deref(), Some("/Users/ana/Old Banks/statement.pdf"));
+    assert_eq!(file_of(&db.path, &id_of("/top.txt")).unwrap().as_deref(), Some("/top.txt"));
+    let accented = "/Users/ana/取引 明細/Relevé de compte.txt";
+    assert_eq!(file_of(&db.path, &id_of(accented)).unwrap().as_deref(), Some(accented));
+    for path in left_out {
+        assert!(!exported.contains_key(&id_of(path)), "{path} is not exported");
+        assert_eq!(file_of(&db.path, &id_of(path)).unwrap(), None, "{path}");
+    }
+    assert_eq!(fs::read(&db.path).unwrap(), before, "the index file is unchanged");
+}
+
+#[test]
+fn file_of_finds_nothing_for_any_other_id() {
+    let db = db();
+    db.add("/r/a.txt", "text", "done", &[("", "alpha")], &[]);
+    let id = id_of("/r/a.txt");
+    assert_eq!(file_of(&db.path, &id).unwrap().as_deref(), Some("/r/a.txt"));
+    let mut others: Vec<String> = ["", "/etc/hosts", "../x", "file:///r/a.txt", "/r/a.txt", "a.txt", "a", "a-"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    others.extend([format!("{id} "), format!(" {id}"), format!("{id}\n"), id.to_uppercase(), id[..id.len() - 1].to_string()]);
+    others.push("a".repeat(1 << 20));
+    others.push(format!("{id}{}", "0".repeat(1 << 20)));
+    for at in 0..id.len() {
+        let mut changed = id.clone().into_bytes();
+        changed[at] = if changed[at] == b'0' { b'1' } else { b'0' };
+        others.push(String::from_utf8(changed).unwrap());
+    }
+    for other in &others {
+        assert_eq!(file_of(&db.path, other).unwrap(), None, "{:?}", other.get(..60).unwrap_or(other));
+    }
+}
+
+#[test]
+fn file_of_reads_a_read_only_index_file() {
+    use std::os::unix::fs::PermissionsExt;
+    let db = db();
+    db.add("/r/a.txt", "text", "done", &[("", "alpha")], &[]);
+    fs::set_permissions(&db.path, fs::Permissions::from_mode(0o444)).unwrap();
+    let before = fs::read(&db.path).unwrap();
+    assert_eq!(file_of(&db.path, &id_of("/r/a.txt")).unwrap().as_deref(), Some("/r/a.txt"));
+    assert_eq!(fs::read(&db.path).unwrap(), before);
+}
+
+#[test]
+fn file_of_on_ten_thousand_files_takes_one_listing() {
+    let db = db();
+    let path_of = |i: usize| format!("/Users/ana/folder {}/file {i}.txt", i % 100);
+    {
+        let mut conn = rusqlite::Connection::open(&db.path).unwrap();
+        let tx = conn.transaction().unwrap();
+        for i in 0..10_000 {
+            let path = path_of(i);
+            tx.execute(
+                "INSERT INTO files (path, root, name, ext, is_dir, size, modified, inode) VALUES (?1, '/Users/ana', ?2, 'txt', 0, 1, 1700000000, 1)",
+                params![path, path.rsplit('/').next().unwrap()],
+            )
+            .unwrap();
+            let id = tx.last_insert_rowid();
+            tx.execute(
+                "INSERT INTO extracts (file_id, reader, version, modified, size, status, millis, read_at) VALUES (?1, 'text', 1, 1700000000, 1, 'done', 0, 0)",
+                params![id],
+            )
+            .unwrap();
+            tx.execute("INSERT INTO contents (file_id, part, label, text) VALUES (?1, 0, '', ?2)", params![id, "words ".repeat(200)])
+                .unwrap();
+        }
+        tx.commit().unwrap();
+    }
+    let target = path_of(7_777);
+    for run in 1..=3 {
+        let started = std::time::Instant::now();
+        assert_eq!(file_of(&db.path, &id_of(&target)).unwrap(), Some(target.clone()));
+        println!("file_of on 10,000 files, run {run}: {:.1} ms", started.elapsed().as_secs_f64() * 1e3);
+    }
+}
