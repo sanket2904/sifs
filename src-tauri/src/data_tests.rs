@@ -102,10 +102,100 @@ fn a_development_build_takes_folders_that_only_look_alike() {
         "/Users/someone/Library/Application Support/com.sanket2904.sifs.dev",
         "/Users/someone/Library/Application Support/com.sanket2904.sifs-copy",
         "/Users/someone/Library/Application Support",
-        "/tmp/com.sanket2904.sifs",
     ] {
         let data = dir(Build::Development, &system(DEVELOPMENT), Some(value)).unwrap();
         assert_eq!(data.path().as_os_str(), value);
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum Answer {
+    Refused,
+    Allowed,
+}
+use Answer::{Allowed, Refused};
+
+#[test]
+fn a_development_build_refuses_any_folder_named_the_installed_identifier() {
+    let rows: [(&str, Answer); 31] = [
+        ("/tmp/com.sanket2904.sifs", Refused),
+        ("/tmp/com.sanket2904.sifs/child", Refused),
+        ("/tmp/com.sanket2904.sifs/child/grand", Refused),
+        ("/Volumes/Made Up/com.sanket2904.sifs", Refused),
+        ("/Volumes/Made Up/com.sanket2904.sifs/child", Refused),
+        ("/Volumes/Made Up/com.sanket2904.sifs/child/grand", Refused),
+        ("/x/\u{8cc7}\u{6599}/com.sanket2904.sifs", Refused),
+        ("/x/\u{8cc7}\u{6599}/com.sanket2904.sifs/child", Refused),
+        ("/x/\u{8cc7}\u{6599}/com.sanket2904.sifs/child/grand", Refused),
+        ("/tmp/x/../com.sanket2904.sifs", Refused),
+        ("/tmp/com.sanket2904.sifs.dev/../com.sanket2904.sifs/child", Refused),
+        ("/tmp/COM.SANKET2904.SIFS", Refused),
+        ("/tmp/Com.Sanket2904.SiFs/child", Refused),
+        ("/tmp/com.sanket2904.\u{17f}ifs", Refused),
+        ("/tmp/com.san\u{212a}et2904.sifs", Refused),
+        ("/tmp/com.sanket2904.sifs/..", Allowed),
+        ("/tmp/com.sanket2904.sifs/../other", Allowed),
+        ("/Users/someone/Library/Application Support/com.sanket2904.sifs/..", Allowed),
+        ("/Users/someone/Library/Application Support/com.sanket2904.sifs/../other", Allowed),
+        ("/tmp/com.sanket2904.sifs.dev", Allowed),
+        ("/tmp/com.sanket2904.sifs.dev/child", Allowed),
+        ("/tmp/com.sanket2904.sifs-copy", Allowed),
+        ("/tmp/com.sanket2904.sifsX", Allowed),
+        ("/tmp/com.sanket2904.sifs 2", Allowed),
+        ("/tmp/com.sanket2904.sifs\n", Allowed),
+        ("/tmp/com.sanket2904.sifs /child", Allowed),
+        ("/tmp/xcom.sanket2904.sifs", Allowed),
+        ("/Users/someone/Library/Application Support", Allowed),
+        ("/x/Caf\u{e9}/data", Allowed),
+        ("/", Allowed),
+        ("/tmp/x", Allowed),
+    ];
+    for system in [system(DEVELOPMENT), installed()] {
+        for (value, expected) in &rows {
+            let answer = match dir(Build::Development, &system, Some(value)) {
+                Err(Refusal::Installed(chosen)) if chosen.as_os_str() == *value => Refused,
+                Ok(data) if data.path().as_os_str() == *value => Allowed,
+                other => panic!("{value:?} with {system:?}: {other:?}"),
+            };
+            assert_eq!(&answer, expected, "{value:?} with {system:?}");
+        }
+    }
+}
+
+#[test]
+fn a_path_that_is_not_utf8_elsewhere_is_judged_by_its_names() {
+    use std::os::unix::ffi::OsStrExt;
+    for (value, expected) in [(&b"/tmp/\xff/data"[..], Allowed), (&b"/tmp/\xff/com.sanket2904.sifs"[..], Refused)] {
+        let answer = match data_dir(Build::Development, &installed(), Some(OsStr::from_bytes(value))) {
+            Err(Refusal::Installed(_)) => Refused,
+            Ok(_) => Allowed,
+            other => panic!("{value:?}: {other:?}"),
+        };
+        assert_eq!(answer, expected, "{value:?}");
+    }
+}
+
+#[test]
+fn the_installed_identifier_is_plain_lowercase_ascii() {
+    // The name rule leans on this: no Unicode spelling of a parent can change
+    // how an ASCII name compares.
+    assert!(INSTALLED.is_ascii(), "{INSTALLED}");
+    assert_eq!(INSTALLED, INSTALLED.to_lowercase());
+}
+
+#[test]
+fn a_release_build_takes_any_absolute_folder_even_one_named_its_own() {
+    for value in ["/tmp/com.sanket2904.sifs", "/Users/someone/Library/Application Support/com.sanket2904.sifs/old"] {
+        let data = dir(Build::Release, &installed(), Some(value)).unwrap();
+        assert_eq!(data.path().as_os_str(), value);
+    }
+}
+
+#[test]
+fn a_refusal_of_the_installed_name_says_why_and_what_to_do() {
+    let message = dir(Build::Development, &installed(), Some("/tmp/com.sanket2904.sifs")).unwrap_err().to_string();
+    for part in ["SIFS_DATA_DIR", "/tmp/com.sanket2904.sifs", "never uses a folder named com.sanket2904.sifs or anything inside one", "choose a folder with another name"] {
+        assert!(message.contains(part), "{part:?} missing from {message}");
     }
 }
 
@@ -136,8 +226,10 @@ fn the_names_are_the_identifiers_in_the_tauri_configs() {
     assert_eq!(package["scripts"]["app"], "tauri dev --config src-tauri/tauri.dev.conf.json");
 }
 
+// A source guard: it reads app.rs as text and catches a second ask for a
+// per-app folder. It does not prove the start-up order.
 #[test]
-fn the_app_asks_for_one_per_app_folder_and_hands_it_to_data_dir() {
+fn source_guard_the_app_asks_for_one_per_app_folder_and_hands_it_to_data_dir() {
     let app = include_str!("app.rs");
     assert_eq!(app.matches("app_data_dir()").count(), 1, "one ask for the system folder");
     for other in ["app_local_data_dir", "app_config_dir", "app_cache_dir", "app_log_dir", "home_dir", "sifs.db"] {

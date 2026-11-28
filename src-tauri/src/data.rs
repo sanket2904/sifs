@@ -44,8 +44,9 @@ impl DataDir {
 pub enum Refusal {
     /// The variable is empty or not an absolute path.
     NotAbsolute(OsString),
-    /// A development build was pointed at the installed app's folder.
-    Installed { chosen: PathBuf, installed: PathBuf },
+    /// A development build was pointed at a folder named [`INSTALLED`], or
+    /// inside one.
+    Installed(PathBuf),
 }
 
 impl fmt::Display for Refusal {
@@ -55,11 +56,10 @@ impl fmt::Display for Refusal {
                 f,
                 "{DATA_DIR_VAR} must be an absolute path, not {value:?}; SIFS does not fall back to its usual folder"
             ),
-            Refusal::Installed { chosen, installed } => write!(
+            Refusal::Installed(chosen) => write!(
                 f,
-                "a development build never uses the installed app's data, and {DATA_DIR_VAR} {} is {} or inside it",
-                chosen.display(),
-                installed.display()
+                "{DATA_DIR_VAR} is {}, but a development build never uses a folder named {INSTALLED} or anything inside one, wherever it is; choose a folder with another name",
+                chosen.display()
             ),
         }
     }
@@ -77,37 +77,33 @@ pub fn data_dir(build: Build, system: &Path, var: Option<&OsStr>) -> Result<Data
         (None, Build::Release) => return Ok(DataDir(system.to_path_buf())),
         (None, Build::Development) => system.with_file_name(DEVELOPMENT),
     };
-    if build == Build::Development {
-        let installed = system.with_file_name(INSTALLED);
-        if within(&chosen, &installed) {
-            return Err(Refusal::Installed { chosen, installed });
-        }
+    if build == Build::Development && named_installed(&chosen) {
+        return Err(Refusal::Installed(chosen));
     }
     Ok(DataDir(chosen))
 }
 
-/// Whether `path` is `folder` or inside it, by spelling alone: `.` and `..`
-/// resolved, repeated and trailing slashes ignored, letter case folded (the
-/// Mac's disk ignores case; on one that does not, this only refuses more).
-/// The disk is not read, so a symlink elsewhere that leads into `folder` is
-/// not seen: seeing it means resolving the installed app's real folder, and
-/// such a link is made on purpose, never by a typo in the variable.
-fn within(path: &Path, folder: &Path) -> bool {
-    spelled(path).starts_with(&spelled(folder))
-}
-
-fn spelled(path: &Path) -> Vec<String> {
+/// Whether `path` is a folder named [`INSTALLED`] or inside one, anywhere.
+/// The name decides, not the parents: they may be spelled any way the disk
+/// accepts (an accented name in either Unicode form), while the name is plain
+/// ASCII. `.` and `..` are resolved, and case is folded upper then lower, so
+/// `ſ` and the Kelvin sign, which the Mac's disk takes for `s` and `k`, fold.
+/// The disk is not read, so a symlink under another name that leads to the
+/// installed folder is not seen: seeing it means resolving the installed
+/// app's real folder, and such a link is made on purpose, never by a typo in
+/// the variable.
+fn named_installed(path: &Path) -> bool {
     let mut names = Vec::new();
     for component in path.components() {
         match component {
-            Component::Normal(name) => names.push(name.to_string_lossy().to_lowercase()),
+            Component::Normal(name) => names.push(name.to_string_lossy().to_uppercase().to_lowercase()),
             Component::ParentDir => {
                 names.pop();
             }
             Component::RootDir | Component::CurDir | Component::Prefix(_) => {}
         }
     }
-    names
+    names.iter().any(|name| name == INSTALLED)
 }
 
 #[cfg(test)]
