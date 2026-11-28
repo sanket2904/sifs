@@ -1,6 +1,6 @@
-//! The engine's tools, run by the app: one at a time or several at once,
-//! each with a deadline and a cap on what it prints, and none of them left
-//! running once the app has quit.
+//! The engine's tools: where the app finds them, and how it runs them, one
+//! at a time or several at once, each with a deadline and a cap on what it
+//! prints, and none of them left running once the app has quit.
 //!
 //! A running tool is a child the app started and has not reaped. It leads
 //! its own process group, so its pid names everything it started. The
@@ -8,12 +8,15 @@
 //! stopping (every group has been killed; the set drains), then stopped
 //! (the set is empty and stays so).
 
+use crate::data::DataDir;
 use std::collections::BTreeSet;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
+use std::fmt;
 use std::io::Read;
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStderr, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -29,6 +32,139 @@ pub const STDERR_KEPT: usize = 16 << 10;
 const TICK: Duration = Duration::from_millis(10);
 /// How long the rest of a group may take to die after SIGKILL.
 const GROUP_GONE: Duration = Duration::from_secs(1);
+
+/// Set to an absolute path, the app looks for its tools there instead.
+pub const TOOLS_DIR_VAR: &str = "SIFS_TOOLS_DIR";
+/// The script that builds the tools into a folder.
+pub const BUILD_SCRIPT: &str = "sample/tools/build-tools.sh";
+
+/// What a tools folder holds: three programs, and two data files the
+/// extractor reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Piece {
+    Extract,
+    Load,
+    Show,
+    Banks,
+    IbanRegistry,
+}
+
+impl Piece {
+    pub const ALL: [Piece; 5] = [Piece::Extract, Piece::Load, Piece::Show, Piece::Banks, Piece::IbanRegistry];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Piece::Extract => "m1a-extract",
+            Piece::Load => "sifs-load",
+            Piece::Show => "sifs-show",
+            Piece::Banks => "banks.json",
+            Piece::IbanRegistry => "iban-registry.json",
+        }
+    }
+
+    fn is_program(self) -> bool {
+        matches!(self, Piece::Extract | Piece::Load | Piece::Show)
+    }
+}
+
+/// What is wrong with one piece.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fault {
+    Missing,
+    /// A folder, or anything else that is not a plain file.
+    NotAFile,
+    /// A program with no permission to run.
+    NotRunnable,
+}
+
+/// Why the app has no tools.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NotFound {
+    /// SIFS_TOOLS_DIR is empty or not an absolute path.
+    NotAbsolute(OsString),
+    NoFolder(PathBuf),
+    /// Each piece that is not there as it must be, in [`Piece::ALL`] order.
+    Pieces { folder: PathBuf, faults: Vec<(Piece, Fault)> },
+}
+
+impl fmt::Display for NotFound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let build = |f: &mut fmt::Formatter<'_>, folder: &Path| {
+            write!(f, "; build them with {BUILD_SCRIPT} {}", folder.display())
+        };
+        match self {
+            NotFound::NotAbsolute(value) => write!(
+                f,
+                "{TOOLS_DIR_VAR} must be an absolute path, not {value:?}; SIFS does not fall back to its usual tools folder"
+            ),
+            NotFound::NoFolder(folder) => {
+                write!(f, "SIFS has no tools: there is no folder {}", folder.display())?;
+                build(f, folder)
+            }
+            NotFound::Pieces { folder, faults } => {
+                write!(f, "SIFS has no tools: in {}", folder.display())?;
+                for (i, (piece, fault)) in faults.iter().enumerate() {
+                    let what = match fault {
+                        Fault::Missing => "is missing",
+                        Fault::NotAFile => "is not a file",
+                        Fault::NotRunnable => "cannot be run",
+                    };
+                    write!(f, "{} {} {what}", if i == 0 { "" } else { "," }, piece.name())?;
+                }
+                build(f, folder)
+            }
+        }
+    }
+}
+
+impl std::error::Error for NotFound {}
+
+/// A tools folder with every piece in it. Only [`Tools::find`] makes one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Tools(PathBuf);
+
+impl Tools {
+    /// The tools in folder: all five pieces are files, and the three
+    /// programs have permission to run.
+    pub fn find(folder: &Path) -> Result<Tools, NotFound> {
+        if !folder.is_dir() {
+            return Err(NotFound::NoFolder(folder.to_path_buf()));
+        }
+        let faults: Vec<_> = Piece::ALL
+            .into_iter()
+            .filter_map(|piece| fault(&folder.join(piece.name()), piece.is_program()).map(|fault| (piece, fault)))
+            .collect();
+        if faults.is_empty() {
+            Ok(Tools(folder.to_path_buf()))
+        } else {
+            Err(NotFound::Pieces { folder: folder.to_path_buf(), faults })
+        }
+    }
+
+    pub fn path(&self, piece: Piece) -> PathBuf {
+        self.0.join(piece.name())
+    }
+}
+
+fn fault(path: &Path, program: bool) -> Option<Fault> {
+    match path.metadata() {
+        Err(_) => Some(Fault::Missing),
+        Ok(meta) if !meta.is_file() => Some(Fault::NotAFile),
+        Ok(meta) if program && meta.permissions().mode() & 0o111 == 0 => Some(Fault::NotRunnable),
+        Ok(_) => None,
+    }
+}
+
+/// The app's tools: in SIFS_TOOLS_DIR when it is set, which must be an
+/// absolute path, else in `tools` in the data folder.
+pub fn look(data: &DataDir, var: Option<&OsStr>) -> Result<Tools, NotFound> {
+    let folder = match var {
+        Some(value) if Path::new(value).is_absolute() => PathBuf::from(value),
+        Some(value) => return Err(NotFound::NotAbsolute(value.to_owned())),
+        None => data.path().join("tools"),
+    };
+    Tools::find(&folder)
+}
 
 /// What became of one run of a tool.
 #[derive(Debug)]

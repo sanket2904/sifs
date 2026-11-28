@@ -338,3 +338,122 @@ fn a_tool_that_cannot_be_started_says_why() {
         }
     }
 }
+
+/// A tools folder with all five pieces, stand-ins for the real ones.
+fn complete(scratch: &Scratch) -> PathBuf {
+    let folder = scratch.0.path().join("tools");
+    std::fs::create_dir(&folder).unwrap();
+    for piece in Piece::ALL {
+        let path = folder.join(piece.name());
+        std::fs::write(&path, "#!/bin/sh\n").unwrap();
+        let mode = if piece.name().ends_with(".json") { 0o644 } else { 0o755 };
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+    }
+    folder
+}
+
+fn pieces(folder: &Path, faults: &[(Piece, Fault)]) -> Result<Tools, NotFound> {
+    Err(NotFound::Pieces { folder: folder.to_path_buf(), faults: faults.to_vec() })
+}
+
+#[test]
+fn tools_are_found_when_every_piece_is_there() {
+    let scratch = Scratch::new();
+    let folder = complete(&scratch);
+    let tools = Tools::find(&folder).unwrap();
+    for piece in Piece::ALL {
+        assert_eq!(tools.path(piece), folder.join(piece.name()));
+    }
+    assert_eq!(tools.path(Piece::Show), folder.join("sifs-show"));
+}
+
+#[test]
+fn no_folder_is_no_tools() {
+    let scratch = Scratch::new();
+    let absent = scratch.0.path().join("absent");
+    assert_eq!(Tools::find(&absent), Err(NotFound::NoFolder(absent.clone())));
+    let file = scratch.tool("quick");
+    assert_eq!(Tools::find(&file), Err(NotFound::NoFolder(file.clone())));
+}
+
+#[test]
+fn an_empty_folder_lacks_all_five_pieces() {
+    let scratch = Scratch::new();
+    let folder = scratch.0.path().join("empty");
+    std::fs::create_dir(&folder).unwrap();
+    let expected = Piece::ALL.map(|piece| (piece, Fault::Missing));
+    assert_eq!(Tools::find(&folder), pieces(&folder, &expected));
+}
+
+#[test]
+fn each_missing_piece_is_named() {
+    for missing in Piece::ALL {
+        let scratch = Scratch::new();
+        let folder = complete(&scratch);
+        std::fs::remove_file(folder.join(missing.name())).unwrap();
+        assert_eq!(Tools::find(&folder), pieces(&folder, &[(missing, Fault::Missing)]), "{missing:?}");
+    }
+}
+
+#[test]
+fn a_program_without_permission_to_run_is_named() {
+    for program in [Piece::Extract, Piece::Load, Piece::Show] {
+        let scratch = Scratch::new();
+        let folder = complete(&scratch);
+        std::fs::set_permissions(folder.join(program.name()), std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(Tools::find(&folder), pieces(&folder, &[(program, Fault::NotRunnable)]), "{program:?}");
+    }
+}
+
+#[test]
+fn a_piece_that_is_a_folder_is_named() {
+    for piece in [Piece::Load, Piece::Banks] {
+        let scratch = Scratch::new();
+        let folder = complete(&scratch);
+        std::fs::remove_file(folder.join(piece.name())).unwrap();
+        std::fs::create_dir(folder.join(piece.name())).unwrap();
+        assert_eq!(Tools::find(&folder), pieces(&folder, &[(piece, Fault::NotAFile)]), "{piece:?}");
+    }
+}
+
+#[test]
+fn the_reason_names_the_folder_each_piece_and_the_script() {
+    let folder = Path::new("/tmp/sifs-tools");
+    let faults = [(Piece::Load, Fault::Missing), (Piece::Show, Fault::NotRunnable), (Piece::Banks, Fault::NotAFile)];
+    assert_eq!(
+        NotFound::Pieces { folder: folder.to_path_buf(), faults: faults.to_vec() }.to_string(),
+        "SIFS has no tools: in /tmp/sifs-tools sifs-load is missing, sifs-show cannot be run, banks.json is not a file; \
+         build them with sample/tools/build-tools.sh /tmp/sifs-tools"
+    );
+    assert_eq!(
+        NotFound::NoFolder(folder.to_path_buf()).to_string(),
+        "SIFS has no tools: there is no folder /tmp/sifs-tools; build them with sample/tools/build-tools.sh /tmp/sifs-tools"
+    );
+}
+
+fn data(folder: &Path) -> DataDir {
+    crate::data::data_dir(crate::data::Build::Release, Path::new("/unused"), Some(folder.as_os_str())).unwrap()
+}
+
+#[test]
+fn the_tools_folder_is_the_variable_or_tools_in_the_data_folder() {
+    let scratch = Scratch::new();
+    let folder = complete(&scratch);
+    let elsewhere = data(&scratch.0.path().join("elsewhere"));
+    assert_eq!(look(&elsewhere, Some(folder.as_os_str())), Tools::find(&folder));
+    assert!(look(&elsewhere, Some(folder.as_os_str())).is_ok());
+    let beside = data(scratch.0.path());
+    assert_eq!(look(&beside, None), Tools::find(&folder));
+    assert!(look(&beside, None).is_ok());
+    assert_eq!(look(&elsewhere, None), Err(NotFound::NoFolder(scratch.0.path().join("elsewhere/tools"))));
+}
+
+#[test]
+fn a_bad_variable_is_refused_and_never_falls_back() {
+    let scratch = Scratch::new();
+    complete(&scratch);
+    let beside = data(scratch.0.path());
+    for value in ["", "tools", "./tools", "~/tools"] {
+        assert_eq!(look(&beside, Some(OsStr::new(value))), Err(NotFound::NotAbsolute(value.into())), "{value:?}");
+    }
+}
