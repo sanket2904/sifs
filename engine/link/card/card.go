@@ -123,8 +123,8 @@ type Named struct {
 	Mentions []Mention `json:"mentions"`
 }
 
-var cardThings = []string{pack.Organisation, pack.Identifier, pack.Statement}
-var cardLinks = []string{pack.SameOrg, pack.Mentions, pack.HeldAt, pack.IssuedBy, pack.StatementOf}
+var cardThings = []string{pack.Organisation, pack.Identifier, pack.BankCode, pack.Statement}
+var cardLinks = []string{pack.SameOrg, pack.Mentions, pack.HeldAt, pack.CodeOf, pack.IssuedBy, pack.StatementOf}
 
 // Find gives the cards for a typed word or phrase. A card matches when a
 // name printed on one of its keys holds the query's words as a run of whole
@@ -258,12 +258,12 @@ func (s *snapshot) card(members []string, names map[string][]Mention) Card {
 	})
 
 	held := map[string]*Held{}
-	for _, r := range s.links[pack.HeldAt] {
+	for _, r := range slices.Concat(s.links[pack.HeldAt], s.links[pack.CodeOf]) {
 		org := player(r, "organisation")
 		if !inCard[org] {
 			continue
 		}
-		identID := player(r, "identifier")
+		identID := cmp.Or(player(r, "identifier"), player(r, "code"))
 		h := held[identID]
 		if h == nil {
 			ident := s.identifier(identID)
@@ -433,7 +433,7 @@ func (s *snapshot) key(orgID string) string {
 
 func (s *snapshot) identifier(id string) Identifier {
 	if thing := s.things[id]; thing != nil {
-		return Identifier{Kind: str(thing.Attributes, pack.Kind), Value: str(thing.Attributes, pack.Value)}
+		return Identifier{Kind: str(thing.Attributes, pack.Kind), Value: cmp.Or(str(thing.Attributes, pack.Value), str(thing.Attributes, pack.Code))}
 	}
 	return Identifier{}
 }

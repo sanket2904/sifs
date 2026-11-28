@@ -3,9 +3,11 @@ package load
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/sanket2904/sifs/engine/extract"
+	"github.com/sanket2904/sifs/engine/link/pack"
 
 	"github.com/sanket2904/ontology-framework/interpreter"
 )
@@ -50,10 +52,33 @@ func sortedIDs(ids ...string) []string {
 var kalpit = []string{"holder:passport-asha-current", "holder:passport-asha-expired", "holder:passport-meera-1988", "holder:passport-rohan"}
 
 // runNames is every name the committed run gives a thing, by the thing's
-// id: an organisation's card name and each text a document prints for its
-// key, an identifier's value, a holder's surname and given names.
+// id: an organisation's card name, each text a document prints for its key
+// and an institution code's key itself, a number's or a bank code's value,
+// a holder's surname and given names.
 func runNames(run *extract.Output) map[string][]string {
 	names := map[string][]string{}
+	for _, doc := range run.Documents {
+		var keys []string
+		for _, m := range doc.Orgs {
+			if m.Org != nil {
+				keys = append(keys, *m.Org)
+			}
+		}
+		for _, l := range doc.Links {
+			keys = append(keys, l.Org)
+		}
+		for _, s := range doc.SameOrg {
+			keys = append(keys, s.Keys[:]...)
+		}
+		if s := doc.Statement; s != nil && s.Issuer != "" {
+			keys = append(keys, s.Issuer)
+		}
+		for _, key := range keys {
+			if !strings.HasPrefix(key, "name:") {
+				names[OrgID(key)] = append(names[OrgID(key)], key)
+			}
+		}
+	}
 	for key, card := range run.Organisations {
 		if card.Name != nil {
 			names[OrgID(key)] = append(names[OrgID(key)], *card.Name)
@@ -67,6 +92,9 @@ func runNames(run *extract.Output) map[string][]string {
 		}
 		for _, ident := range doc.Identifiers {
 			id := IdentifierID(ident.Kind, ident.Value)
+			if pack.Public(ident.Kind) {
+				id = BankCodeID(ident.Kind, ident.Value)
+			}
 			names[id] = append(names[id], ident.Value)
 		}
 		if p := doc.Passport; p != nil {
@@ -77,9 +105,10 @@ func runNames(run *extract.Output) map[string][]string {
 }
 
 // The engine's own name lookup on the committed run. Each expectation is
-// read from the run file: the organisations whose card name or printed text
-// starts with the typed word (case aside), the identifiers whose value does,
-// the holders whose surname or given names do. Mutations: drop Alias from
+// read from the run file: the organisations whose card name, printed text
+// or institution code's key starts with the typed word (case aside), the
+// numbers and bank codes whose value does, the holders whose surname or
+// given names do. Mutations: drop Alias from
 // the holder's surname in the pack, and kalpit finds nothing; drop the
 // printed names in Facts, and HDFC Ltd finds nothing and hdfc finds no exact
 // match.
@@ -90,7 +119,7 @@ func TestNames(t *testing.T) {
 		query string
 		want  []string
 	}{
-		{"hdfc", sortedIDs(IdentifierID("ifsc", "HDFC0SAMPL1"), IdentifierID("ifsc", "HDFC0SAMPL3"),
+		{"hdfc", sortedIDs(BankCodeID("ifsc", "HDFC0SAMPL1"), BankCodeID("ifsc", "HDFC0SAMPL3"),
 			OrgID("IFSC HDFC"), OrgID("name:email-fee-payment:hdfcbank"), OrgID("name:hdfc-branch-letter:hdfcbank"), OrgID("name:hdfc-card-statement:hdfcbank"),
 			OrgID("name:hdfc-life-receipt:hdfclifeinsurancecompany"), OrgID("name:hdfc-ltd-loan-2019:housingdevelopmentfinancecorporation"),
 			OrgID("name:hdfc-statement-aug:hdfcbank"), OrgID("name:hdfc-statement-jul:hdfcbank"), OrgID("name:hdfc-statement-sep:hdfcbank"), OrgID("name:neft-receipt-tied:hdfcbank"))},
@@ -100,7 +129,10 @@ func TestNames(t *testing.T) {
 		{"KALPIT", kalpit},
 		{"anna maria", []string{"holder:passport-bad-mrz"}},
 		{"50100417263958", sortedIDs(IdentifierID("account", "50100417263958"))},
-		{"SMBK", sortedIDs(IdentifierID("bic", "SMBKCAT0XXX"), IdentifierID("bic", "SMBKGB20XXX"), OrgID("name:credit-advice-smbk-ca:smbk"), OrgID("name:payroll-release-smbk-gb:smbk"))},
+		{"SMBK", sortedIDs(BankCodeID("bic", "SMBKCAT0XXX"), BankCodeID("bic", "SMBKGB20XXX"), OrgID("name:credit-advice-smbk-ca:smbk"), OrgID("name:payroll-release-smbk-gb:smbk"))},
+		{"BIC SMBKCAT0", sortedIDs(OrgID("BIC SMBKCAT0"))},
+		{"COBADEFFXXX", sortedIDs(BankCodeID("bic", "COBADEFFXXX"))},
+		{"601613", sortedIDs(BankCodeID("gb_sort_code", "601613"))},
 		{"Zebrafinch Savings", nil},
 	}
 	stores(t, func(t *testing.T, ctx context.Context, reopen func() *Engine) {

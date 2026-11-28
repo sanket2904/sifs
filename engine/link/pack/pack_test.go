@@ -45,22 +45,24 @@ func eq[T any](t *testing.T, what string, got, want T) {
 }
 
 // How each kind of thing is shown and found. A document has no attribute
-// in format 3, so nothing can title it.
+// in format 3, so nothing can title it; a statement holds only dates and
+// declares no title.
 var things = map[string]struct {
 	collection      ontology.Collection
 	title, subtitle []string
 	names           []string
 }{
 	pack.Document:     {collection: ontology.CollectionDocuments},
-	pack.Organisation: {ontology.CollectionOrganisations, []string{pack.Name, pack.Key}, []string{pack.Printed}, []string{pack.Name, pack.Printed}},
+	pack.Organisation: {ontology.CollectionOrganisations, []string{pack.Name, pack.Printed, pack.Institution}, []string{pack.Printed}, []string{pack.Name, pack.Printed, pack.Institution}},
 	pack.Identifier:   {ontology.CollectionAccounts, []string{pack.Value}, []string{pack.Kind}, []string{pack.Value}},
-	pack.Statement:    {ontology.CollectionDocuments, []string{pack.To}, []string{pack.From}, nil},
-	pack.Passport:     {ontology.CollectionDocuments, []string{pack.Expiry}, []string{pack.Issued}, nil},
+	pack.BankCode:     {ontology.CollectionOrganisations, []string{pack.Code}, []string{pack.Kind}, []string{pack.Code}},
+	pack.Statement:    {collection: ontology.CollectionDocuments},
+	pack.Passport:     {ontology.CollectionDocuments, []string{pack.ExpiryText}, nil, nil},
 	pack.Holder:       {ontology.CollectionPeople, []string{pack.Surname}, []string{pack.Given}, []string{pack.Surname, pack.Given}},
 }
 
 var (
-	masked = []string{pack.Text, pack.Value}
+	masked = []string{pack.NumberText, pack.Value}
 	hidden = []string{pack.DirectoryID, pack.End, pack.ExpiryEnd, pack.ExpiryPage, pack.ExpiryStart, pack.Key, pack.SettledBy, pack.Start}
 )
 
@@ -156,4 +158,34 @@ func TestSchemaLabelsAndMasks(t *testing.T) {
 	slices.Sort(gotHidden)
 	eq(t, "masked", gotMasked, masked)
 	eq(t, "hidden", gotHidden, hidden)
+}
+
+// A statement's period and a passport's dates are the engine's timestamps,
+// shown as dates, so a rule can compare them. Mutation: declare the
+// statement's end as a string, and it is not a date.
+func TestDates(t *testing.T) {
+	ctx, interp := published(t)
+	box, _, err := interp.SchemaSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{pack.From, pack.To, pack.Issued, pack.Expiry} {
+		at := box.GetAttributeType(id)
+		if at.ValueType != ontology.ValueDateTime || at.Display == nil || at.Display.Kind != ontology.DisplayDate {
+			t.Errorf("%s is a %v shown as %+v, want a timestamp shown as a date", id, at.ValueType, at.Display)
+		}
+	}
+}
+
+// Exactly the kinds that name a bank or a branch are public, and a kind
+// the list does not know is a person's own. Mutation: make Public true for
+// every kind, and the made-up kind is public.
+func TestPublicKinds(t *testing.T) {
+	for kind, want := range map[string]bool{
+		"bic": true, "ifsc": true, "gb_sort_code": true, "fr_bank_code": true, "fr_branch_code": true,
+		"iban": false, "account": false, "card": false, "mrz": false, "passport_number": false, "in_pan": false, "fr_rib_key": false,
+		"xx_member_number": false,
+	} {
+		eq(t, kind+" is public", pack.Public(kind), want)
+	}
 }

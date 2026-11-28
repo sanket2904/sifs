@@ -94,7 +94,10 @@ func open(ctx context.Context, schemas store.SchemaStore, objects store.Store, c
 	if err != nil {
 		return nil, err
 	}
-	if err := interp.PublishSchema(ctx, box, version); err != nil {
+	// A store filled under an earlier pack may hold values this one types
+	// or names otherwise. Load replaces every document's record whole, so
+	// none of them outlives the next load.
+	if err := interp.PublishSchema(interpreter.AllowBreakingSchemaChange(ctx, "the files pack of this sifs-load; the next load replaces every record"), box, version); err != nil {
 		return nil, fmt.Errorf("publish the files pack: %w", err)
 	}
 	// A store filled under a pack that declared other names is looked up

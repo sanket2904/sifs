@@ -7,26 +7,31 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/sanket2904/sifs/engine/link/pack"
 
 	"github.com/sanket2904/ontology-framework/interpreter"
+	"github.com/sanket2904/ontology-framework/ontology"
 	"github.com/sanket2904/ontology-framework/store"
 )
 
-// An organisation's id and a number's id hold neither its key nor its
-// value. Each is the same on every load and every machine (the two written
-// down here are the first 16 hex characters of the SHA-256 of "BIC
-// COBADEFF" and of "iban:NL91ABNA0417164300"), and each of the committed
-// run's keys and numbers has an id of its own. Mutations: put the key back
-// in OrgID, or the value back in IdentifierID, and the stored ids hold
-// them; count calls in digest, and the ids differ from the ones written
-// down here.
+// No thing's id holds a value of its own that the schema masks or hides. An
+// organisation's, a number's and a bank code's id are a digest of its key,
+// value or code, the same on every load and every machine (the three
+// written down here are the first 16 hex characters of the SHA-256 of "BIC
+// COBADEFF", "iban:NL91ABNA0417164300" and "bic:COBADEFFXXX"), and each of
+// the committed run's keys, numbers and bank codes has an id of its own.
+// Mutations: put the key back in OrgID, or the value back in IdentifierID
+// or BankCodeID, and the ids differ from the ones written down here and the
+// stored ids hold masked or hidden values; count calls in digest, and the
+// second load gives other ids.
 func TestIDsCarryNoValue(t *testing.T) {
 	eq(t, "a German bank's id", OrgID("BIC COBADEFF"), "org:9e577a3773d0d204")
 	eq(t, "a Dutch IBAN's id", IdentifierID("iban", "NL91ABNA0417164300"), "identifier:2288ef2e20318bbd")
+	eq(t, "a German BIC's id", BankCodeID("bic", "COBADEFFXXX"), "bankcode:45751cfa78b71419")
 	run := committedRun(t)
-	keys, numbers := map[string]bool{}, map[[2]string]bool{}
+	keys, numbers, codes := map[string]bool{}, map[[2]string]bool{}, map[[2]string]bool{}
 	for _, doc := range run.Documents {
 		for _, m := range doc.Orgs {
 			if m.Org != nil {
@@ -43,35 +48,100 @@ func TestIDsCarryNoValue(t *testing.T) {
 			keys[s.Issuer] = true
 		}
 		for _, ident := range doc.Identifiers {
-			numbers[[2]string{ident.Kind, ident.Value}] = true
+			if pack.Public(ident.Kind) {
+				codes[[2]string{ident.Kind, ident.Value}] = true
+			} else {
+				numbers[[2]string{ident.Kind, ident.Value}] = true
+			}
 		}
 	}
 	stores(t, func(t *testing.T, ctx context.Context, reopen func() *Engine) {
 		e := reopen()
 		mustLoad(t, ctx, e, run)
-		orgs, err := e.Things(ctx, pack.Organisation)
-		if err != nil {
-			t.Fatal(err)
+		things := func(typeID string) []*ontology.Entity {
+			found, err := e.Things(ctx, typeID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return found
 		}
-		idents, err := e.Things(ctx, pack.Identifier)
-		if err != nil {
-			t.Fatal(err)
-		}
+		orgs, idents, bankCodes := things(pack.Organisation), things(pack.Identifier), things(pack.BankCode)
 		eq(t, "organisations, one per key", len(orgs), len(keys))
 		eq(t, "numbers, one per kind and value", len(idents), len(numbers))
+		eq(t, "bank codes, one per kind and code", len(bankCodes), len(codes))
 		for _, o := range orgs {
-			key := o.Attributes[pack.Key][0].(string)
-			if o.ID != OrgID(key) || strings.Contains(o.ID, key) {
+			if key := o.Attributes[pack.Key][0].(string); o.ID != OrgID(key) {
 				t.Errorf("the organisation with key %q has the id %s", key, o.ID)
 			}
 		}
 		for _, n := range idents {
-			kind, value := n.Attributes[pack.Kind][0].(string), n.Attributes[pack.Value][0].(string)
-			if n.ID != IdentifierID(kind, value) || strings.Contains(n.ID, value) {
+			if kind, value := n.Attributes[pack.Kind][0].(string), n.Attributes[pack.Value][0].(string); n.ID != IdentifierID(kind, value) {
 				t.Errorf("the %s %q has the id %s", kind, value, n.ID)
 			}
 		}
+		for _, c := range bankCodes {
+			if kind, code := c.Attributes[pack.Kind][0].(string), c.Attributes[pack.Code][0].(string); c.ID != BankCodeID(kind, code) {
+				t.Errorf("the %s %q has the id %s", kind, code, c.ID)
+			}
+		}
+		ids := func(e *Engine) []string {
+			all, err := e.interp.QueryEntities(ctx, store.EntityPattern{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out []string
+			for _, thing := range all {
+				out = append(out, thing.ID)
+			}
+			slices.Sort(out)
+			return out
+		}
+		box, kept := e.interp.TBox(), 0
+		all, err := e.interp.QueryEntities(ctx, store.EntityPattern{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, thing := range all {
+			for attrID, vs := range thing.Attributes {
+				if d := box.GetAttributeType(attrID).Display; d == nil || !d.Mask && !d.Hidden {
+					continue
+				}
+				for _, v := range vs {
+					if text, ok := v.(string); ok {
+						kept++
+						if holdsWhole(thing.ID, text) {
+							t.Errorf("the id %s holds its %s %q", thing.ID, attrID, text)
+						}
+					}
+				}
+			}
+		}
+		if kept == 0 {
+			t.Fatal("no masked or hidden text to look for")
+		}
+		first := ids(e)
+		mustLoad(t, ctx, reopen(), run)
+		eq(t, "ids after a second load", ids(reopen()), first)
+		t.Logf("%d things, %d masked or hidden texts looked for in their ids", len(first), kept)
 	})
+}
+
+// holdsWhole reports whether s holds v with no letter or digit joined to
+// it on either side.
+func holdsWhole(s, v string) bool {
+	word := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
+	for i := 0; ; {
+		at := strings.Index(s[i:], v)
+		if at < 0 {
+			return false
+		}
+		start, end := i+at, i+at+len(v)
+		before, after := []rune(s[:start]), []rune(s[end:])
+		if (len(before) == 0 || !word(before[len(before)-1])) && (len(after) == 0 || !word(after[0])) {
+			return true
+		}
+		i = start + 1
+	}
 }
 
 // asBefore is a document's facts with the ids sifs-load gave before an id

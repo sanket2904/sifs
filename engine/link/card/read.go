@@ -8,6 +8,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/sanket2904/sifs/engine/link/load"
 	"github.com/sanket2904/sifs/engine/link/pack"
@@ -84,6 +85,9 @@ func str(attrs map[string][]any, name string) string {
 	if v := attrs[name]; len(v) > 0 {
 		if s, ok := v[0].(string); ok {
 			return s
+		}
+		if day, ok := v[0].(time.Time); ok {
+			return day.UTC().Format(time.DateOnly)
 		}
 	}
 	return ""
