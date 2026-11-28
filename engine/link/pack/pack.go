@@ -1,6 +1,7 @@
 // Package pack is the schema the engine is opened with for a person's files:
 // the things and links format 3 (sample/FORMAT.md) states, each claim with
-// its tier and reasons. It holds no rules and no derived facts.
+// its tier and reasons, and the rules in rules.go, which work out from them
+// what no document states outright.
 package pack
 
 import (
@@ -234,6 +235,7 @@ func Module() *schema.ModuleDef {
 	m.Relation("PassportMRZ").Label("Machine-readable zone").
 		Role("passport", "Passport", one, label("Passport"), shownAs("Machine-readable zone")).
 		Role("identifier", "Identifier", one, label("Zone"), shownAs("Zone of passport"))
+	rules(m)
 	return m
 }
 

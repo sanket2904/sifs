@@ -1,7 +1,8 @@
 // Package load puts a format 3 run into the engine: each document is one
 // source record, replaced whole, and a document the run no longer holds is
 // removed with everything only it gave. It stores what format 3 says and
-// decides nothing: no key is joined to another and no tier is raised.
+// decides nothing: no key is joined to another and no tier is raised. What
+// follows from what it stores is the pack's rules' to work out.
 package load
 
 import (
@@ -180,8 +181,9 @@ func record(docID string) interpreter.SourceRecord {
 	return interpreter.SourceRecord{SourceSystem: SourceSystem, SourceInstanceID: SourceInstance, RecordID: docID}
 }
 
-// Load makes the store hold exactly the run's documents. A record the
-// engine turns down is reported and the others still load.
+// Load makes the store hold exactly the run's documents and what the
+// pack's rules work out from them. A record the engine turns down is
+// reported and the others still load.
 func (e *Engine) Load(ctx context.Context, run *extract.Output) (Report, error) {
 	rep := Report{TurnedDown: []TurnDown{}}
 	rep.LeftOut.Answers = len(run.Answers.LatestStatement) + len(run.Answers.CurrentPassport)
@@ -221,6 +223,12 @@ func (e *Engine) Load(ctx context.Context, run *extract.Output) (Report, error) 
 		if res, err := e.interp.RemoveRecord(ctx, record(id)); rep.taken(id, res, err) {
 			rep.Removed++
 		}
+	}
+	// A store filled before the pack had its rules holds none of their
+	// facts, and a load leaves its unchanged documents as they are: every
+	// load works the rules out again over all the store holds.
+	if _, err := e.interp.InferAll(ctx, ""); err != nil {
+		return rep, fmt.Errorf("work out the rules of the files pack: %w", err)
 	}
 	return rep, nil
 }
