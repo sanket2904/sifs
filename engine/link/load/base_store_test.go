@@ -227,8 +227,11 @@ func existing(t *testing.T, module *schema.ModuleDef, run *extract.Output, base 
 		schemas, objects := store.NewMemorySchemaStore(), store.NewMemoryStore()
 		fillAt(t, ctx, schemas, objects, module, run, base)
 		check(t, ctx, func() *Engine {
-			e, err := open(ctx, schemas, objects, func() error { return nil }, true)
+			e, err := open(ctx, schemas, objects, func() error { return nil })
 			if err != nil {
+				t.Fatal(err)
+			}
+			if err := e.publish(ctx); err != nil {
 				t.Fatal(err)
 			}
 			return e

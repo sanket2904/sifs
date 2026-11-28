@@ -37,8 +37,9 @@ type Engine struct {
 	close  func() error
 }
 
-// Open opens, creating if needed, the SQLite store in dataDir, with the
-// files pack as its schema.
+// Open opens, creating if needed, the SQLite store in dataDir to load it,
+// and publishes the files pack as its schema. It is the only way a data
+// dir's schema is changed.
 func Open(ctx context.Context, dataDir string) (*Engine, error) {
 	if dataDir == "" {
 		return nil, fmt.Errorf("no data dir")
@@ -46,20 +47,28 @@ func Open(ctx context.Context, dataDir string) (*Engine, error) {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, err
 	}
-	return openSQLite(ctx, filepath.Join(dataDir, StoreFile), true)
+	e, err := openSQLite(ctx, filepath.Join(dataDir, StoreFile))
+	if err != nil {
+		return nil, err
+	}
+	if err := e.publish(ctx); err != nil {
+		e.Close()
+		return nil, err
+	}
+	return e, nil
 }
 
 // OpenExisting opens the store in dataDir to read it: it fails when there
-// is none and leaves its schema as it is.
+// is none, and leaves its schema and everything it holds as they are.
 func OpenExisting(ctx context.Context, dataDir string) (*Engine, error) {
 	path := filepath.Join(dataDir, StoreFile)
 	if _, err := os.Stat(path); err != nil {
 		return nil, fmt.Errorf("no store: %w", err)
 	}
-	return openSQLite(ctx, path, false)
+	return openSQLite(ctx, path)
 }
 
-func openSQLite(ctx context.Context, path string, publish bool) (*Engine, error) {
+func openSQLite(ctx context.Context, path string) (*Engine, error) {
 	st, err := sqlite.Open(path)
 	if err != nil {
 		return nil, err
@@ -67,7 +76,7 @@ func openSQLite(ctx context.Context, path string, publish bool) (*Engine, error)
 	schemas, err := st.SchemaStore(ctx)
 	if err == nil {
 		var e *Engine
-		if e, err = open(ctx, schemas, st, st.Close, publish); err == nil {
+		if e, err = open(ctx, schemas, st, st.Close); err == nil {
 			return e, nil
 		}
 	}
@@ -77,37 +86,49 @@ func openSQLite(ctx context.Context, path string, publish bool) (*Engine, error)
 
 // OpenMemory opens the engine with the files pack on its memory store.
 func OpenMemory(ctx context.Context) (*Engine, error) {
-	return open(ctx, store.NewMemorySchemaStore(), store.NewMemoryStore(), func() error { return nil }, true)
+	e, err := open(ctx, store.NewMemorySchemaStore(), store.NewMemoryStore(), func() error { return nil })
+	if err != nil {
+		return nil, err
+	}
+	if err := e.publish(ctx); err != nil {
+		return nil, err
+	}
+	return e, nil
 }
 
-func open(ctx context.Context, schemas store.SchemaStore, objects store.Store, closer func() error, publish bool) (*Engine, error) {
+func open(ctx context.Context, schemas store.SchemaStore, objects store.Store, closer func() error) (*Engine, error) {
 	// The files are the person's own and the tool runs as them.
 	interp, err := interpreter.New(ctx, schemas, objects, interpreter.WithAnonymousWrites(), interpreter.WithUnverifiedSourceClaims())
-	if err != nil || !publish {
-		return &Engine{interp: interp, close: closer}, err
+	if err != nil {
+		return nil, err
 	}
+	return &Engine{interp: interp, close: closer}, nil
+}
+
+// publish makes the files pack the store's schema. A store filled under an
+// earlier pack may hold values this one types or names otherwise; Load
+// replaces every document's record whole, so none of them outlives the
+// load that follows.
+func (e *Engine) publish(ctx context.Context) error {
 	box, err := pack.Compile()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	stored, version, err := interp.SchemaSnapshot(ctx)
+	stored, version, err := e.interp.SchemaSnapshot(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	// A store filled under an earlier pack may hold values this one types
-	// or names otherwise. Load replaces every document's record whole, so
-	// none of them outlives the next load.
-	if err := interp.PublishSchema(interpreter.AllowBreakingSchemaChange(ctx, "the files pack of this sifs-load; the next load replaces every record"), box, version); err != nil {
-		return nil, fmt.Errorf("publish the files pack: %w", err)
+	if err := e.interp.PublishSchema(interpreter.AllowBreakingSchemaChange(ctx, "the files pack of this sifs-load; the next load replaces every record"), box, version); err != nil {
+		return fmt.Errorf("publish the files pack: %w", err)
 	}
 	// A store filled under a pack that declared other names is looked up
 	// by the old ones until it is indexed again.
 	if !maps.Equal(names(stored), names(box)) {
-		if err := interp.RebuildNameIndex(ctx); err != nil {
-			return nil, fmt.Errorf("index the names of the files pack: %w", err)
+		if err := e.interp.RebuildNameIndex(ctx); err != nil {
+			return fmt.Errorf("index the names of the files pack: %w", err)
 		}
 	}
-	return &Engine{interp: interp, close: closer}, nil
+	return nil
 }
 
 // names is the set of attributes a schema declares as names.
