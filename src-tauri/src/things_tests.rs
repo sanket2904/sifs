@@ -873,6 +873,28 @@ fn all_gone(pids: &[libc::pid_t]) {
     }
 }
 
+/// Waits until no live process names the scratch folder on its command
+/// line (every stand-in and its child do), or fails the test.
+fn nothing_left(scratch: &Scratch) {
+    let marker = scratch.dir.path().to_str().unwrap().to_string();
+    let marked = || {
+        let out = std::process::Command::new("/bin/ps")
+            .args(["-axo", "stat=,command="])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter(|line| line.contains(&marker) && !line.trim_start().starts_with('Z'))
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    let until = Instant::now() + BOUND;
+    while !marked().is_empty() {
+        assert!(Instant::now() < until, "still alive: {:?}", marked());
+        thread::yield_now();
+    }
+}
+
 // --- R1: the steps ---
 
 #[test]
@@ -1013,15 +1035,8 @@ fn r1_a_load_that_does_not_finish_fails_at_the_load_with_what_was_said() {
             "{case}: nothing recorded as read"
         );
         if case == "too long" {
-            let pid = |what| {
-                scratch
-                    .noted(Piece::Load, what)
-                    .unwrap()
-                    .trim()
-                    .parse()
-                    .unwrap()
-            };
-            all_gone(&[pid("pid"), pid("child")]);
+            // Ended at the limit, maybe before it wrote its pid down.
+            nothing_left(&scratch);
         }
     }
 }
@@ -1111,6 +1126,7 @@ fn r4_quitting_during_each_step_ends_the_reading_and_its_thread() {
         if let Some((tool, child)) = pids {
             all_gone(&[tool, child]);
         }
+        nothing_left(&scratch);
         assert_eq!(
             fs::read(scratch.fingerprint_file()).unwrap(),
             recorded,
