@@ -52,7 +52,7 @@ fn read_json(path: &Path) -> serde_json::Value {
     serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
 }
 
-/// The exported documents, by file name.
+/// The exported documents, by their `file`.
 fn by_file(out: &Path) -> BTreeMap<String, serde_json::Value> {
     let index = read_json(&out.join("index.json"));
     index["documents"]
@@ -223,6 +223,82 @@ fn ids_are_stable_distinct_and_plain() {
     assert!(doc_id("取引明細.pdf", "/r/x").starts_with("file-"));
 }
 
+// --- T5: a document gives its file's full path ---
+
+/// Paths as the index holds them, each beside the `file` its document must
+/// give. The names are kept in the Unicode form they were stored in: one
+/// folder is decomposed (e + U+0301, as HFS+ stores names), one composed.
+const PATHS: [(&str, &str); 11] = [
+    ("/Users/ana/Tax Papers/2031/return.pdf", "/Users/ana/Tax Papers/2031/return.pdf"),
+    ("/Users/ana/Gene\u{301}ve/bail.pdf", "/Users/ana/Gene\u{301}ve/bail.pdf"),
+    ("/Users/ana/Gen\u{e8}ve/bail.pdf", "/Users/ana/Gen\u{e8}ve/bail.pdf"),
+    ("/Users/ana/Receipts #12/till.txt", "/Users/ana/Receipts #12/till.txt"),
+    ("/Users/ana/100% done/notes.txt", "/Users/ana/100% done/notes.txt"),
+    ("/Users/ana/Ana's \"best\" files/list.txt", "/Users/ana/Ana's \"best\" files/list.txt"),
+    ("/Users/ana/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/deep.txt", "/Users/ana/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/deep.txt"),
+    ("/Volumes/Backup/scan 2031.pdf", "/Volumes/Backup/scan 2031.pdf"),
+    ("/Users/ana/Inbox/back\\slash.txt", "/Users/ana/Inbox/back\\slash.txt"),
+    ("/top.txt", "/top.txt"),
+    ("/Users/ana/Banks/statement.pdf", "/Users/ana/Banks/statement.pdf"),
+];
+
+/// Each exported document's `file`, by its id.
+fn files_by_id(out: &Path) -> BTreeMap<String, String> {
+    let index = read_json(&out.join("index.json"));
+    index["documents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|id| {
+            let id = id.as_str().unwrap();
+            let doc = read_json(&out.join(format!("{id}.json")));
+            (id.to_string(), doc["file"].as_str().unwrap().to_string())
+        })
+        .collect()
+}
+
+#[test]
+fn each_document_gives_its_files_full_path() {
+    let db = db();
+    for (path, _) in PATHS {
+        db.add(path, "text", "done", &[("", "x")], &[]);
+    }
+    export(&db.path, &db.out("one"), "2026-11-22").unwrap();
+    let got = files_by_id(&db.out("one"));
+    let want: BTreeMap<String, String> = PATHS
+        .iter()
+        .map(|(path, file)| (doc_id(path.rsplit('/').next().unwrap(), path), file.to_string()))
+        .collect();
+    assert_eq!(got, want);
+}
+
+#[test]
+fn two_files_of_one_name_are_two_documents() {
+    let db = db();
+    db.add("/Users/ana/Banks/statement.pdf", "text", "done", &[("", "one")], &[]);
+    db.add("/Users/ana/Old Banks/statement.pdf", "text", "done", &[("", "two")], &[]);
+    export(&db.path, &db.out("one"), "2026-11-22").unwrap();
+    assert_eq!(
+        files_by_id(&db.out("one")),
+        BTreeMap::from([
+            ("statement-de21a520cd1150b5".to_string(), "/Users/ana/Banks/statement.pdf".to_string()),
+            ("statement-e1895903ccfebd18".to_string(), "/Users/ana/Old Banks/statement.pdf".to_string()),
+        ])
+    );
+}
+
+/// The ids written before a document gave its path, pinned: a person's
+/// documents keep their ids.
+#[test]
+fn ids_are_as_before_the_path_was_given() {
+    let db = db();
+    for path in ["/Users/ana/Banks/statement.pdf", "/Users/ana/Old Banks/statement.pdf", "/Volumes/Backup/scan 2031.pdf"] {
+        db.add(path, "text", "done", &[("", "x")], &[]);
+    }
+    let exported = export(&db.path, &db.out("one"), "2026-11-22").unwrap();
+    assert_eq!(exported.documents, ["statement-de21a520cd1150b5", "statement-e1895903ccfebd18", "scan-2031-aec8d8326d234c02"]);
+}
+
 // --- T2: parts to pages ---
 
 #[test]
@@ -249,19 +325,19 @@ fn each_kind_of_part_maps_to_pages() {
     let docs = by_file(&db.out("one"));
     let page = |text: &str, scanned| (text.to_string(), scanned);
     let want: BTreeMap<&str, Vec<(String, bool)>> = BTreeMap::from([
-        ("a-mixed.pdf", vec![page("one", false), page("", true), page("three", false)]),
-        ("b-scan.pdf", vec![page("", true), page("", true)]),
-        ("c-cut.pdf", vec![page("one", false), page("tw", false)]),
-        ("d-photo.jpg", vec![page("RECEIPT\nTOTAL 12.00", true)]),
-        ("e-blank.png", vec![page("", true)]),
-        ("f-notes.txt", vec![page("line one\nline two\n", false)]),
-        ("g-book.xlsx", vec![page("a\tb\n", false), page("c\n", false)]),
-        ("h-deck.pptx", vec![page("title\n", false), page("say hi\n", false)]),
+        ("/r/a-mixed.pdf", vec![page("one", false), page("", true), page("three", false)]),
+        ("/r/b-scan.pdf", vec![page("", true), page("", true)]),
+        ("/r/c-cut.pdf", vec![page("one", false), page("tw", false)]),
+        ("/r/d-photo.jpg", vec![page("RECEIPT\nTOTAL 12.00", true)]),
+        ("/r/e-blank.png", vec![page("", true)]),
+        ("/r/f-notes.txt", vec![page("line one\nline two\n", false)]),
+        ("/r/g-book.xlsx", vec![page("a\tb\n", false), page("c\n", false)]),
+        ("/r/h-deck.pptx", vec![page("title\n", false), page("say hi\n", false)]),
     ]);
     let got: BTreeMap<&str, Vec<(String, bool)>> = docs.iter().map(|(f, d)| (f.as_str(), pages_of(d))).collect();
     assert_eq!(got, want, "empty, failed and skipped files with no page are left out");
 
-    let doc = &docs["a-mixed.pdf"];
+    let doc = &docs["/r/a-mixed.pdf"];
     assert_eq!(doc["id"], doc_id("a-mixed.pdf", "/r/a-mixed.pdf"));
     assert_eq!(doc["format"], "pdf");
     assert_eq!(doc["lang"], "");
@@ -384,7 +460,8 @@ fn the_sample_files_export_like_their_text_set() {
             unread.push(id);
             continue;
         }
-        let got = docs.get(file).unwrap_or_else(|| panic!("{file} was read but not exported"));
+        let path = folder.join(file);
+        let got = docs.get(path.to_str().unwrap()).unwrap_or_else(|| panic!("{file} was read but not exported"));
         let (want, got) = (pages_of(&want), pages_of(got));
         compared += 1;
         let result = match first_difference(&want, &got) {

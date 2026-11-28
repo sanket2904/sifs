@@ -18,7 +18,7 @@ A document file holds:
 | Field | Value |
 | --- | --- |
 | `id` | The document id. |
-| `file` | The file name in `files/`. |
+| `file` | In the sample, the file name in `files/`. In a text set the app writes from its index, the file's full path as the index holds it, with `/` between its parts. |
 | `sha256` | The file's hash, as `files/SHA256SUMS` gives it. |
 | `format` | `pdf`, `txt` or `html`. |
 | `lang` | The document's language: `en`, `de`, `fr`, `hi` or `ja`. |
@@ -52,7 +52,7 @@ A document entry holds:
 | Field | Entries |
 | --- | --- |
 | `id` | The document id. |
-| `file` | The file's path in the folder that was read, with `/` between its parts, as the text set's `file` gives it: in the sample, the file name in `files/`. It may be left out: a run without it still loads and scores, and a document with none is shown by its id. The scorer does not score it. |
+| `file` | The text set's `file`, carried on unchanged. In the sample it is the file name in `files/`. In a run of a text set the app writes, it is the file's full path. A document is titled by its file name, the part after the last `/`, with its folder, the part before it, as subtitle. It may be left out: a run without it still loads and scores, and a document with none is shown by its id. The scorer does not score it. |
 | `orgs` | An organisation mention: a span, `org` (a key, or `null` for a name that is no organisation the extractor can settle), and `settled_by`: `name`, `mention` or `code` when the document settles it (the README's evidence kinds), `directory` when only a directory lookup does, or `null`. |
 | `identifiers` | A span, `id` (the extractor's own, unique in the document), `kind` (a README identifier kind), `value` (as "Values" below gives it), `valid` (`true`, `false`, or `null` for a kind with no check), and `tier`, the tier of the kind ("Identifier tiers"). |
 | `links` | Identifier held at organisation: `identifier` (an identifier `id`), `org` (a key), `reasons` (README link reasons), `via` (an identifier `id`), which a link with `paired-code` must give, and `tier`. |
