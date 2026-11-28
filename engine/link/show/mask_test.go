@@ -423,14 +423,20 @@ func TestMaskedAndHidden(t *testing.T) {
 	}
 }
 
+// What a report on a planted why line says.
+const (
+	notMade  = " is not what its data makes"
+	found    = " gives "
+	badTitle = " by a title its page does not give"
+	offPage  = " which its page does not show"
+)
+
 // plantedLines are proof lines planted in a page beside a store's own
-// things, each found where a value kept from a person stands outside the
-// titles of the things that line's own data names and the values its claim
-// gives, and only there: a title or a value excuses nothing unless it
-// passes its own check.
+// things, each with the report it must get: in the line (none, or one that
+// says what is wrong) and in its data.
 func plantedLines(t *testing.T, h held, raw, hidden string) {
 	t.Helper()
-	const period, short, end, depot = "2031-07-01 to 2031-07-31", "07", "2031-07-31", "Lagos Depot"
+	const period, short, end, depot, osakaDepot, clinic = "2031-07-01 to 2031-07-31", "07", "2031-07-31", "Lagos Depot", "Osaka Depot", "Clinica Lima"
 	p := h
 	p.masked = append(slices.Clone(h.masked), short)
 	p.things = maps.Clone(h.things)
@@ -440,21 +446,29 @@ func plantedLines(t *testing.T, h held, raw, hidden string) {
 		p.titled(id, title)
 		return show.Thing{ID: id, Type: "planted", Title: title}
 	}
-	statement := plant("planted:period", period, map[string][]any{"planted.period": {period}, "planted.to": {end}})
-	titledRaw := plant("planted:raw", raw, nil)
-	twin := plant("planted:twin", raw, map[string][]any{"planted.name": {raw}})
-	lagos := plant("planted:depot", depot, map[string][]any{"planted.name": {depot}, "planted.code": {raw}})
-	misnamed := lagos
-	misnamed.Title = raw
 	var maskedAttr, hiddenAttr string
+	var public []string
 	for _, id := range sortedIDs(h.box.AttributeTypes) {
 		switch d := h.display(id); {
 		case d.Mask && maskedAttr == "":
 			maskedAttr = id
 		case d.Hidden && hiddenAttr == "":
 			hiddenAttr = id
+		case !d.Mask && !d.Hidden:
+			public = append(public, id)
 		}
 	}
+	name, code := public[0], public[1]
+	statement := plant("planted:period", period, map[string][]any{name: {period}, code: {end}})
+	titledRaw := plant("planted:raw", raw, nil)
+	twin := plant("planted:twin", raw, map[string][]any{name: {raw}})
+	lagos := plant("planted:depot", depot, map[string][]any{name: {depot}, code: {raw}})
+	printed := plant("planted:clinic", clinic, map[string][]any{name: {clinic}, code: {raw}})
+	osaka := plant("planted:osaka", osakaDepot, map[string][]any{name: {osakaDepot}})
+	nowhere := show.Thing{ID: "planted:nowhere", Type: "planted", Title: "Nowhere"}
+	misnamed := lagos
+	misnamed.Title = raw
+	hiddenLabel := h.box.AttributeTypes[hiddenAttr].Label
 	link := func(things ...show.Thing) *show.Claim {
 		c := &show.Claim{Test: "link", Link: "planted", LinkLabel: "Planted", Ends: []show.End{}}
 		for _, thing := range things {
@@ -465,38 +479,82 @@ func plantedLines(t *testing.T, h held, raw, hidden string) {
 	value := func(thing show.Thing, attr, v string) *show.Claim {
 		return &show.Claim{Test: "is", Thing: &thing, Attribute: attr, Label: "Value", Value: v}
 	}
+	since := func(v string) *show.Claim {
+		c := link(osaka, lagos)
+		c.Test, c.Attribute, c.Label, c.Value = "is", code, "Since", v
+		return c
+	}
+	notShown := func(c show.Claim) *show.Claim {
+		c.Test, c.Thing, c.Hidden = "has", &osaka, true
+		return &c
+	}
+	condition := func(attr, v string) *show.Claim {
+		return &show.Claim{Test: "is", Attribute: attr, Label: "Value", Value: v}
+	}
+	deep := &show.Claim{Test: "all_of", Of: []show.Claim{{Test: "any_of", Of: []show.Claim{{Test: "link", Link: "planted", LinkLabel: "Planted", With: condition(maskedAttr, raw)}}}}}
+	sinceLine := "Planted: Thing " + osakaDepot + ", Thing " + depot + "; Since: "
+	hiddenLine := osakaDepot + " has a value that is not shown"
 	for _, c := range []struct {
-		name          string
-		proof         show.Proof
-		found, inData bool
+		name   string
+		proof  show.Proof
+		line   string
+		inData bool
 	}{
-		{"a masked value in a fact", show.Proof{Fact: "Statement account: Account " + raw}, true, false},
-		{"a masked value in a ruled-out line", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: a match (for " + raw + ", Statement " + period + ")"}}}, true, false},
-		{"a hidden value in a fact", show.Proof{Fact: "Held at: Key " + hidden}, true, false},
-		{"a short masked value inside a title the line names", show.Proof{Fact: "Latest statement: Statement " + period, Claim: link(statement)}, false, false},
-		{"the same value beside that title", show.Proof{Fact: "Latest statement: Statement " + period + "; Key " + short, Claim: link(statement)}, true, false},
-		{"a thing titled by a raw masked value, named", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Older statements (for " + raw + ")"}}}, true, false},
-		{"a masked value raw, the same text as the public title of a thing the data does not name", show.Proof{Fact: "Planted: Thing " + depot + ", Thing " + raw, Claim: link(lagos)}, true, false},
-		{"the same text, that thing named", show.Proof{Fact: "Planted: Thing " + raw, Claim: link(twin)}, false, false},
-		{"a masked value raw before the titles", show.Proof{Fact: raw + " Planted: Thing " + depot + ", Thing " + period, Claim: link(lagos, statement)}, true, false},
-		{"a masked value raw after the titles", show.Proof{Fact: "Planted: Thing " + depot + ", Thing " + period + " " + raw, Claim: link(lagos, statement)}, true, false},
-		{"a masked value raw between the titles", show.Proof{Fact: "Planted: Thing " + depot + ", " + raw + ", Thing " + period, Claim: link(lagos, statement)}, true, false},
-		{"a public date given as the value, a short masked value inside it", show.Proof{Fact: period + " Value " + end, Claim: value(statement, "planted.to", end)}, false, false},
-		{"that short value outside the title and the value", show.Proof{Fact: period + " Value " + end + "; " + short, Claim: value(statement, "planted.to", end)}, true, false},
-		{"a masked attribute's value given raw as the value", show.Proof{Fact: depot + " Value " + raw, Claim: value(lagos, maskedAttr, raw)}, true, true},
-		{"a hidden attribute's value given as the value", show.Proof{Fact: depot + " Value " + hidden, Claim: value(lagos, hiddenAttr, hidden)}, true, true},
-		{"a thing named by a title that is not its page's", show.Proof{Fact: "Planted: Thing " + raw, Claim: link(misnamed)}, true, false},
-		{"a title that is itself a raw masked value", show.Proof{Fact: "Planted: Thing " + raw, Claim: link(titledRaw)}, true, true},
+		{"a masked value in a fact", show.Proof{Fact: "Statement account: Account " + raw}, found, false},
+		{"a masked value in a ruled-out line", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: a match (for " + raw + ", Statement " + period + ")"}}}, found, false},
+		{"a hidden value in a fact", show.Proof{Fact: "Held at: Key " + hidden}, found, false},
+		{"a short masked value inside a title the line names", show.Proof{Fact: "Planted: Thing " + period, Claim: link(statement)}, "", false},
+		{"the same value beside that title", show.Proof{Fact: "Planted: Thing " + period + "; Key " + short, Claim: link(statement)}, found, false},
+		{"a thing titled by a raw masked value, named", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Older statements (for " + raw + ")"}}}, found, false},
+		{"a masked value raw, the same text as the public title of a thing the data does not name", show.Proof{Fact: "Planted: Thing " + depot + ", Thing " + raw, Claim: link(lagos)}, found, false},
+		{"the same text, that thing named", show.Proof{Fact: "Planted: Thing " + raw, Claim: link(twin)}, "", false},
+		{"a masked value raw before the titles", show.Proof{Fact: raw + " Planted: Thing " + depot + ", Thing " + period, Claim: link(lagos, statement)}, found, false},
+		{"a masked value raw after the titles", show.Proof{Fact: "Planted: Thing " + depot + ", Thing " + period + " " + raw, Claim: link(lagos, statement)}, found, false},
+		{"a masked value raw between the titles", show.Proof{Fact: "Planted: Thing " + depot + ", " + raw + ", Thing " + period, Claim: link(lagos, statement)}, found, false},
+		{"a public date given as the value, a short masked value inside it", show.Proof{Fact: period + " Value " + end, Claim: value(statement, code, end)}, "", false},
+		{"that short value outside the title and the value", show.Proof{Fact: period + " Value " + end + "; " + short, Claim: value(statement, code, end)}, found, false},
+		{"a masked attribute's value given raw as the value", show.Proof{Fact: depot + " Value " + raw, Claim: value(lagos, maskedAttr, raw)}, found, true},
+		{"a hidden attribute's value given as the value", show.Proof{Fact: depot + " Value " + hidden, Claim: value(lagos, hiddenAttr, hidden)}, found, true},
+		{"a thing named by a title that is not its page's", show.Proof{Fact: "Planted: Thing " + raw, Claim: link(misnamed)}, found, false},
+		{"a title that is itself a raw masked value", show.Proof{Fact: "Planted: Thing " + raw, Claim: link(titledRaw)}, found, true},
+
+		{"a public value given, then repeated outside its place", show.Proof{Fact: clinic + " Value " + raw + "; secret " + raw, Claim: value(printed, code, raw)}, found, false},
+		{"that public value in its place only", show.Proof{Fact: clinic + " Value " + raw, Claim: value(printed, code, raw)}, "", false},
+		{"a masked value given raw under a public attribute's id", show.Proof{Fact: osakaDepot + " Value " + raw, Claim: value(osaka, name, raw)}, offPage, true},
+		{"a value the page shows for another attribute of the same thing", show.Proof{Fact: depot + " Value " + raw, Claim: value(lagos, name, raw)}, offPage, true},
+		{"a value of a thing the store does not hold", show.Proof{Fact: "Nowhere Value Lima", Claim: value(nowhere, name, "Lima")}, offPage, true},
+		{"a link value that is not the link's row", show.Proof{Fact: sinceLine + "2031-08-15", Claim: since("2031-08-15")}, offPage, true},
+		{"a link value that is the link's row", show.Proof{Fact: sinceLine + "2031-07-01", Claim: since("2031-07-01")}, "", false},
+		{"a hidden claim that says only that", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{})}, "", false},
+		{"a hidden claim with a label", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{Label: hiddenLabel})}, "", true},
+		{"a hidden claim with an attribute id", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{Attribute: hiddenAttr})}, "", true},
+		{"a hidden claim with a value", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{Value: "Lima"})}, "", true},
+		{"a hidden claim with a plus", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{Plus: "2 days"})}, "", true},
+		{"a title repeated outside its place", show.Proof{Fact: "Planted: Thing " + raw + "; " + raw, Claim: link(twin)}, found, false},
+		{"a thing the data names and the line does not, a masked value raw in the line", show.Proof{Fact: "secret " + raw, Claim: link(twin)}, found, false},
+		{"a line with one word more than its data", show.Proof{Fact: "Planted: Thing " + osakaDepot + " now", Claim: link(osaka)}, notMade, false},
+		{"a line with another thing's title", show.Proof{Fact: "Planted: Thing " + depot, Claim: link(osaka)}, notMade, false},
+		{"a thing given another thing's title", show.Proof{Fact: "Planted: Thing " + depot, Claim: link(show.Thing{ID: osaka.ID, Type: "planted", Title: depot})}, badTitle, false},
+		{"a condition's constant, a masked value given raw", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Value: " + raw, Claim: condition(maskedAttr, raw), For: []show.Thing{}}}}, found, true},
+		{"a condition's constant, a masked value given raw under a public attribute's id", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Value: " + raw, Claim: condition(name, raw), For: []show.Thing{}}}}, found, true},
+		{"a masked value raw three levels down, in the data only", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Planted, one with Value: ••••9221", Claim: deep, For: []show.Thing{}}}}, notMade, true},
 	} {
 		read := encode(t, show.Page{Thing: show.Thing{ID: "planted", Type: "planted", Title: "planted"},
 			Links: []show.LinkGroup{{Link: "planted", Rows: []show.Link{{Ends: []show.End{}, Proof: &c.proof}}}}})
 		got := p.leaks(read, false)
-		inLine := slices.ContainsFunc(got, func(leak string) bool {
-			return strings.HasPrefix(leak, ".links[0].rows[0].proof.fact ") || strings.HasPrefix(leak, ".links[0].rows[0].proof.ruled_out[0].line ")
+		var inLine []string
+		for _, leak := range got {
+			if strings.HasPrefix(leak, ".links[0].rows[0].proof.fact ") || strings.HasPrefix(leak, ".links[0].rows[0].proof.ruled_out[0].line ") {
+				inLine = append(inLine, leak)
+			}
+		}
+		inData := slices.ContainsFunc(got, func(leak string) bool {
+			return strings.HasPrefix(leak, ".links[0].rows[0].proof.claim.") || strings.HasPrefix(leak, ".links[0].rows[0].proof.ruled_out[0].claim.") ||
+				strings.HasPrefix(leak, ".links[0].rows[0].proof.ruled_out[0].for")
 		})
-		inData := slices.ContainsFunc(got, func(leak string) bool { return strings.HasPrefix(leak, ".links[0].rows[0].proof.claim.") })
-		if inLine != c.found || inData != c.inData || !c.found && len(got) > 0 {
-			t.Errorf("%s: found in the line %v, want %v; in the data %v, want %v: %q", c.name, inLine, c.found, inData, c.inData, got)
+		lineRight := c.line == "" && len(inLine) == 0 || c.line != "" && slices.ContainsFunc(inLine, func(leak string) bool { return strings.Contains(leak, c.line) })
+		if !lineRight || inData != c.inData || c.line == "" && !c.inData && len(got) > 0 {
+			t.Errorf("%s: in the line %q, want %q; in the data %v, want %v: %q", c.name, inLine, c.line, inData, c.inData, got)
 		}
 	}
 }
