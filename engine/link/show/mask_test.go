@@ -20,7 +20,9 @@ import (
 
 // held is what a store holds that a person may be kept from: every value
 // under an attribute the schema masks or hides, every value it holds at
-// all (to find by), each thing by id, and the text its schema declares.
+// all (to find by), each thing by id, and the text its schema declares;
+// and, as its reads are judged, how many objects of each shape of why data
+// it judged.
 type held struct {
 	box            *ontology.TBox
 	masked, hidden []any
@@ -28,6 +30,7 @@ type held struct {
 	things         map[string]*ontology.Entity
 	schema         map[string]bool
 	pages          map[string]map[string]any
+	seen           map[string]int
 }
 
 func holds(t *testing.T, interp *interpreter.Interpreter) held {
@@ -105,8 +108,9 @@ func (h held) display(attrID string) *ontology.AttributeDisplay {
 //   - a type, label, link, role or attribute: a name the schema declares, or
 //     text with no value kept from a person in it;
 //   - a proof's fact and each line of what it ruled out: exactly what that
-//     node's own data makes, each part judged where it stands (see why); a
-//     line that is not is reported, and searched whole;
+//     node's own data makes, its data of one of the shapes a why gives and
+//     each part judged where it stands (see why); a line that is not is
+//     reported, and searched whole;
 //   - a claim on a hidden attribute: that it is hidden, and nothing else
 //     about that attribute;
 //   - every other text (ids, sources, claims and reasons): text with no
@@ -135,24 +139,30 @@ func (h held) leaks(read []byte, reveal bool) []string {
 	}
 	// why judges the why line node[key], at path, by the parts its data
 	// makes. A title must be the title its thing's page gives and pass
-	// as a title; a fact's value must be what the page of its thing (its
-	// link's row) shows for its attribute, in the line and in the data;
-	// a condition's value must not be of a hidden attribute, and is
-	// searched with the fixed words and labels. A part that fails is
-	// reported and searched too.
+	// as a title; a fact's value must be what the page of its subject
+	// (its link's row) shows for its attribute, in the line and in the
+	// data; a condition's value must not be of a hidden attribute, and
+	// is searched with the fixed words and labels. A part that fails is
+	// reported and searched too. Data of no shape makes no line: the
+	// line is reported and searched whole, and every value in the data
+	// is judged as a fact's value or a condition's.
 	why := func(path string, node map[string]any, key string) {
+		b := rebuilder{box: h.box, seen: h.seen}
 		var parts []part
 		var err error
 		if key == "fact" {
-			parts, err = factParts(object(node["claim"]))
+			parts, err = b.fact(node)
 		} else {
-			parts = ruledOutParts(node)
+			parts, err = b.ruledOut(node)
 		}
 		line, at := text(node[key]), path+"."+key
 		made := err == nil && joined(parts) == line
 		if !made {
 			out = append(out, fmt.Sprintf("%s %q is not what its data makes, %q (%v)", at, line, joined(parts), err))
 			free(at, line)
+		}
+		if err != nil {
+			parts = values(node, key == "fact")
 		}
 		var searched strings.Builder
 		for _, p := range parts {
@@ -337,6 +347,8 @@ func everything(t *testing.T, r *show.Reader, h held) [][]byte {
 // gives a value as its page shows it.
 func reportLeaks(t *testing.T, h held, reads [][]byte, reveal bool) {
 	t.Helper()
+	h.seen = map[string]int{}
+	defer func() { t.Logf("reveal %v: why data judged, by shape: %v", reveal, h.seen) }()
 	for _, read := range reads {
 		var page map[string]any
 		if json.Unmarshal(read, &page) == nil && text(page["id"]) != "" {
@@ -356,12 +368,15 @@ func reportLeaks(t *testing.T, h held, reads [][]byte, reveal bool) {
 	}
 }
 
-// Every read of both schemas on both stores, searched field by field for
-// every masked value without reveal and every hidden value with and
+// Every read of the three schemas on both stores, searched field by field
+// for every masked value without reveal and every hidden value with and
 // without it. Mutations: give a title's first value raw in shown.first, and
 // account numbers are given; put an organisation's key back in its id, and
 // the ids give hidden keys; skip ids, subtitles or the ends of links in
-// leaks, and that planted value is not found.
+// leaks, and that planted value is not found; put a hidden attribute's label
+// or id back in a why, give a masked value raw in its line or its data or
+// under a public attribute's id, repeat a value after its line, or add a
+// field to a claim, and the library's why lines are reported.
 func TestMaskedAndHidden(t *testing.T) {
 	for _, s := range []struct {
 		name string
@@ -372,6 +387,8 @@ func TestMaskedAndHidden(t *testing.T) {
 		{"files on sqlite", func(t *testing.T) *interpreter.Interpreter { return openSQLite(t, filesOnSQLite(t)) }, "DE89370400440532013000"},
 		{"shop on memory", shopOnMemory, anaTax},
 		{"shop on sqlite", shopOnSQLite, anaTax},
+		{"lending on memory", lendingOnMemory, aikoCard},
+		{"lending on sqlite", lendingOnSQLite, aikoCard},
 	} {
 		t.Run(s.name, func(t *testing.T) {
 			interp := s.open(t)
@@ -421,6 +438,11 @@ func plantedLines(t *testing.T, h held, raw, hidden string) {
 	const period, short, end, depot, osakaDepot, clinic = "2031-07-01 to 2031-07-31", "07", "2031-07-31", "Lagos Depot", "Osaka Depot", "Clinica Lima"
 	p := h
 	p.masked = append(slices.Clone(h.masked), short)
+	box := *h.box
+	box.RelationTypes, box.RoleTypes = maps.Clone(h.box.RelationTypes), maps.Clone(h.box.RoleTypes)
+	box.RelationTypes["planted"] = &ontology.RelationType{ID: "planted", Label: "Planted"}
+	box.RoleTypes["planted"] = &ontology.RoleType{ID: "planted", Label: "Thing"}
+	p.box = &box
 	p.things = maps.Clone(h.things)
 	p.pages = maps.Clone(h.pages)
 	plant := func(id, title string, attrs map[string][]any) show.Thing {
@@ -466,12 +488,13 @@ func plantedLines(t *testing.T, h held, raw, hidden string) {
 		}
 		return c
 	}
+	attrLabel := func(id string) string { return h.box.AttributeTypes[id].Label }
 	value := func(thing show.Thing, attr, v string) *show.Claim {
-		return &show.Claim{Test: "is", Thing: &thing, Attribute: attr, Label: "Value", Value: v}
+		return &show.Claim{Test: "is", Thing: &thing, Attribute: attr, Label: attrLabel(attr), Value: v}
 	}
 	since := func(v string) *show.Claim {
 		c := link(osaka, lagos)
-		c.Test, c.Attribute, c.Label, c.Value = "is", code, "Since", v
+		c.Test, c.Attribute, c.Label, c.Value = "is", code, attrLabel(code), v
 		return c
 	}
 	notShown := func(c show.Claim) *show.Claim {
@@ -479,12 +502,12 @@ func plantedLines(t *testing.T, h held, raw, hidden string) {
 		return &c
 	}
 	condition := func(attr, v string) *show.Claim {
-		return &show.Claim{Test: "is", Attribute: attr, Label: "Value", Value: v}
+		return &show.Claim{Test: "is", Attribute: attr, Label: attrLabel(attr), Value: v}
 	}
 	deep := &show.Claim{Test: "all_of", Of: []show.Claim{{Test: "any_of", Of: []show.Claim{{Test: "link", Link: "planted", LinkLabel: "Planted", With: condition(maskedAttr, raw)}}}}}
-	sinceLine := "Planted: Thing " + osakaDepot + ", Thing " + depot + "; Since: "
+	sinceLine := "Planted: Thing " + osakaDepot + ", Thing " + depot + "; " + attrLabel(code) + ": "
 	hiddenLine := osakaDepot + " has a value that is not shown"
-	attrLabel := func(id string) string { return h.box.AttributeTypes[id].Label }
+	is := func(attr string) string { return " " + attrLabel(attr) + " " }
 	kinds := sortedIDs(h.box.EntityTypes)
 	kind := kinds[slices.IndexFunc(kinds, func(id string) bool { return !holdsAny(h.box.EntityTypes[id].Label, slices.Concat(p.masked, p.hidden)) })]
 	kindLabel := h.box.EntityTypes[kind].Label
@@ -526,33 +549,33 @@ func plantedLines(t *testing.T, h held, raw, hidden string) {
 		{"a masked value raw before the titles", show.Proof{Fact: raw + " Planted: Thing " + depot + ", Thing " + period, Claim: link(lagos, statement)}, found, false},
 		{"a masked value raw after the titles", show.Proof{Fact: "Planted: Thing " + depot + ", Thing " + period + " " + raw, Claim: link(lagos, statement)}, found, false},
 		{"a masked value raw between the titles", show.Proof{Fact: "Planted: Thing " + depot + ", " + raw + ", Thing " + period, Claim: link(lagos, statement)}, found, false},
-		{"a public date given as the value, a short masked value inside it", show.Proof{Fact: period + " Value " + end, Claim: value(statement, code, end)}, "", false},
-		{"that short value outside the title and the value", show.Proof{Fact: period + " Value " + end + "; " + short, Claim: value(statement, code, end)}, found, false},
-		{"a masked attribute's value given raw as the value", show.Proof{Fact: depot + " Value " + raw, Claim: value(lagos, maskedAttr, raw)}, found, true},
-		{"a hidden attribute's value given as the value", show.Proof{Fact: depot + " Value " + hidden, Claim: value(lagos, hiddenAttr, hidden)}, found, true},
+		{"a public date given as the value, a short masked value inside it", show.Proof{Fact: period + is(code) + end, Claim: value(statement, code, end)}, "", false},
+		{"that short value outside the title and the value", show.Proof{Fact: period + is(code) + end + "; " + short, Claim: value(statement, code, end)}, found, false},
+		{"a masked attribute's value given raw as the value", show.Proof{Fact: depot + is(maskedAttr) + raw, Claim: value(lagos, maskedAttr, raw)}, found, true},
+		{"a hidden attribute's value given as the value", show.Proof{Fact: depot + is(hiddenAttr) + hidden, Claim: value(lagos, hiddenAttr, hidden)}, found, true},
 		{"a thing named by a title that is not its page's", show.Proof{Fact: "Planted: Thing " + raw, Claim: link(misnamed)}, found, false},
 		{"a title that is itself a raw masked value", show.Proof{Fact: "Planted: Thing " + raw, Claim: link(titledRaw)}, found, true},
 
-		{"a public value given, then repeated outside its place", show.Proof{Fact: clinic + " Value " + raw + "; secret " + raw, Claim: value(printed, code, raw)}, found, false},
-		{"that public value in its place only", show.Proof{Fact: clinic + " Value " + raw, Claim: value(printed, code, raw)}, "", false},
-		{"a masked value given raw under a public attribute's id", show.Proof{Fact: osakaDepot + " Value " + raw, Claim: value(osaka, name, raw)}, offPage, true},
-		{"a value the page shows for another attribute of the same thing", show.Proof{Fact: depot + " Value " + raw, Claim: value(lagos, name, raw)}, offPage, true},
-		{"a value of a thing the store does not hold", show.Proof{Fact: "Nowhere Value Lima", Claim: value(nowhere, name, "Lima")}, offPage, true},
+		{"a public value given, then repeated outside its place", show.Proof{Fact: clinic + is(code) + raw + "; secret " + raw, Claim: value(printed, code, raw)}, found, false},
+		{"that public value in its place only", show.Proof{Fact: clinic + is(code) + raw, Claim: value(printed, code, raw)}, "", false},
+		{"a masked value given raw under a public attribute's id", show.Proof{Fact: osakaDepot + is(name) + raw, Claim: value(osaka, name, raw)}, offPage, true},
+		{"a value the page shows for another attribute of the same thing", show.Proof{Fact: depot + is(name) + raw, Claim: value(lagos, name, raw)}, offPage, true},
+		{"a value of a thing the store does not hold", show.Proof{Fact: "Nowhere" + is(name) + "Lima", Claim: value(nowhere, name, "Lima")}, offPage, true},
 		{"a link value that is not the link's row", show.Proof{Fact: sinceLine + "2031-08-15", Claim: since("2031-08-15")}, offPage, true},
 		{"a link value that is the link's row", show.Proof{Fact: sinceLine + "2031-07-01", Claim: since("2031-07-01")}, "", false},
 		{"a hidden claim that says only that", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{})}, "", false},
-		{"a hidden claim with a label", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{Label: hiddenLabel})}, "", true},
-		{"a hidden claim with an attribute id", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{Attribute: hiddenAttr})}, "", true},
-		{"a hidden claim with a value", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{Value: "Lima"})}, "", true},
-		{"a hidden claim with a plus", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{Plus: "2 days"})}, "", true},
+		{"a hidden claim with a label", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{Label: hiddenLabel})}, notMade, true},
+		{"a hidden claim with an attribute id", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{Attribute: hiddenAttr})}, notMade, true},
+		{"a hidden claim with a value", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{Value: "Lima"})}, notMade, true},
+		{"a hidden claim with a plus", show.Proof{Fact: hiddenLine, Claim: notShown(show.Claim{Plus: "2 days"})}, notMade, true},
 		{"a title repeated outside its place", show.Proof{Fact: "Planted: Thing " + raw + "; " + raw, Claim: link(twin)}, found, false},
 		{"a thing the data names and the line does not, a masked value raw in the line", show.Proof{Fact: "secret " + raw, Claim: link(twin)}, found, false},
 		{"a line with one word more than its data", show.Proof{Fact: "Planted: Thing " + osakaDepot + " now", Claim: link(osaka)}, notMade, false},
 		{"a line with another thing's title", show.Proof{Fact: "Planted: Thing " + depot, Claim: link(osaka)}, notMade, false},
 		{"a thing given another thing's title", show.Proof{Fact: "Planted: Thing " + depot, Claim: link(show.Thing{ID: osaka.ID, Type: "planted", Title: depot})}, badTitle, false},
-		{"a condition's constant, a masked value given raw", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Value: " + raw, Claim: condition(maskedAttr, raw), For: []show.Thing{}}}}, found, true},
-		{"a condition's constant, a masked value given raw under a public attribute's id", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Value: " + raw, Claim: condition(name, raw), For: []show.Thing{}}}}, found, true},
-		{"a masked value raw three levels down, in the data only", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Planted, one with Value: ••••9221", Claim: deep, For: []show.Thing{}}}}, notMade, true},
+		{"a condition's constant, a masked value given raw", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: " + attrLabel(maskedAttr) + ": " + raw, Claim: condition(maskedAttr, raw), For: []show.Thing{}}}}, found, true},
+		{"a condition's constant, a masked value given raw under a public attribute's id", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: " + attrLabel(name) + ": " + raw, Claim: condition(name, raw), For: []show.Thing{}}}}, found, true},
+		{"a masked value raw three levels down, in the data only", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Planted, one with " + attrLabel(maskedAttr) + ": ••••9221", Claim: deep, For: []show.Thing{}}}}, notMade, true},
 
 		{"a claim that names a thing and a link's ends, its value on the link row of another thing", show.Proof{Fact: osakaDepot + " " + attrLabel(code) + " " + raw, Claim: both}, notMade, true},
 		{"a line its data makes, with nested data it does not say: a masked value raw under a public attribute's id", show.Proof{Fact: osakaDepot + wordIs + kindLabel, Claim: nested}, notMade, true},
