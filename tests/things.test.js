@@ -1,10 +1,13 @@
 // @ts-nocheck: run by node --test; the project has no Node types, and adding them is a new dependency.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parse } from 'svelte/compiler';
 import { setImmediate as turn } from 'node:timers/promises';
 import { createSearch, TYPING, CONTENTS } from '../src/lib/search.js';
-import { createThings, SHOWN } from '../src/lib/things.js';
+import { createThings, SHOWN, WORDS } from '../src/lib/things.js';
 
 const golden = (name) => JSON.parse(readFileSync(new URL(`../engine/link/show/testdata/${name}`, import.meta.url), 'utf8'));
 const FILES_FIND = golden('files-find.json');
@@ -114,7 +117,8 @@ const fromGoldens = (call) => {
 
 const ids = (view) => view.groups.flatMap((g) => g.rows.map((r) => r.id));
 const shownIds = (golden) => golden.groups.flatMap((g) => g.things.slice(0, SHOWN).map((t) => t.id));
-const section = (view) => ({ groups: view.groups.length, line: view.line });
+/** How the section stands; nothing shown yet is no section. */
+const section = (view = { groups: [], line: '' }) => ({ groups: view.groups.length, line: view.line });
 
 /** Types and lets the pause pass, so the question is asked and answered. */
 async function find(c, things, words) {
@@ -484,4 +488,164 @@ test('T2: a source opens its file by exactly its record id, and a refusal shows 
 	assert.equal(view().page.values[0].sources[0].refusal, '', 'opened: nothing to say');
 	view().page.values[0].toggle();
 	assert.equal(view().page.values[0].open, false);
+});
+
+// T5. Generic and safe.
+
+const SRC = new URL('../src/', import.meta.url);
+/** Every file under src/, by its path there. */
+const sources = () =>
+	readdirSync(SRC, { recursive: true, withFileTypes: true })
+		.filter((d) => d.isFile())
+		.map((d) => {
+			const file = join(d.parentPath ?? d.path, d.name);
+			return { path: relative(fileURLToPath(SRC), file), text: readFileSync(file, 'utf8') };
+		});
+
+/** Every string a source holds: literals, template text, markup text and attribute values. Comments are not strings. */
+function stringsOf(path, text) {
+	const markup = path.endsWith('.svelte') ? text : path.endsWith('.ts') ? `<script lang="ts">${text}</script>` : path.endsWith('.js') ? `<script>${text}</script>` : text;
+	const found = [];
+	const seen = new WeakSet();
+	(function walk(node) {
+		if (!node || typeof node !== 'object' || seen.has(node)) return;
+		seen.add(node);
+		if (node.type === 'Text' && typeof node.data === 'string') found.push(node.data);
+		if (node.type === 'Literal' && typeof node.value === 'string') found.push(node.value);
+		if (node.type === 'TemplateElement') found.push(node.value.cooked);
+		for (const [key, value] of Object.entries(node)) if (key !== 'css') walk(value);
+	})(parse(markup, { modern: true }));
+	return found;
+}
+
+/** The names of both schemas: every type, attribute, role, link, rule, label and collection their goldens hold. */
+function schemaNames() {
+	const FIELDS = new Set(['type', 'attribute', 'role', 'link', 'rule', 'label', 'link_label', 'collection']);
+	const names = new Set();
+	const keys = new Set();
+	(function walk(o) {
+		if (Array.isArray(o)) return o.forEach(walk);
+		if (!o || typeof o !== 'object') return;
+		for (const [key, value] of Object.entries(o)) {
+			keys.add(key);
+			if (FIELDS.has(key) && typeof value === 'string') names.add(value);
+			walk(value);
+		}
+	})([FILES_FIND, golden('files-kinds.json'), FILES_PAGES, SHOP]);
+	// A name that is also a field of the reader's own JSON, such as the bakery's
+	// collection "things" and every find group's `things`, is the format's word.
+	return [...names].filter((name) => !keys.has(name));
+}
+
+const escaped = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Each name, as a whole word, that the strings hold. */
+const named = (strings, names) =>
+	names.filter((name) => {
+		const word = new RegExp(`(?<![\\p{L}\\p{N}_])${escaped(name)}(?![\\p{L}\\p{N}_])`, 'u');
+		return strings.some((s) => word.test(s));
+	});
+
+test('T5: no string under src/ names a type, attribute, role, link, rule, label or collection of either schema', () => {
+	const names = schemaNames();
+	assert.ok(names.includes('files.name') && names.includes('bakery.fullName') && names.includes('Passport holder') && names.includes('organisations'), 'both schemas collected');
+	assert.deepEqual(named(['const attribute = "files.tier"'], names), ['files.tier'], 'the search can see a planted id');
+	assert.ok(stringsOf('lib/things.js', readFileSync(new URL('lib/things.js', SRC), 'utf8')).includes(WORDS.values), 'and sees the module\'s own words');
+	for (const { path, text } of sources()) assert.deepEqual(named(stringsOf(path, text), names), [], `src/${path}`);
+});
+
+/** Every key path a view holds, so two views can be compared by shape alone. */
+function shape(value, at = '', paths = new Set()) {
+	if (Array.isArray(value)) value.forEach((v) => shape(v, `${at}[]`, paths));
+	else if (value && typeof value === 'object') for (const [key, v] of Object.entries(value)) shape(v, `${at}.${key}`, paths);
+	else paths.add(`${at}:${typeof value}`);
+	return paths;
+}
+
+test('T5: the shop draws through the same code path as the files schema, to views of the same shape', async () => {
+	async function drawn(finds, pageIds) {
+		const c = clock({ answer: fromGoldens });
+		const { things, view } = thingsOn(c);
+		const paths = new Set();
+		for (const words of finds) {
+			await find(c, things, words);
+			shape(view(), '', paths);
+		}
+		for (const id of pageIds) {
+			await opened(c, () => things.open(id));
+			holdsAll(view().page, PAGES.get(id));
+			view().page.values.forEach((v) => v.toggle());
+			shape(view(), '', paths);
+			things.back();
+		}
+		return paths;
+	}
+	const files = await drawn(Object.keys(FILES_FIND), Object.values(FILES_PAGES).map((p) => p.id));
+	const shop = await drawn(
+		Object.keys(SHOP).filter((k) => k.startsWith('find ')),
+		[...PAGES.keys()].filter((id) => !Object.values(FILES_PAGES).some((p) => p.id === id))
+	);
+	assert.deepEqual([...shop].sort(), [...files].sort());
+});
+
+test('T5: nothing under src/ asks for unmasked values; "reveal" is only the existing show in Finder', () => {
+	for (const { path, text } of sources()) {
+		const uses = text.match(/reveal/gi) ?? [];
+		if (path === 'routes/+page.svelte') assert.equal(uses.length, 6, 'the scroll helper and the show in Finder call, as before');
+		else assert.deepEqual(uses, [], `src/${path}`);
+		assert.deepEqual(
+			stringsOf(path, text).filter((s) => /reveal/i.test(s)),
+			path === 'routes/+page.svelte' ? ['reveal_path'] : [],
+			`src/${path}: no string but the Finder command`
+		);
+	}
+});
+
+test('T5: every masked value in the goldens reaches the view unchanged', async () => {
+	const DOT = '•';
+	const masked = [];
+	const keep = (s) => typeof s === 'string' && s.includes(DOT) && masked.push(s);
+	for (const answer of FINDS.values())
+		for (const g of answer.groups)
+			for (const t of g.things) [t.title, t.subtitle, t.matched.value].forEach(keep);
+	for (const page of PAGES.values()) {
+		[page.title, page.subtitle].forEach(keep);
+		page.values.forEach((v) => v.values.forEach(keep));
+		page.links.forEach((l) => l.rows.forEach((r) => {
+			r.ends.forEach((e) => [e.thing.title, e.thing.subtitle].forEach(keep));
+			r.attributes.forEach((a) => a.values.forEach(keep));
+		}));
+	}
+	assert.ok(masked.length > 10, `${masked.length} masked values in the goldens`);
+	const c = clock({ answer: fromGoldens });
+	const { things, view } = thingsOn(c);
+	const shown = [];
+	const leaves = (o) => (typeof o === 'string' ? shown.push(o) : o && typeof o === 'object' && Object.values(o).forEach(leaves));
+	for (const words of FINDS.keys()) {
+		await find(c, things, words);
+		view().groups.forEach((g) => g.showAll());
+		leaves(view().groups);
+	}
+	for (const id of PAGES.keys()) {
+		await opened(c, () => things.open(id));
+		leaves(view().page);
+		things.back();
+	}
+	for (const value of masked) assert.ok(shown.some((s) => s.includes(value)), `${value} shown as given`);
+});
+
+test('T5: a value\'s status is shown only when it is not the accepted one', async () => {
+	const c = clock({ answer: fromGoldens });
+	const { things, view } = thingsOn(c);
+	for (const [id, page] of PAGES) {
+		assert.ok(page.values.every((v) => v.status === 'accepted'), `${id}: every golden value is accepted`);
+		await opened(c, () => things.open(id));
+		assert.deepEqual(view().page.values.map((v) => v.status), page.values.map(() => ''), `${id}: so no status shows`);
+		things.back();
+	}
+	const disputed = structuredClone(PAGES.get('invoice:0041'));
+	disputed.values[1].status = 'disputed';
+	const d = clock({ answer: (call) => (call.command === 'reader_page' ? { after: 0, value: disputed } : undefined) });
+	const other = thingsOn(d);
+	await opened(d, () => other.things.open('invoice:0041'));
+	assert.deepEqual(other.view().page.values.map((v) => v.status), ['', 'disputed', '']);
 });
