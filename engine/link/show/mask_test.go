@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 
 	"github.com/sanket2904/sifs/engine/link/show"
@@ -97,7 +98,8 @@ func (h held) display(attrID string) *ontology.AttributeDisplay {
 //     attribute; of a masked one, only when revealed or with no value kept
 //     from a person in it; of any other attribute, anything;
 //   - a thing's title and subtitle: a value of that thing's own attribute
-//     that is shown as it is, or text with no value kept from a person in it;
+//     that is shown as it is (a time by its instant or its day in UTC), or
+//     text with no value kept from a person in it;
 //   - a type, label, link, role or attribute: a name the schema declares, or
 //     text with no value kept from a person in it;
 //   - every other text (ids, sources, proofs and reasons): text with no
@@ -153,7 +155,7 @@ func (h held) leaks(read []byte, reveal bool) []string {
 					})
 				case isThing && (k == "title" || k == "subtitle"):
 					walk(p, sub, func(path, s string) {
-						if !slices.Contains(h.shownAsIs(id, reveal), s) {
+						if !slices.ContainsFunc(h.shownAsIs(id, reveal), func(v any) bool { return gives(s, v) }) {
 							free(path, s)
 						}
 					})
@@ -175,19 +177,26 @@ func (h held) leaks(read []byte, reveal bool) []string {
 
 // shownAsIs are the values of a thing's attributes that a person is given
 // as they are.
-func (h held) shownAsIs(id string, reveal bool) []string {
-	var out []string
+func (h held) shownAsIs(id string, reveal bool) []any {
+	var out []any
 	if e := h.things[id]; e != nil {
 		for attrID, vs := range e.Attributes {
 			if d := h.display(attrID); d.Hidden || d.Mask && !reveal {
 				continue
 			}
-			for _, v := range vs {
-				out = append(out, fmt.Sprint(v))
-			}
+			out = append(out, vs...)
 		}
 	}
 	return out
+}
+
+// gives reports whether the text s is the value v: v itself, or a time by
+// its instant or by its day, in UTC.
+func gives(s string, v any) bool {
+	if t, ok := v.(time.Time); ok {
+		return s == t.UTC().Format(time.RFC3339) || s == t.UTC().Format(time.DateOnly)
+	}
+	return s == fmt.Sprint(v)
 }
 
 func holdsWhole(s, v string) bool {
@@ -254,8 +263,8 @@ func reportLeaks(t *testing.T, h held, reads [][]byte, reveal bool) {
 // every masked value without reveal and every hidden value with and
 // without it. Mutations: give a title's first value raw in shown.first, and
 // account numbers are given; put an organisation's key back in its id, and
-// the ids give hidden keys; skip ids in leaks, and the planted id is not
-// found.
+// the ids give hidden keys; skip ids, subtitles or the ends of links in
+// leaks, and that planted value is not found.
 func TestMaskedAndHidden(t *testing.T) {
 	for _, s := range []struct {
 		name string
@@ -277,11 +286,14 @@ func TestMaskedAndHidden(t *testing.T) {
 			if i < 0 {
 				t.Fatal("no hidden text to plant")
 			}
-			planted := encode(t, show.Thing{ID: "planted:" + h.hidden[i].(string), Type: "planted", Title: s.raw})
+			planted := encode(t, show.Page{
+				Thing: show.Thing{ID: "planted:" + h.hidden[i].(string), Type: "planted", Title: s.raw, Subtitle: s.raw},
+				Links: []show.LinkGroup{{Link: "planted", Rows: []show.Link{{Ends: []show.End{{Role: "planted", Thing: show.Thing{ID: "planted", Title: s.raw}}}}}}},
+			})
 			got := h.leaks(planted, false)
-			for _, field := range []string{".id ", ".title "} {
+			for _, field := range []string{".id ", ".title ", ".subtitle ", ".links[0].rows[0].ends[0].thing.title "} {
 				if !slices.ContainsFunc(got, func(leak string) bool { return strings.HasPrefix(leak, field) }) {
-					t.Fatalf("a hidden value planted in an id and a masked one in a title: found only %q", got)
+					t.Fatalf("a hidden value planted in an id and a masked one in a title, a subtitle and a link row: %s not found in %q", field, got)
 				}
 			}
 			t.Logf("%d masked and %d hidden values searched for", len(h.masked), len(h.hidden))
