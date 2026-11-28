@@ -447,6 +447,7 @@ test('running the script from another working folder works for relative and abso
 	assert.deepEqual(siblingsMatching(absOut), []);
 });
 
+const REAL_CP = findBin('cp');
 const GATE_HELPER_SRC = `import { spawnSync } from 'node:child_process';
 import net from 'node:net';
 
@@ -554,6 +555,17 @@ exec "${REAL_MV}" "$@"
 	);
 
 	writeExec(
+		join(bin, 'cp'),
+		`#!/bin/sh
+if [ -n "\${FAKE_CP_FAIL:-}" ]; then
+	echo "cp: simulated copy failure" >&2
+	exit 1
+fi
+exec "${REAL_CP}" "$@"
+`
+	);
+
+	writeExec(
 		join(bin, 'rm'),
 		`#!/bin/sh
 if [ -n "\${FAKE_RM_GATE_OLD:-}" ]; then
@@ -567,6 +579,31 @@ if [ -n "\${FAKE_RM_GATE_OLD:-}" ]; then
 				if [ "$count" = "1" ]; then
 					exec "${process.execPath}" "${gateScript}" "$FAKE_GATE_PORT" "${REAL_RM}" "$@"
 				fi
+				;;
+		esac
+	done
+fi
+if [ -n "\${FAKE_RM_FAIL_OLD:-}" ]; then
+	for arg in "$@"; do
+		case "$arg" in
+			*.old)
+				echo "rm: simulated old folder removal failure" >&2
+				exit 1
+				;;
+		esac
+	done
+fi
+if [ -n "\${FAKE_RM_FAIL_STAGING:-}" ]; then
+	for arg in "$@"; do
+		case "$arg" in
+			*/.build-tools.*)
+				case "$arg" in
+					*/log|*.old) ;;
+					*)
+						echo "rm: simulated staging removal failure" >&2
+						exit 1
+						;;
+				esac
 				;;
 		esac
 	done
@@ -658,7 +695,7 @@ const assertInterruptedState = (res, out, expectedState, oldSet) => {
 		assert.deepEqual(siblings, [], `leftovers beside ${out}: ${JSON.stringify(siblings)}`);
 		assert.equal(lines.length, 1, `expected one stderr line, got ${JSON.stringify(lines)}`);
 		assert.ok(lines[0].includes(out), `stderr should name ${out}: ${res.stderr}`);
-		assert.match(lines[0], /previous|old/i, `stderr should say old/previous set: ${res.stderr}`);
+		assert.match(lines[0], /\b(previous|old)\b/i, `stderr should say old/previous set: ${res.stderr}`);
 		assert.doesNotMatch(lines[0], /\bnew\b/i, `stderr should not say new set: ${res.stderr}`);
 	} else if (expectedState === 'new') {
 		assert.equal(
@@ -672,7 +709,7 @@ const assertInterruptedState = (res, out, expectedState, oldSet) => {
 		assert.equal(lines.length, 1, `expected one stderr line, got ${JSON.stringify(lines)}`);
 		assert.ok(lines[0].includes(out), `stderr should name ${out}: ${res.stderr}`);
 		assert.match(lines[0], /\bnew\b/i, `stderr should say new set: ${res.stderr}`);
-		assert.doesNotMatch(lines[0], /previous|old/i, `stderr should not say old set: ${res.stderr}`);
+		assert.doesNotMatch(lines[0], /\b(previous|old)\b/i, `stderr should not say old set: ${res.stderr}`);
 	} else {
 		assert.equal(existsSync(out), false, `target ${out} should remain absent`);
 		assert.deepEqual(siblings, [], `leftovers beside ${out}: ${JSON.stringify(siblings)}`);
@@ -773,4 +810,43 @@ test('interrupt during first rename when restoring old set fails names the hidde
 	const lines = stderrLines(res);
 	assert.equal(lines.length, 1, `expected one stderr line, got ${JSON.stringify(lines)}`);
 	assert.ok(lines[0].includes(prevPath), `stderr should name ${prevPath}: ${res.stderr}`);
+});
+
+test('when copying data files fails and removing the staging folder also fails, stderr names the leftover staging folder', () => {
+	const { dir, runPlain } = makeInterruptCase();
+	const out = join(dir, 'tools');
+	const oldSet = writeOldSet(out);
+
+	const res = runPlain([out], { FAKE_CP_FAIL: '1', FAKE_RM_FAIL_STAGING: '1' });
+	assert.equal(res.status, 1, res.stderr);
+	assertTreeEqual(readTree(out), oldSet);
+	const leftovers = siblingsMatching(out);
+	assert.equal(leftovers.length, 1, `expected one leftover staging folder, got ${JSON.stringify(leftovers)}`);
+	const stagingPath = join(dirname(out), leftovers[0]);
+	const matchingLines = stderrLines(res).filter((line) => line.includes(stagingPath));
+	assert.equal(matchingLines.length, 1, `expected one stderr line naming ${stagingPath}: ${res.stderr}`);
+});
+
+test('interrupt after publishing when cleanup cannot remove the old folder names the leftover old folder', async () => {
+	const { dir, runGated } = makeInterruptCase();
+	const out = join(dir, 'tools');
+	const oldSet = writeOldSet(out);
+
+	const res = await runGated([out], {
+		signal: 'SIGTERM',
+		standinAction: 'do',
+		env: { FAKE_MV_GATE_ON: '2', FAKE_RM_FAIL_OLD: '1' }
+	});
+	assert.equal(res.gateHit, true, 'gate was hit');
+	assert.ok((res.status !== null && res.status !== 0) || res.signal !== null);
+	assertTreeEqual(readTree(out), expectedNewSet());
+	assertRunnablePrograms(out);
+	const leftovers = siblingsMatching(out);
+	assert.equal(leftovers.length, 1, `expected one leftover old folder, got ${JSON.stringify(leftovers)}`);
+	const prevPath = join(dirname(out), leftovers[0]);
+	assertTreeEqual(readTree(prevPath), oldSet);
+	const lines = stderrLines(res);
+	assert.equal(lines.length, 1, `expected one stderr line, got ${JSON.stringify(lines)}`);
+	assert.ok(lines[0].includes(prevPath), `stderr should name ${prevPath}: ${res.stderr}`);
+	assert.match(lines[0], /\bnew\b/i, `stderr should say new set: ${res.stderr}`);
 });

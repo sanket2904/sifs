@@ -8,6 +8,8 @@
 # move fails, the folder is left as it was. Because it removes the old
 # folder, it refuses an existing path that is not a folder or holds anything
 # other than those five files (exit 2, before building).
+# A kill that cannot be caught (SIGKILL) mid-swap can leave the folder missing
+# beside .build-tools.* or .build-tools.*.old; run it again to build it afresh.
 #
 #	sample/tools/build-tools.sh <folder>
 #
@@ -63,12 +65,85 @@ if [ -d "$out" ]; then
 fi
 
 aside=""
+prev=""
+interrupted=""
 cleanup() {
-	if [ -n "$aside" ] && [ -e "$aside" ]; then
-		rm -rf -- "$aside" >/dev/null 2>&1 || true
+	trap - EXIT
+	set +e
+	case "$aside" in
+		"$parent/.build-tools."*) ;;
+		*) aside="" ;;
+	esac
+	if [ -z "$interrupted" ]; then
+		if [ -n "$aside" ] && [ -e "$aside" ]; then
+			if ! rm_err=$(rm -rf -- "$aside" 2>&1); then
+				msg=$(printf '%s\n' "$rm_err" | tail -n 1)
+				if [ -n "$msg" ]; then
+					echo "$0: could not remove staging folder $aside: $msg" >&2
+				else
+					echo "$0: could not remove staging folder $aside" >&2
+				fi
+			fi
+		fi
+		return 0
+	fi
+
+	if [ -n "$prev" ] && [ -e "$prev" ]; then
+		if [ ! -e "$out" ]; then
+			if mv_err=$(mv -- "$prev" "$out" 2>&1); then
+				if [ -n "$aside" ] && [ -e "$aside" ]; then
+					if ! rm_err=$(rm -rf -- "$aside" 2>&1); then
+						echo "$0: interrupted; restored previous tools in $out, but could not remove staging folder $aside: $(printf '%s\n' "$rm_err" | tail -n 1)" >&2
+						return 0
+					fi
+				fi
+				echo "$0: interrupted; restored previous tools in $out" >&2
+			else
+				mv_msg=$(printf '%s\n' "$mv_err" | tail -n 1)
+				if [ -n "$aside" ] && [ -e "$aside" ]; then
+					if ! rm_err=$(rm -rf -- "$aside" 2>&1); then
+						echo "$0: interrupted; could not restore $out from $prev ($mv_msg) and could not remove staging folder $aside ($(printf '%s\n' "$rm_err" | tail -n 1))" >&2
+						return 0
+					fi
+				fi
+				echo "$0: interrupted; could not restore $out from $prev: $mv_msg" >&2
+			fi
+		else
+			if ! rm_err=$(rm -rf -- "$prev" 2>&1); then
+				echo "$0: interrupted; $out holds the new tools, but could not remove old folder $prev: $(printf '%s\n' "$rm_err" | tail -n 1)" >&2
+				return 0
+			fi
+			echo "$0: interrupted; $out holds the new tools" >&2
+		fi
+	elif [ -n "$aside" ] && [ -e "$aside" ]; then
+		if [ -e "$out" ]; then
+			state="$out still holds the previous tools"
+		else
+			state="$out was not created"
+		fi
+		if ! rm_err=$(rm -rf -- "$aside" 2>&1); then
+			echo "$0: interrupted; $state, but could not remove staging folder $aside: $(printf '%s\n' "$rm_err" | tail -n 1)" >&2
+			return 0
+		fi
+		echo "$0: interrupted; $state" >&2
+	elif [ -n "$aside" ] && [ -e "$out" ]; then
+		echo "$0: interrupted; $out holds the new tools" >&2
+	elif [ -e "$out" ]; then
+		echo "$0: interrupted; $out still holds the previous tools" >&2
+	else
+		echo "$0: interrupted; $out was not created" >&2
 	fi
 }
+on_signal() {
+	interrupted=$1
+	trap '' INT TERM HUP
+	cleanup
+	exit "$2"
+}
 trap cleanup EXIT
+trap 'on_signal INT 130' INT
+trap 'on_signal TERM 143' TERM
+trap 'on_signal HUP 129' HUP
 
 if ! aside=$(mktemp -d "$parent/.build-tools.XXXXXX" 2>&1); then
 	echo "$0: could not create staging folder in $parent: $(printf '%s\n' "$aside" | tail -n 1)" >&2
@@ -98,11 +173,12 @@ fi
 chmod 755 "$aside"
 
 if [ -d "$out" ]; then
-	prev="${aside}.old"
-	if [ -e "$prev" ] || [ -L "$prev" ]; then
-		echo "$0: backup path $prev already exists" >&2
+	backup="${aside}.old"
+	if [ -e "$backup" ] || [ -L "$backup" ]; then
+		echo "$0: backup path $backup already exists" >&2
 		exit 1
 	fi
+	prev="$backup"
 	if ! err=$(mv -- "$out" "$prev" 2>&1); then
 		echo "$0: could not move old folder $out aside: $(printf '%s\n' "$err" | tail -n 1)" >&2
 		exit 1
@@ -115,7 +191,6 @@ if [ -d "$out" ]; then
 		echo "$0: could not put new folder $out in place: $(printf '%s\n' "$err" | tail -n 1)" >&2
 		exit 1
 	fi
-	aside=""
 	if ! err=$(rm -rf -- "$prev" 2>&1); then
 		echo "$0: updated $out, but could not remove old folder $prev: $(printf '%s\n' "$err" | tail -n 1)" >&2
 		exit 1
@@ -125,6 +200,5 @@ else
 		echo "$0: could not put new folder $out in place: $(printf '%s\n' "$err" | tail -n 1)" >&2
 		exit 1
 	fi
-	aside=""
 fi
 echo "the tools are in $out"
