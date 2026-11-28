@@ -4,7 +4,7 @@
     "type": "files.Identifier",
     "title": "••••••••••••••4300",
     "subtitle": "iban",
-    "label": "Number or code",
+    "label": "Number",
     "also": [],
     "values": [
       {
@@ -112,7 +112,7 @@
                 ]
               },
               {
-                "attribute": "files.text",
+                "attribute": "files.numberText",
                 "label": "Printed text",
                 "values": [
                   "••••••••••••••••••3 00"
@@ -145,8 +145,7 @@
                 "thing": {
                   "id": "statement:abn-amro-statement",
                   "type": "files.Statement",
-                  "title": "2026-08-31",
-                  "subtitle": "2026-08-01"
+                  "title": "statement:abn-amro-statement"
                 }
               }
             ],
@@ -170,8 +169,7 @@
   "a Dutch statement": {
     "id": "statement:abn-amro-statement",
     "type": "files.Statement",
-    "title": "2026-08-31",
-    "subtitle": "2026-08-01",
+    "title": "statement:abn-amro-statement",
     "label": "Statement",
     "also": [],
     "values": [
@@ -179,7 +177,7 @@
         "attribute": "files.from",
         "label": "From",
         "values": [
-          "2026-08-01"
+          "2026-08-01T00:00:00Z"
         ],
         "status": "accepted",
         "sources": [
@@ -201,7 +199,7 @@
         "attribute": "files.to",
         "label": "To",
         "values": [
-          "2026-08-31"
+          "2026-08-31T00:00:00Z"
         ],
         "status": "accepted",
         "sources": [
@@ -310,6 +308,17 @@
     "also": [],
     "values": [
       {
+        "attribute": "files.institution",
+        "label": "Institution code",
+        "values": [
+          "BIC COBADEFF"
+        ],
+        "status": "accepted",
+        "sources": [
+          "commerzbank-kontoauszug"
+        ]
+      },
+      {
         "attribute": "files.name",
         "label": "Name",
         "values": [
@@ -323,29 +332,29 @@
     ],
     "links": [
       {
-        "link": "files.HeldAt",
-        "role": "files.HeldAt:organisation",
-        "label": "Holds",
+        "link": "files.CodeOf",
+        "role": "files.CodeOf:organisation",
+        "label": "Bank codes",
         "rows": [
           {
             "ends": [
               {
-                "role": "files.HeldAt:document",
+                "role": "files.CodeOf:code",
+                "label": "Bank code",
+                "thing": {
+                  "id": "bankcode:45751cfa78b71419",
+                  "type": "files.BankCode",
+                  "title": "COBADEFFXXX",
+                  "subtitle": "bic"
+                }
+              },
+              {
+                "role": "files.CodeOf:document",
                 "label": "Document",
                 "thing": {
                   "id": "document:commerzbank-kontoauszug",
                   "type": "files.Document",
                   "title": "document:commerzbank-kontoauszug"
-                }
-              },
-              {
-                "role": "files.HeldAt:identifier",
-                "label": "Number or code",
-                "thing": {
-                  "id": "identifier:45751cfa78b71419",
-                  "type": "files.Identifier",
-                  "title": "•••••••FXXX",
-                  "subtitle": "bic"
                 }
               }
             ],
@@ -466,8 +475,7 @@
   "a passport": {
     "id": "passport:passport-bad-mrz",
     "type": "files.Passport",
-    "title": "cannot-tell",
-    "subtitle": "2021-04-16",
+    "title": "15 APR 2031",
     "label": "Passport",
     "also": [],
     "values": [
@@ -487,17 +495,6 @@
         "label": "Current tier",
         "values": [
           "likely"
-        ],
-        "status": "accepted",
-        "sources": [
-          "passport-bad-mrz"
-        ]
-      },
-      {
-        "attribute": "files.expiry",
-        "label": "Expires",
-        "values": [
-          "cannot-tell"
         ],
         "status": "accepted",
         "sources": [
@@ -530,7 +527,7 @@
         "attribute": "files.issued",
         "label": "Issued",
         "values": [
-          "2021-04-16"
+          "2021-04-16T00:00:00Z"
         ],
         "status": "accepted",
         "sources": [
@@ -701,8 +698,7 @@
                 "thing": {
                   "id": "passport:passport-bad-mrz",
                   "type": "files.Passport",
-                  "title": "cannot-tell",
-                  "subtitle": "2021-04-16"
+                  "title": "15 APR 2031"
                 }
               }
             ],
