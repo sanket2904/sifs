@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -26,6 +27,7 @@ type held struct {
 	all            []string
 	things         map[string]*ontology.Entity
 	schema         map[string]bool
+	titles         []string
 }
 
 func holds(t *testing.T, interp *interpreter.Interpreter) held {
@@ -102,7 +104,11 @@ func (h held) display(attrID string) *ontology.AttributeDisplay {
 //     text with no value kept from a person in it;
 //   - a type, label, link, role or attribute: a name the schema declares, or
 //     text with no value kept from a person in it;
-//   - every other text (ids, sources, proofs and reasons): text with no
+//   - a proof's fact and each line of what it ruled out: the titles of the
+//     things it names, each as that thing's own page gives it and only when
+//     that title passes as a title, and around them text with no value kept
+//     from a person in it;
+//   - every other text (ids, sources, claims and reasons): text with no
 //     value kept from a person in it.
 //
 // A text value is in a field when it appears there whole: no letter or digit
@@ -122,6 +128,14 @@ func (h held) leaks(read []byte, reveal bool) []string {
 		for _, v := range kept {
 			text, isText := v.(string)
 			if isText && text != "" && holdsWhole(s, text) || !isText && s == fmt.Sprint(v) {
+				out = append(out, fmt.Sprintf("%s %q gives %q", path, s, fmt.Sprint(v)))
+			}
+		}
+	}
+	line := func(path, s string) {
+		for _, v := range kept {
+			text, isText := v.(string)
+			if isText && text != "" && h.outsideTitles(s, text) || !isText && s == fmt.Sprint(v) {
 				out = append(out, fmt.Sprintf("%s %q gives %q", path, s, fmt.Sprint(v)))
 			}
 		}
@@ -159,6 +173,8 @@ func (h held) leaks(read []byte, reveal bool) []string {
 							free(path, s)
 						}
 					})
+				case k == "fact" || k == "line":
+					walk(p, sub, line)
 				case k == "type" || k == "label" || k == "link" || k == "role" || k == "attribute":
 					walk(p, sub, func(path, s string) {
 						if !h.schema[s] {
@@ -197,6 +213,57 @@ func gives(s string, v any) bool {
 		return s == t.UTC().Format(time.RFC3339) || s == t.UTC().Format(time.DateOnly)
 	}
 	return s == fmt.Sprint(v)
+}
+
+// excuse lets a proof line name the thing id by title, the one its page
+// gives it, when that title passes as a title: a value of the thing's own
+// that is shown as it is, or text with no value kept from a person in it.
+func (h *held) excuse(id, title string, reveal bool) {
+	kept := h.hidden
+	if !reveal {
+		kept = slices.Concat(h.masked, h.hidden)
+	}
+	own := slices.ContainsFunc(h.shownAsIs(id, reveal), func(v any) bool { return gives(title, v) })
+	free := !slices.ContainsFunc(kept, func(v any) bool {
+		text, isText := v.(string)
+		return isText && text != "" && holdsWhole(title, text) || !isText && title == fmt.Sprint(v)
+	})
+	if title != "" && (own || free) {
+		h.titles = append(h.titles, title)
+	}
+}
+
+// outsideTitles reports whether v stands whole in s somewhere that no
+// whole title a proof line may name covers.
+func (h held) outsideTitles(s, v string) bool {
+	for _, at := range wholeAt(s, v) {
+		covered := slices.ContainsFunc(h.titles, func(title string) bool {
+			return slices.ContainsFunc(wholeAt(s, title), func(t int) bool { return t <= at && at+len(v) <= t+len(title) })
+		})
+		if !covered {
+			return true
+		}
+	}
+	return false
+}
+
+// wholeAt are where v stands whole in s: no letter or digit joins it on
+// either side.
+func wholeAt(s, v string) []int {
+	var out []int
+	for i := 0; i <= len(s); {
+		at := strings.Index(s[i:], v)
+		if at < 0 {
+			break
+		}
+		start, end := i+at, i+at+len(v)
+		before, after := []rune(s[:start]), []rune(s[end:])
+		if (len(before) == 0 || !word(before[len(before)-1])) && (len(after) == 0 || !word(after[0])) {
+			out = append(out, start)
+		}
+		i = start + 1
+	}
+	return out
 }
 
 func holdsWhole(s, v string) bool {
@@ -244,8 +311,16 @@ func everything(t *testing.T, r *show.Reader, h held) [][]byte {
 	return out
 }
 
+// reportLeaks reports each leak in reads, which hold the page of every
+// thing: a proof line may name a thing by the title its page gives it.
 func reportLeaks(t *testing.T, h held, reads [][]byte, reveal bool) {
 	t.Helper()
+	for _, read := range reads {
+		var page struct{ ID, Title string }
+		if json.Unmarshal(read, &page) == nil && page.ID != "" {
+			h.excuse(page.ID, page.Title, reveal)
+		}
+	}
 	n := 0
 	for _, read := range reads {
 		for _, leak := range h.leaks(read, reveal) {
@@ -296,6 +371,7 @@ func TestMaskedAndHidden(t *testing.T) {
 					t.Fatalf("a hidden value planted in an id and a masked one in a title, a subtitle and a link row: %s not found in %q", field, got)
 				}
 			}
+			plantedLines(t, h, s.raw, h.hidden[i].(string))
 			t.Logf("%d masked and %d hidden values searched for", len(h.masked), len(h.hidden))
 			reportLeaks(t, h, everything(t, show.New(interp, false), h), false)
 			revealed := everything(t, show.New(interp, true), h)
@@ -304,5 +380,42 @@ func TestMaskedAndHidden(t *testing.T) {
 			}
 			reportLeaks(t, h, revealed, true)
 		})
+	}
+}
+
+// plantedLines are proof lines planted in a page beside a store's own
+// things: one named by a made-up period whose title holds a short masked
+// value whole, and one titled by the raw masked value raw. Each is found
+// where a value kept from a person stands outside a title a line may name,
+// and only there.
+func plantedLines(t *testing.T, h held, raw, hidden string) {
+	t.Helper()
+	const period, short = "2031-07-01 to 2031-07-31", "07"
+	p := h
+	p.masked = append(slices.Clone(h.masked), short)
+	p.things = maps.Clone(h.things)
+	p.things["planted:period"] = &ontology.Entity{ID: "planted:period", TypeID: "planted", Attributes: map[string][]any{"planted.period": {period}}}
+	p.things["planted:raw"] = &ontology.Entity{ID: "planted:raw", TypeID: "planted"}
+	p.excuse("planted:period", period, false)
+	p.excuse("planted:raw", raw, false)
+	for _, c := range []struct {
+		name  string
+		proof show.Proof
+		found bool
+	}{
+		{"a masked value in a fact", show.Proof{Fact: "Statement account: Account " + raw}, true},
+		{"a masked value in a ruled-out line", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: a match (for " + raw + ", Statement " + period + ")"}}}, true},
+		{"a hidden value in a fact", show.Proof{Fact: "Held at: Key " + hidden}, true},
+		{"a short masked value inside a title the line names", show.Proof{Fact: "Latest statement: Statement " + period}, false},
+		{"the same value beside that title", show.Proof{Fact: "Latest statement: Statement " + period + "; Key " + short}, true},
+		{"a thing titled by a raw masked value, named", show.Proof{RuledOut: []show.RuledOut{{Line: "and no: Older statements (for " + raw + ")"}}}, true},
+	} {
+		read := encode(t, show.Page{Thing: show.Thing{ID: "planted", Type: "planted", Title: "planted"},
+			Links: []show.LinkGroup{{Link: "planted", Rows: []show.Link{{Ends: []show.End{}, Proof: &c.proof}}}}})
+		got := p.leaks(read, false)
+		inProof := slices.ContainsFunc(got, func(leak string) bool { return strings.Contains(leak, ".proof.") })
+		if inProof != c.found || !c.found && len(got) > 0 {
+			t.Errorf("%s: found %v, want %v: %q", c.name, inProof, c.found, got)
+		}
 	}
 }
